@@ -1,0 +1,25 @@
+# Dependencies
+/node_modules
+
+# Next.js build output
+/.next/
+/out/
+
+# Test results and coverage
+/coverage/
+/test-results/
+
+# Log files
+*.log
+eslint_*.log
+
+# Local environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and OS files
+.DS_Store
+.idea/
+.vscode/

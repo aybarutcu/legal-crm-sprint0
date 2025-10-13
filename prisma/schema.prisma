@@ -1,0 +1,524 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String     @id @default(cuid())
+  name                   String?
+  email                  String     @unique
+  role                   Role       @default(LAWYER)
+  status                 UserStatus @default(ACTIVE)
+  image                  String?
+  passwordHash           String?
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
+  invitedById            String?
+  invitationToken        String?
+  invitedAt              DateTime?
+  activatedAt            DateTime?
+  isActive               Boolean    @default(true)
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  contacts              Contact[]              @relation("ContactOwner")
+  tasks                 Task[]                 @relation("TaskAssignee")
+  matters               Matter[]               @relation("MatterOwner")
+  documents             Document[]             @relation("DocumentUploader")
+  events                Event[]                @relation("EventOrganizer")
+  calendars             Calendar[]
+  notes                 Note[]
+  auditLogs             AuditLog[]
+  workflowTemplates     WorkflowTemplate[]
+  workflowInstances     WorkflowInstance[]
+  assignedWorkflowSteps WorkflowInstanceStep[] @relation("UserAssignedWorkflowSteps")
+  invitedBy             User?                  @relation("UserInvitations", fields: [invitedById], references: [id])
+  invitedClients        User[]                 @relation("UserInvitations")
+  clientProfile         Contact?               @relation("ContactUser")
+  sentMessages          Message[]              @relation("MessageSender")
+  requestedApprovals    Approval[]             @relation("ApprovalRequester")
+  clientApprovals       Approval[]             @relation("ApprovalClient")
+  resolvedApprovals     Approval[]             @relation("ApprovalResolver")
+}
+
+enum Role {
+  ADMIN
+  LAWYER
+  PARALEGAL
+  CLIENT
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id        String        @id @default(cuid())
+  type      ContactType   @default(LEAD)
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  company   String?
+  status    ContactStatus @default(NEW)
+  source    String?
+  tags      String[]
+  ownerId   String?
+  userId    String?       @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  owner         User?           @relation("ContactOwner", fields: [ownerId], references: [id])
+  matters       MatterContact[]
+  clientMatters Matter[]        @relation("MatterClient")
+  documents     Document[]      @relation("DocumentContact")
+  user          User?           @relation("ContactUser", fields: [userId], references: [id], onDelete: SetNull)
+}
+
+enum ContactType {
+  LEAD
+  CLIENT
+  OTHER
+}
+
+enum ContactStatus {
+  NEW
+  QUALIFIED
+  DISQUALIFIED
+  ACTIVE
+  ARCHIVED
+}
+
+model Matter {
+  id            String       @id @default(cuid())
+  title         String
+  type          String
+  status        MatterStatus @default(OPEN)
+  jurisdiction  String?
+  court         String?
+  openedAt      DateTime     @default(now())
+  nextHearingAt DateTime?
+  clientId      String
+  ownerId       String?
+
+  client Contact @relation("MatterClient", fields: [clientId], references: [id])
+  owner  User?   @relation("MatterOwner", fields: [ownerId], references: [id])
+
+  parties           MatterContact[]
+  documents         Document[]
+  events            Event[]
+  tasks             Task[]
+  workflowInstances WorkflowInstance[]
+  messages          Message[]
+  approvals         Approval[]
+}
+
+enum MatterStatus {
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  CLOSED
+}
+
+model MatterContact {
+  id        String    @id @default(cuid())
+  matterId  String
+  contactId String
+  role      PartyRole
+
+  matter  Matter  @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([matterId, contactId, role])
+}
+
+enum PartyRole {
+  PLAINTIFF
+  DEFENDANT
+  WITNESS
+  OPPOSING_COUNSEL
+}
+
+model Document {
+  id         String    @id @default(cuid())
+  matterId   String?
+  contactId  String?
+  uploaderId String
+  filename   String
+  mime       String
+  size       Int
+  version    Int       @default(1)
+  tags       String[]
+  storageKey String
+  hash       String?
+  signedAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  matter    Matter?    @relation(fields: [matterId], references: [id])
+  contact   Contact?   @relation("DocumentContact", fields: [contactId], references: [id])
+  uploader  User       @relation("DocumentUploader", fields: [uploaderId], references: [id])
+  taskLinks TaskLink[]
+  approvals Approval[]
+
+  @@index([matterId, filename])
+  @@index([contactId])
+  @@index([matterId, hash])
+}
+
+model Message {
+  id          String    @id @default(cuid())
+  matterId    String
+  senderId    String
+  text        String
+  attachments Json?
+  replyToId   String?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  matter  Matter    @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  sender  User      @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo Message?  @relation("MessageThread", fields: [replyToId], references: [id])
+  replies Message[] @relation("MessageThread")
+
+  @@index([matterId, createdAt])
+  @@index([senderId])
+}
+
+model Approval {
+  id            String         @id @default(cuid())
+  matterId      String
+  documentId    String?
+  requestedById String
+  clientUserId  String?
+  resolvedById  String?
+  status        ApprovalStatus @default(PENDING)
+  requestedAt   DateTime       @default(now())
+  resolvedAt    DateTime?
+  clientComment String?
+  metadata      Json?
+
+  matter      Matter    @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  document    Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  requestedBy User      @relation("ApprovalRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  clientUser  User?     @relation("ApprovalClient", fields: [clientUserId], references: [id], onDelete: SetNull)
+  resolvedBy  User?     @relation("ApprovalResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([matterId])
+  @@index([documentId])
+  @@index([requestedById])
+  @@index([clientUserId])
+  @@index([status])
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+model Event {
+  id              String    @id @default(cuid())
+  calendarId      String?
+  matterId        String?
+  organizerId     String
+  title           String
+  description     String?
+  startAt         DateTime
+  endAt           DateTime
+  location        String?
+  attendees       Json      @default("[]")
+  reminderMinutes Int       @default(30)
+  externalCalId   String?
+  externalEtag    String?
+  reminderSentAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  calendar  Calendar?  @relation(fields: [calendarId], references: [id])
+  matter    Matter?    @relation(fields: [matterId], references: [id])
+  organizer User       @relation("EventOrganizer", fields: [organizerId], references: [id])
+  taskLinks TaskLink[]
+
+  @@index([startAt])
+  @@index([calendarId, externalCalId])
+}
+
+model Calendar {
+  id                     String           @id @default(cuid())
+  userId                 String
+  name                   String
+  provider               CalendarProvider @default(LOCAL)
+  externalId             String?
+  syncToken              String?
+  webhookChannelId       String?
+  webhookResourceId      String?
+  webhookExpirationAt    DateTime?
+  lastSyncedAt           DateTime?
+  defaultReminderMinutes Int              @default(30)
+  icsTokenHash           String?
+  icsTokenCreatedAt      DateTime?
+  isPrimary              Boolean          @default(false)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events Event[]
+
+  @@unique([userId, provider])
+  @@unique([userId, externalId])
+  @@index([userId])
+}
+
+model Task {
+  id                 String       @id @default(cuid())
+  matterId           String?
+  assigneeId         String?
+  title              String
+  description        String?
+  dueAt              DateTime?
+  priority           TaskPriority @default(MEDIUM)
+  status             TaskStatus   @default(OPEN)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  reminderNotified   Boolean      @default(false)
+  reminderNotifiedAt DateTime?
+
+  matter     Matter?         @relation(fields: [matterId], references: [id])
+  assignee   User?           @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  checklists TaskChecklist[]
+  links      TaskLink[]
+
+  @@index([matterId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueAt])
+  @@index([assigneeId, status, dueAt])
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELED
+}
+
+model TaskChecklist {
+  id        String   @id @default(cuid())
+  taskId    String
+  title     String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([taskId, order])
+}
+
+model TaskLink {
+  id         String   @id @default(cuid())
+  taskId     String
+  documentId String?
+  eventId    String?
+  url        String?
+  createdAt  DateTime @default(now())
+
+  task     Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  event    Event?    @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([documentId])
+  @@index([eventId])
+}
+
+model WorkflowTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  version     Int      @default(1)
+  isActive    Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  steps     WorkflowTemplateStep[]
+  instances WorkflowInstance[]
+
+  @@unique([name, version])
+}
+
+model WorkflowTemplateStep {
+  id           String     @id @default(cuid())
+  templateId   String
+  order        Int
+  title        String
+  actionType   ActionType
+  actionConfig Json
+  roleScope    RoleScope
+  required     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  template      WorkflowTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  instanceSteps WorkflowInstanceStep[]
+
+  @@unique([templateId, order])
+}
+
+model WorkflowInstance {
+  id              String                 @id @default(cuid())
+  templateId      String
+  matterId        String
+  templateVersion Int
+  createdById     String
+  status          WorkflowInstanceStatus @default(DRAFT)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  template  WorkflowTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  matter    Matter                 @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  createdBy User                   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  steps     WorkflowInstanceStep[]
+
+  @@index([matterId, status])
+  @@index([createdById])
+}
+
+model WorkflowInstanceStep {
+  id             String      @id @default(cuid())
+  instanceId     String
+  templateStepId String?
+  order          Int
+  title          String
+  actionType     ActionType
+  roleScope      RoleScope
+  required       Boolean     @default(true)
+  actionState    ActionState @default(PENDING)
+  actionData     Json?
+  assignedToId   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  instance     WorkflowInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  templateStep WorkflowTemplateStep? @relation(fields: [templateStepId], references: [id], onDelete: SetNull)
+  assignedTo   User?                 @relation("UserAssignedWorkflowSteps", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@unique([instanceId, order])
+  @@index([instanceId, actionState])
+  @@index([assignedToId])
+}
+
+enum ActionType {
+  APPROVAL_LAWYER
+  SIGNATURE_CLIENT
+  REQUEST_DOC_CLIENT
+  PAYMENT_CLIENT
+  CHECKLIST
+}
+
+enum RoleScope {
+  ADMIN
+  LAWYER
+  PARALEGAL
+  CLIENT
+}
+
+enum ActionState {
+  PENDING
+  READY
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum WorkflowInstanceStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELED
+}
+
+enum CalendarProvider {
+  LOCAL
+  GOOGLE
+}
+
+model Note {
+  id         String     @id @default(cuid())
+  parentType ParentType
+  parentId   String
+  authorId   String
+  body       String
+  createdAt  DateTime   @default(now())
+
+  author User @relation(fields: [authorId], references: [id])
+}
+
+enum ParentType {
+  MATTER
+  CONTACT
+  DOCUMENT
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  entityType String
+  entityId   String
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+}

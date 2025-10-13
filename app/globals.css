@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  min-height: 100vh;
+}
+
+a {
+  @apply text-accent transition-colors hover:text-accent/80;
+}

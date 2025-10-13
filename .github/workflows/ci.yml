@@ -1,0 +1,69 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: legalcrm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/legalcrm
+      NEXTAUTH_SECRET: test-secret
+      NEXTAUTH_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+      - name: Seed database
+        run: npm run db:seed
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run lint
+        run: npm run lint
+      - name: Build app
+        run: npm run build
+      - name: Run unit tests
+        run: npm run test:ci
+      - name: Start application server
+        run: |
+          npm run start -- --hostname 0.0.0.0 --port 3000 &
+          npx wait-on http://127.0.0.1:3000
+      - name: Run Playwright smoke tests
+        run: npm run e2e:ci
+      - name: Upload Vitest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-report
+          path: artifacts/vitest-report.xml
+          if-no-files-found: ignore
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: artifacts/playwright-report.xml
+          if-no-files-found: ignore
+      - name: Stop application server
+        if: always()
+        run: |
+          pkill -f "next start" || true

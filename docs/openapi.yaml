@@ -1,0 +1,302 @@
+openapi: 3.0.3
+info:
+  title: Legal CRM API
+  version: 0.1.0
+servers:
+  - url: http://localhost:3000/api
+paths:
+  /uploads:
+    post:
+      summary: Create signed upload target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadRequest'
+      responses:
+        '200':
+          description: Upload target created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+  /contacts:
+    get:
+      summary: List contacts
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactCreate'
+      responses:
+        '201': { description: Created }
+  /contacts/{id}:
+    get: { summary: Get contact, responses: { '200': { description: OK } } }
+    patch: { summary: Update contact, responses: { '200': { description: OK } } }
+    delete: { summary: Delete contact, responses: { '204': { description: No Content } } }
+  /matters:
+    get: { summary: List matters, responses: { '200': { description: OK } } }
+    post:
+      summary: Create matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatterCreate'
+      responses:
+        '201': { description: Created }
+  /events:
+    get: { summary: List events, responses: { '200': { description: OK } } }
+    post: { summary: Create event, responses: { '201': { description: Created } } }
+  /tasks:
+    get: { summary: List tasks, responses: { '200': { description: OK } } }
+    post: { summary: Create task, responses: { '201': { description: Created } } }
+  /documents:
+    get:
+      summary: List documents
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: matterId
+          schema: { type: string }
+        - in: query
+          name: contactId
+          schema: { type: string }
+        - in: query
+          name: uploaderId
+          schema: { type: string }
+        - in: query
+          name: tags
+          schema: { type: string, description: Comma separated tag list }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Document list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+    post:
+      summary: Create document metadata record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+  /documents/{id}:
+    get:
+      summary: Get document detail
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+    patch:
+      summary: Update document metadata
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+    delete:
+      summary: Delete document
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema: { type: string }
+      responses:
+        '204': { description: No Content }
+  /documents/{id}/download:
+    get:
+      summary: Create a signed download URL
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Download link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+components:
+  schemas:
+    ContactCreate:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        type: { type: string, enum: [LEAD, CLIENT, OTHER] }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        tags: { type: array, items: { type: string } }
+    MatterCreate:
+      type: object
+      required: [title, type, clientId]
+      properties:
+        title: { type: string }
+        type: { type: string }
+        clientId: { type: string }
+        jurisdiction: { type: string }
+        court: { type: string }
+    UploadRequest:
+      type: object
+      required: [filename, mime, size]
+      properties:
+        filename: { type: string }
+        mime: { type: string }
+        size: { type: integer }
+        matterId: { type: string }
+        contactId: { type: string }
+    UploadResponse:
+      type: object
+      required: [documentId, storageKey, version, upload]
+      properties:
+        documentId: { type: string }
+        storageKey: { type: string }
+        version: { type: integer }
+        upload:
+          type: object
+          required: [url, method]
+          properties:
+            url: { type: string, format: uri }
+            method: { type: string, enum: [PUT, POST] }
+            fields:
+              type: object
+              additionalProperties: { type: string }
+        expiresAt: { type: string, format: date-time }
+    Document:
+      type: object
+      required: [id, filename, mime, size, version, storageKey, createdAt]
+      properties:
+        id: { type: string }
+        filename: { type: string }
+        mime: { type: string }
+        size: { type: integer }
+        version: { type: integer }
+        storageKey: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        matterId: { type: string, nullable: true }
+        contactId: { type: string, nullable: true }
+        signedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        matter:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            title: { type: string }
+        contact:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            firstName: { type: string }
+            lastName: { type: string }
+        uploader:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string, nullable: true }
+            email: { type: string, format: email, nullable: true }
+    DocumentCreate:
+      type: object
+      required: [documentId, filename, mime, size, storageKey]
+      properties:
+        documentId: { type: string }
+        filename: { type: string }
+        mime: { type: string }
+        size: { type: integer }
+        storageKey: { type: string }
+        version: { type: integer }
+        matterId: { type: string }
+        contactId: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+    DocumentUpdate:
+      type: object
+      properties:
+        filename: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        matterId: { type: string, nullable: true }
+        version: { type: integer }
+        signedAt: { type: string, format: date-time, nullable: true }
+    DocumentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        pagination:
+          type: object
+          required: [page, pageSize, total, totalPages]
+          properties:
+            page: { type: integer }
+            pageSize: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+            hasNext: { type: boolean }
+            hasPrev: { type: boolean }
+    DownloadResponse:
+      type: object
+      required: [getUrl, mime, expiresAt]
+      properties:
+        getUrl: { type: string, format: uri }
+        mime: { type: string }
+        expiresAt: { type: string, format: date-time }

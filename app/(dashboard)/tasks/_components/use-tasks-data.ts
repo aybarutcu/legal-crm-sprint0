@@ -9,7 +9,7 @@ import {
   createTaskLink,
   deleteTask,
   deleteTaskLink,
-  listTasks,
+  listUnifiedTasks as listTasks,
   updateChecklistItem,
   updateTask,
 } from "@/lib/tasks/client";
@@ -127,7 +127,7 @@ export function useTasksData({ state, currentUserId }: UseTasksOptions) {
     Error,
     [string, TaskQuery]
   >(
-    ["tasks", query],
+    ["tasks/unified", query],
     ([, params]) => listTasks(params),
     {
       keepPreviousData: true,

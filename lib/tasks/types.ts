@@ -37,6 +37,9 @@ export type TaskListItem = {
   assignee: TaskAssignee | null;
   matter: TaskMatter | null;
   _count: TaskCounts;
+  itemType: 'TASK' | 'WORKFLOW_STEP';
+  actionType?: string;
+  roleScope?: string;
 };
 
 export type TaskChecklistItem = {

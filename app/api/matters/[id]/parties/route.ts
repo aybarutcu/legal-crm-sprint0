@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { matterPartyCreateSchema } from "@/lib/validation/matter";
 import { recordAuditLog } from "@/lib/audit";
 import { withApiHandler } from "@/lib/api-handler";
-import { assertCanModifyResource } from "@/lib/authorization";
+import { assertMatterAccess } from "@/lib/authorization";
 
 type MatterPartyParams = {
   id: string;
@@ -13,16 +13,7 @@ export const POST = withApiHandler<MatterPartyParams>(async (req, { params, sess
   const payload = await req.json();
   const parsed = matterPartyCreateSchema.parse(payload);
 
-  const matter = await prisma.matter.findUnique({ where: { id: params!.id } });
-  if (!matter) {
-    return NextResponse.json({ error: "Not Found" }, { status: 404 });
-  }
-
-  assertCanModifyResource({
-    userRole: session!.user!.role,
-    userId: session!.user!.id,
-    resourceOwnerId: matter.ownerId,
-  });
+  await assertMatterAccess(session!.user!, params!.id);
 
   const created = await prisma.matterContact.create({
     data: {

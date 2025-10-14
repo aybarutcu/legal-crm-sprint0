@@ -31,6 +31,7 @@ type TaskDialogProps = {
   mode: TaskDialogMode;
   isOpen: boolean;
   loading?: boolean;
+  isReadOnly?: boolean;
   task?: TaskDetail | null;
   assignees: TaskAssigneeOption[];
   matters: TaskMatterOption[];
@@ -68,6 +69,7 @@ export function TaskDialog({
   mode,
   isOpen,
   loading,
+  isReadOnly,
   task,
   assignees,
   matters,
@@ -116,6 +118,7 @@ export function TaskDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isReadOnly) return;
     setError(null);
     setSaving(true);
 
@@ -132,7 +135,7 @@ export function TaskDialog({
   }
 
   async function handleChecklistToggle(item: TaskChecklistItem) {
-    if (!onChecklistToggle) return;
+    if (!onChecklistToggle || isReadOnly) return;
     try {
       await onChecklistToggle(item.id, !item.done);
     } catch (err) {
@@ -142,7 +145,7 @@ export function TaskDialog({
 
   async function handleChecklistAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!newChecklistTitle.trim() || !onChecklistAdd) return;
+    if (!newChecklistTitle.trim() || !onChecklistAdd || isReadOnly) return;
     try {
       await onChecklistAdd(newChecklistTitle.trim());
       setNewChecklistTitle("");
@@ -153,7 +156,7 @@ export function TaskDialog({
 
   async function handleLinkAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!newLinkUrl.trim() || !onLinkAdd) return;
+    if (!newLinkUrl.trim() || !onLinkAdd || isReadOnly) return;
     try {
       await onLinkAdd({ url: newLinkUrl.trim() });
       setNewLinkUrl("");
@@ -187,7 +190,7 @@ export function TaskDialog({
             ) : null}
           </div>
           <div className="flex items-center gap-2">
-            {mode === "edit" && onDelete ? (
+            {mode === "edit" && onDelete && !isReadOnly ? (
               <button
                 type="button"
                 onClick={() => {
@@ -238,6 +241,7 @@ export function TaskDialog({
                   }
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
                   placeholder="Describe the task"
+                  disabled={saving || isReadOnly}
                 />
               </label>
               <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 md:col-span-2">
@@ -253,6 +257,7 @@ export function TaskDialog({
                   rows={4}
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
                   placeholder="Add context or acceptance criteria"
+                  disabled={saving || isReadOnly}
                 />
               </label>
               <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
@@ -266,6 +271,7 @@ export function TaskDialog({
                     }))
                   }
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  disabled={saving || isReadOnly}
                 >
                   <option value="">Unassigned</option>
                   {matters.map((matter) => (
@@ -286,6 +292,7 @@ export function TaskDialog({
                     }))
                   }
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  disabled={saving || isReadOnly}
                 >
                   <option value="">Unassigned</option>
                   {assignees.map((assignee) => (
@@ -308,6 +315,7 @@ export function TaskDialog({
                     }))
                   }
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  disabled={saving || isReadOnly}
                 />
               </label>
               <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
@@ -321,6 +329,7 @@ export function TaskDialog({
                     }))
                   }
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  disabled={saving || isReadOnly}
                 >
                   {TASK_PRIORITIES.map((priority) => (
                     <option key={priority} value={priority}>
@@ -340,7 +349,7 @@ export function TaskDialog({
                     }))
                   }
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                  disabled={mode === "create"}
+                  disabled={mode === "create" || saving || isReadOnly}
                 >
                   {TASK_STATUSES.map((status) => (
                     <option key={status} value={status}>
@@ -366,7 +375,7 @@ export function TaskDialog({
               >
                 Cancel
               </button>
-              <button
+              {!isReadOnly && <button
                 type="submit"
                 className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
                 disabled={saving}
@@ -376,7 +385,7 @@ export function TaskDialog({
                   : mode === "edit"
                     ? "Save Changes"
                     : "Create Task"}
-              </button>
+              </button>}
             </div>
           </form>
         )}
@@ -401,6 +410,7 @@ export function TaskDialog({
                         checked={item.done}
                         onChange={() => handleChecklistToggle(item)}
                         className="mt-1 h-4 w-4 rounded border-slate-300"
+                        disabled={saving || isReadOnly}
                       />
                       <div>
                         <p className={`text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-700"}`}>
@@ -414,17 +424,19 @@ export function TaskDialog({
                   ))
                 )}
 
-                {onChecklistAdd ? (
+                {onChecklistAdd && !isReadOnly ? (
                   <form className="flex items-center gap-2" onSubmit={handleChecklistAdd}>
                     <input
                       value={newChecklistTitle}
                       onChange={(event) => setNewChecklistTitle(event.target.value)}
                       placeholder="Add checklist item"
                       className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      disabled={saving || isReadOnly}
                     />
                     <button
                       type="submit"
                       className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
+                      disabled={saving || isReadOnly}
                     >
                       Add
                     </button>
@@ -467,13 +479,14 @@ export function TaskDialog({
                           </span>
                         )}
                       </div>
-                      {onLinkRemove ? (
+                      {onLinkRemove && !isReadOnly ? (
                         <button
                           type="button"
                           onClick={() => {
                             void onLinkRemove(link.id);
                           }}
                           className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-500 hover:bg-slate-100"
+                          disabled={saving || isReadOnly}
                         >
                           Remove
                         </button>
@@ -482,17 +495,19 @@ export function TaskDialog({
                   ))
                 )}
 
-                {onLinkAdd ? (
+                {onLinkAdd && !isReadOnly ? (
                   <form className="flex items-center gap-2" onSubmit={handleLinkAdd}>
                     <input
                       value={newLinkUrl}
                       onChange={(event) => setNewLinkUrl(event.target.value)}
                       placeholder="https://"
                       className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      disabled={saving || isReadOnly}
                     />
                     <button
                       type="submit"
                       className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
+                      disabled={saving || isReadOnly}
                     >
                       Link URL
                     </button>

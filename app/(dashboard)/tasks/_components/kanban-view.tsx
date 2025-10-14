@@ -113,43 +113,50 @@ export function KanbanView({ tasks, isLoading, onSelectTask, onMoveTask }: Kanba
                   No tasks
                 </p>
               ) : (
-                columnTasks.map((task) => (
-                  <button
-                    key={task.id}
-                    type="button"
-                    onClick={() => onSelectTask?.(task.id)}
-                    draggable
-                    onDragStart={(event) => handleDragStart(event, task.id)}
-                    onDragEnd={handleDragEnd}
-                    className={`w-full rounded-xl border px-4 py-3 text-left text-sm text-slate-700 shadow-sm transition hover:border-accent/40 hover:bg-slate-100 ${
-                      draggingId === task.id ? "border-accent bg-accent/10" : "border-slate-100 bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-slate-900">{task.title}</h4>
-                      {task.priority !== "MEDIUM" ? (
-                        <span className="text-xs font-semibold uppercase tracking-widest text-accent">
-                          {task.priority}
-                        </span>
+                columnTasks.map((task) => {
+                  const isWorkflowStep = task.itemType === 'WORKFLOW_STEP';
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => onSelectTask?.(task.id)}
+                      draggable={!isWorkflowStep}
+                      onDragStart={(event) => handleDragStart(event, task.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`w-full rounded-xl border px-4 py-3 text-left text-sm text-slate-700 shadow-sm transition hover:border-accent/40 hover:bg-slate-100 ${
+                        draggingId === task.id ? "border-accent bg-accent/10" : "border-slate-100 bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-slate-900">{task.title}</h4>
+                        {isWorkflowStep ? (
+                          <span className="text-xs font-semibold uppercase tracking-widest text-blue-600">
+                            {task.actionType?.replace(/_/g, " ")}
+                          </span>
+                        ) : task.priority !== "MEDIUM" ? (
+                          <span className="text-xs font-semibold uppercase tracking-widest text-accent">
+                            {task.priority}
+                          </span>
+                        ) : null}
+                      </div>
+                      {task.description ? (
+                        <p className="mt-1 text-xs text-slate-500 line-clamp-2">
+                          {task.description}
+                        </p>
                       ) : null}
-                    </div>
-                    {task.description ? (
-                      <p className="mt-1 text-xs text-slate-500 line-clamp-2">
-                        {task.description}
-                      </p>
-                    ) : null}
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-widest text-slate-400">
-                      {task.dueAt ? (
-                        <span>
-                          Due {new Date(task.dueAt).toLocaleDateString("tr-TR")}
-                        </span>
-                      ) : (
-                        <span>No due date</span>
-                      )}
-                      {task.assignee?.name ? <span>• {task.assignee.name}</span> : null}
-                    </div>
-                  </button>
-                ))
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-widest text-slate-400">
+                        {task.dueAt ? (
+                          <span>
+                            Due {new Date(task.dueAt).toLocaleDateString("tr-TR")}
+                          </span>
+                        ) : (
+                          <span>No due date</span>
+                        )}
+                        {task.assignee?.name ? <span>• {task.assignee.name}</span> : null}
+                      </div>
+                    </button>
+                  )
+                })
               )}
             </div>
           </article>

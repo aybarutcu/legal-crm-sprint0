@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChecklistBuilder } from "@/components/workflows/checklist-builder";
+import { TemplateCard } from "@/components/workflows/TemplateCard";
+import { TemplateGroup } from "@/components/workflows/TemplateGroup";
 
 const ACTION_TYPES = [
   { value: "CHECKLIST", label: "Checklist" },
@@ -281,27 +284,7 @@ export function WorkflowTemplatesClient() {
     });
   }
 
-  function addChecklistItem(afterTaskIndex: number) {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      const steps = prev.steps.slice();
-      const insertAt = Math.min(afterTaskIndex + 1, steps.length);
-      const defaultConfig = defaultConfigFor("CHECKLIST");
-      steps.splice(insertAt, 0, {
-        title: "Checklist item",
-        actionType: "CHECKLIST",
-        roleScope: "CLIENT",
-        required: true,
-        actionConfig: defaultConfig,
-        actionConfigInput: JSON.stringify(defaultConfig, null, 2),
-        order: insertAt,
-      });
-      return {
-        ...prev,
-        steps: normaliseSteps(steps),
-      };
-    });
-  }
+  
 
   async function submitDraft() {
     if (!draft) return;
@@ -454,94 +437,26 @@ export function WorkflowTemplatesClient() {
         </div>
       ) : (
         <div className="space-y-4">
-          {templates.map((template) => (
-            <article
-              key={template.id}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card"
-            >
-              <header className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    {template.name} <span className="text-xs font-medium text-slate-500">v{template.version}</span>
-                  </h3>
-                  <p className="text-sm text-slate-500">
-                    {template.description || "No description provided."}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Updated {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(template.updatedAt))}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-500"
-                  >
-                    {template.isActive ? "Active" : "Draft"}
-                  </span>
-                  {template.isActive ? (
-                    <button
-                      type="button"
-                      onClick={() => startNewVersion(template)}
-                      className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
-                    >
-                      New Version
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => publishTemplate(template.id)}
-                      className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
-                      disabled={publishingId === template.id}
-                    >
-                      {publishingId === template.id ? "Publishing..." : "Publish"}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => openEditEditor(template)}
-                    className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                    disabled={template.isActive}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteTemplate(template.id)}
-                    className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-red-600 hover:bg-red-50"
-                    disabled={isDeleting === template.id}
-                  >
-                    {isDeleting === template.id ? "Deleting..." : "Delete"}
-                  </button>
-                </div>
-              </header>
-              <div className="mt-4 space-y-3">
-                {template.steps.map((step) => (
-                  <div
-                    key={`${template.id}-${step.order}`}
-                    className="flex items-start justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm"
-                  >
-                    <div>
-                      <div className="font-medium text-slate-900">{step.title}</div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                          {step.actionType.replace(/_/g, " ")}
-                        </span>
-                        <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                          {step.roleScope}
-                        </span>
-                        <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                          {step.required ? "Required" : "Optional"}
-                        </span>
-                      </div>
-                    </div>
-                    {Object.keys(step.actionConfig ?? {}).length > 0 ? (
-                      <pre className="ml-4 max-w-xs overflow-auto rounded bg-slate-100 px-2 py-1 text-[11px] font-mono text-slate-600">
-                        {JSON.stringify(step.actionConfig, null, 2)}
-                      </pre>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </article>
+          {Object.entries(
+            templates.reduce((acc, template) => {
+              if (!acc[template.name]) {
+                acc[template.name] = [];
+              }
+              acc[template.name].push(template);
+              return acc;
+            }, {} as Record<string, WorkflowTemplate[]>)
+          ).map(([name, versions]) => (
+            <TemplateGroup
+              key={name}
+              name={name}
+              versions={versions}
+              startNewVersion={startNewVersion}
+              publishTemplate={publishTemplate}
+              openEditEditor={openEditEditor}
+              deleteTemplate={deleteTemplate}
+              isDeleting={isDeleting}
+              publishingId={publishingId}
+            />
           ))}
         </div>
       )}
@@ -641,15 +556,7 @@ export function WorkflowTemplatesClient() {
                           >
                             Remove
                           </button>
-                          {step.actionType !== "CHECKLIST" ? (
-                            <button
-                              type="button"
-                              onClick={() => addChecklistItem(index)}
-                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
-                            >
-                              + Checklist Action
-                            </button>
-                          ) : null}
+
                         </div>
                       </div>
 
@@ -714,18 +621,34 @@ export function WorkflowTemplatesClient() {
                           />
                           Required
                         </label>
-                        <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
-                          Action Config (JSON)
-                          <textarea
-                            value={step.actionConfigInput ?? ""}
-                            onChange={(event) =>
-                              updateStep(index, { actionConfigInput: event.target.value })
-                            }
-                            rows={4}
-                            className="rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs focus:border-accent focus:outline-none"
-                            placeholder="{ }"
-                          />
-                        </label>
+                                                {step.actionType === "CHECKLIST" ? (
+                          <div className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
+                            Action Config
+                            <ChecklistBuilder
+                              value={(step.actionConfig.items as any) || []}
+                              onChange={(items) => {
+                                const newConfig = { ...step.actionConfig, items };
+                                updateStep(index, {
+                                  actionConfig: newConfig,
+                                  actionConfigInput: JSON.stringify(newConfig, null, 2),
+                                });
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
+                            Action Config (JSON)
+                            <textarea
+                              value={step.actionConfigInput ?? ""}
+                              onChange={(event) =>
+                                updateStep(index, { actionConfigInput: event.target.value })
+                              }
+                              rows={4}
+                              className="rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs focus:border-accent focus:outline-none"
+                              placeholder="{ }"
+                            />
+                          </label>
+                        )}
                       </div>
                     </div>
                   ))}

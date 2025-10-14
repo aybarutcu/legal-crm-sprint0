@@ -53,6 +53,7 @@ export function TaskListView({
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-widest text-slate-500">
           <tr>
             <th className="px-4 py-3">Title</th>
+            <th className="px-4 py-3">Type</th>
             <th className="px-4 py-3">Matter</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3">Assignee</th>
@@ -66,19 +67,20 @@ export function TaskListView({
         <tbody>
           {isLoading ? (
             <tr>
-              <td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-500">
+              <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
                 Loading tasks…
               </td>
             </tr>
           ) : tasks.length === 0 ? (
             <tr>
-              <td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-500">
+              <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
                 No tasks match your filters.
               </td>
             </tr>
           ) : (
             tasks.map((task) => {
               const isPending = pendingSet.has(task.id);
+              const isWorkflowStep = task.itemType === 'WORKFLOW_STEP';
               return (
                 <tr
                   key={task.id}
@@ -89,6 +91,7 @@ export function TaskListView({
                       type="button"
                       onClick={() => onEdit(task.id)}
                       className="hover:underline"
+                      disabled={isWorkflowStep}
                     >
                       {task.title}
                     </button>
@@ -99,6 +102,17 @@ export function TaskListView({
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
+                    {isWorkflowStep ? (
+                      <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-blue-600">
+                        {task.actionType?.replace(/_/g, " ")}
+                      </span>
+                    ) : (
+                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-600">
+                        Task
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
                     {task.matter?.title ?? "—"}
                   </td>
                   <td className="px-4 py-3">
@@ -107,7 +121,7 @@ export function TaskListView({
                       onChange={(event) =>
                         handleUpdate(task.id, { status: event.target.value })
                       }
-                      disabled={isPending}
+                      disabled={isPending || isWorkflowStep}
                       className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 focus:border-accent focus:outline-none"
                     >
                       {TASK_STATUSES.map((status) => (
@@ -125,7 +139,7 @@ export function TaskListView({
                           assigneeId: event.target.value || null,
                         })
                       }
-                      disabled={isPending}
+                      disabled={isPending || isWorkflowStep}
                       className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 focus:border-accent focus:outline-none"
                     >
                       <option value="">Unassigned</option>
@@ -142,7 +156,7 @@ export function TaskListView({
                       onChange={(event) =>
                         handleUpdate(task.id, { priority: event.target.value })
                       }
-                      disabled={isPending}
+                      disabled={isPending || isWorkflowStep}
                       className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 focus:border-accent focus:outline-none"
                     >
                       {TASK_PRIORITIES.map((priority) => (
@@ -163,7 +177,7 @@ export function TaskListView({
                             : null,
                         })
                       }
-                      disabled={isPending}
+                      disabled={isPending || isWorkflowStep}
                       className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-accent focus:outline-none"
                     />
                     {task.dueAt ? (

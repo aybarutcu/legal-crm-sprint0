@@ -24,7 +24,7 @@ type TaskViewMode = "list" | "kanban";
 type DialogState =
   | { open: false }
   | { open: true; mode: "create" }
-  | { open: true; mode: "edit"; taskId: string };
+  | { open: true; mode: "edit"; taskId: string; itemType: 'TASK' | 'WORKFLOW_STEP' };
 
 type ToastState = {
   message: string;
@@ -155,8 +155,8 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
     setToast({ message, variant });
   }
 
-  async function openEditDialog(taskId: string) {
-    setDialogState({ open: true, mode: "edit", taskId });
+  async function openEditDialog(taskId: string, itemType: 'TASK' | 'WORKFLOW_STEP') {
+    setDialogState({ open: true, mode: "edit", taskId, itemType });
     setDialogLoading(true);
     try {
       const detail = await getTask(taskId);
@@ -409,7 +409,7 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
         <KanbanView
           tasks={tasks}
           isLoading={isLoading}
-          onSelectTask={(taskId) => openEditDialog(taskId)}
+          onSelectTask={(taskId, itemType) => openEditDialog(taskId, itemType)}
           onMoveTask={async (taskId, status) => {
             await updateTask(taskId, { status });
           }}
@@ -419,7 +419,7 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
           tasks={tasks}
           assignees={assignees}
           isLoading={isLoading}
-          onEdit={(taskId) => openEditDialog(taskId)}
+          onEdit={(taskId, itemType) => openEditDialog(taskId, itemType)}
           onUpdateTask={async (taskId, payload) => {
             const normalized: UpdateTaskPayload = {};
             if ("status" in payload && typeof payload.status === "string") {
@@ -493,6 +493,7 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
         assignees={assignees}
         matters={matters}
         onClose={closeDialog}
+        isReadOnly={dialogState.open && dialogState.mode === 'edit' && dialogState.itemType === 'WORKFLOW_STEP'}
         onSubmit={async (values) => {
           if (dialogState.open && dialogState.mode === "edit") {
             await handleUpdate(values, dialogState.taskId);

@@ -146,3 +146,8 @@ export async function deleteTaskLink(linkId: string) {
     method: "DELETE",
   });
 }
+
+export async function listUnifiedTasks(query: TaskQuery = {}) {
+  const qs = buildQueryString(query);
+  return request<TaskListResponse>(`/api/tasks/unified?${qs}`);
+}

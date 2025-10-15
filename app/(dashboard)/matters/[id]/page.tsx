@@ -79,7 +79,7 @@ export default async function MatterDetailPage({
     email: contact.email,
   }));
 
-  return <MatterDetailClient matter={detail} contacts={contactOptions} />;
+  return <MatterDetailClient matter={detail} contacts={contactOptions} currentUserRole={session.user.role} />;
 }
 
 export const dynamic = "force-dynamic";

@@ -29,3 +29,22 @@ export async function assertMatterAccess(user: { id: string; role?: Role }, matt
     throw new NotAuthorizedError("Matter access denied");
   }
 }
+
+export function isAdmin(role: Role | undefined): boolean {
+  return role === Role.ADMIN;
+}
+
+export function assertCanModifyResource(options: {
+  userRole?: Role;
+  userId: string;
+  resourceOwnerId?: string | null;
+}): void {
+  // Admins can modify any resource
+  if (options.userRole === Role.ADMIN) {
+    return;
+  }
+  // Non-admins must be the owner of the resource
+  if (!options.resourceOwnerId || options.resourceOwnerId !== options.userId) {
+    throw new NotAuthorizedError("Forbidden");
+  }
+}

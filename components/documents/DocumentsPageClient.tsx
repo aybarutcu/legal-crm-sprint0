@@ -72,6 +72,7 @@ export function DocumentsPageClient({
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<DocumentListItem | null>(null);
 
+
   useEffect(() => {
     setItems(documents);
   }, [documents]);

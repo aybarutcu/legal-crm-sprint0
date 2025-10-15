@@ -115,17 +115,17 @@ export function DocumentDetailDrawer({
             : null,
           contact: payload.contact
             ? {
-                id: payload.contact.id,
-                firstName: payload.contact.firstName,
-                lastName: payload.contact.lastName,
-              }
+              id: payload.contact.id,
+              firstName: payload.contact.firstName,
+              lastName: payload.contact.lastName,
+            }
             : null,
           uploader: payload.uploader,
         };
         setDocument(nextDocument);
         setTagsInput(nextDocument.tags.join(", "));
         if (isPreviewableMime(nextDocument.mime)) {
-          loadDownloadUrl().catch(() => {});
+          loadDownloadUrl().catch(() => { });
         }
         onUpdated(nextDocument);
       } catch (err) {

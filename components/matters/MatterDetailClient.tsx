@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MATTER_STATUS } from "@/lib/validation/matter";
 import type { ContactOption, MatterDetail, MatterParty } from "@/components/matters/types";
 import { WorkflowDialog } from "./workflow-dialog";
+import { PartyCard } from "./PartyCard";
+import Link from "next/link";
+import type { DocumentListItem } from "@/components/documents/types";
+import { DocumentDetailDrawer } from "@/components/documents/DocumentDetailDrawer";
+import { ContactDetailsHoverCard } from "@/components/contact/ContactDetailsHoverCard";
+import { isTerminal } from "@/lib/workflows/state-machine";
 
 type ActionType =
   | "APPROVAL_LAWYER"
@@ -71,6 +77,8 @@ const dateFormatter = new Intl.DateTimeFormat("tr-TR", {
 type MatterDetailClientProps = {
   matter: MatterDetail;
   contacts: ContactOption[];
+  documents?: DocumentListItem[]; 
+  currentUserRole?: "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 };
 
 type ToastState = {
@@ -88,7 +96,7 @@ const initialPartyForm: PartyFormState = {
   role: "PLAINTIFF",
 };
 
-export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps) {
+export function MatterDetailClient({ matter, contacts, currentUserRole }: MatterDetailClientProps) {
   const router = useRouter();
   const [status, setStatus] = useState(matter.status);
   const [nextHearingAt, setNextHearingAt] = useState(matter.nextHearingAt ?? "");
@@ -103,10 +111,10 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
   const [stepFormState, setStepFormState] = useState<
     | null
     | {
-        mode: "add" | "edit";
-        instanceId: string;
-        stepId?: string;
-      }
+      mode: "add" | "edit";
+      instanceId: string;
+      stepId?: string;
+    }
   >(null);
   const [stepFormValues, setStepFormValues] = useState({
     title: "",
@@ -116,9 +124,69 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
     actionConfig: "{}",
   });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [relatedDocs, setRelatedDocs] = useState<DocumentListItem[]>(matter.documents ?? []);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<DocumentListItem | null>(null);
+  const isWorkflowRemovable = useMemo(
+    () => currentUserRole === "ADMIN" || currentUserRole === "LAWYER",
+    [currentUserRole],
+  );
+
+  const workflowSummary = useMemo(() => {
+    if (!workflows.length) return null;
+
+    const candidates = workflows
+      .map((instance) => {
+        const steps = instance.steps;
+        const idx = steps.findIndex((s) => !isTerminal(s.actionState));
+        if (idx === -1) return null;
+        return {
+          instance,
+          prev: idx > 0 ? steps[idx - 1] : null,
+          current: steps[idx],
+          next: idx + 1 < steps.length ? steps[idx + 1] : null,
+          index: idx,
+        };
+      })
+      .filter(Boolean) as Array<{
+        instance: WorkflowInstance;
+        prev: WorkflowInstanceStep | null;
+        current: WorkflowInstanceStep;
+        next: WorkflowInstanceStep | null;
+        index: number;
+      }>;
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const statusPriority: Record<WorkflowInstance["status"], number> = {
+      ACTIVE: 0,
+      DRAFT: 1,
+      PAUSED: 2,
+      COMPLETED: 3,
+      CANCELED: 4,
+    } as const;
+
+    candidates.sort((a, b) => {
+      const sp =
+        (statusPriority[a.instance.status as keyof typeof statusPriority] ?? 99) -
+        (statusPriority[b.instance.status as keyof typeof statusPriority] ?? 99);
+      if (sp !== 0) return sp;
+      const ca = new Date(a.instance.createdAt).getTime();
+      const cb = new Date(b.instance.createdAt).getTime();
+      if (ca !== cb) return ca - cb;
+      return a.index - b.index;
+    });
+
+    return candidates[0];
+  }, [workflows]);
 
   useEffect(() => {
     void loadWorkflowInstances();
+    void loadRelatedDocuments();
   }, []);
 
   async function loadWorkflowInstances() {
@@ -147,6 +215,22 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
       showToast("error", "Workflows could not be loaded.");
     } finally {
       setWorkflowsLoading(false);
+    }
+  }
+
+  async function loadRelatedDocuments() {
+    setDocsLoading(true);
+    try {
+      const response = await fetch(`/api/documents?matterId=${matter.id}&page=1&pageSize=5`);
+      if (!response.ok) {
+        throw new Error("Documents could not be loaded");
+      }
+      const payload: { data: DocumentListItem[] } = await response.json();
+      setRelatedDocs(payload.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDocsLoading(false);
     }
   }
 
@@ -264,6 +348,43 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
       setLoading(false);
     }
   }
+
+  async function handleDownload(doc: DocumentListItem) {
+    setDownloadingId(doc.id);
+    try {
+      const response = await fetch(`/api/documents/${doc.id}/download`);
+      if (!response.ok) {
+        throw new Error("İndirme bağlantısı alınamadı.");
+      }
+      const payload: { getUrl: string; mime?: string } = await response.json();
+      const mime = payload.mime ?? doc.mime;
+      if (mime.startsWith("application/pdf") || mime.startsWith("image/")) {
+        window.open(payload.getUrl, "_blank", "noopener,noreferrer");
+      } else {
+        window.location.href = payload.getUrl;
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("error", "İndirme bağlantısı oluşturulamadı.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  const openDocDetail = useCallback((doc: DocumentListItem) => {
+    setSelectedDocumentId(doc.id);
+    setSelectedDocument(doc);
+  }, []);
+
+  const closeDocDetail = useCallback(() => {
+    setSelectedDocumentId(null);
+    setSelectedDocument(null);
+  }, []);
+
+  const handleDocUpdated = useCallback((updated: DocumentListItem) => {
+    setRelatedDocs((prev) => prev.map((d) => (d.id === updated.id ? { ...d, ...updated } : d)));
+    setSelectedDocument((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+  }, []);
 
   async function submitStepForm() {
     if (!stepFormState) return;
@@ -392,6 +513,58 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
       showToast("error", error instanceof Error ? error.message : "Adım silinemedi.");
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function removeWorkflow(instanceId: string) {
+    if (!isWorkflowRemovable) {
+      showToast("error", "Bu işlemi yapmaya yetkiniz yok.");
+      return;
+    }
+    if (!window.confirm("Workflow'u kaldırmak istediğinize emin misiniz?")) return;
+    try {
+      setActionLoading(`${instanceId}:deleteInstance`);
+      const response = await fetch(`/api/workflows/instances/${instanceId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Workflow kaldırılamadı");
+      }
+      await loadWorkflowInstances();
+      showToast("success", "Workflow kaldırıldı.");
+    } catch (error) {
+      console.error(error);
+      showToast("error", error instanceof Error ? error.message : "Workflow kaldırılamadı.");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function getStepClasses(kind: "prev" | "current" | "next", state?: ActionState) {
+    if (kind === "next") return "border-slate-200 bg-white text-slate-700";
+    if (kind === "prev") {
+      switch (state) {
+        case "COMPLETED":
+          return "border-emerald-200 bg-emerald-50 text-emerald-700";
+        case "FAILED":
+          return "border-red-200 bg-red-50 text-red-700";
+        case "SKIPPED":
+          return "border-slate-200 bg-slate-50 text-slate-600";
+        default:
+          return "border-slate-200 bg-slate-50 text-slate-600";
+      }
+    }
+    switch (state) {
+      case "READY":
+        return "border-blue-200 bg-blue-50 text-blue-700";
+      case "IN_PROGRESS":
+        return "border-amber-200 bg-amber-50 text-amber-700";
+      case "BLOCKED":
+        return "border-red-200 bg-red-50 text-red-700";
+      case "PENDING":
+      default:
+        return "border-slate-200 bg-slate-50 text-slate-600";
     }
   }
 
@@ -614,22 +787,136 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
     <div className="space-y-6" data-testid="matter-detail-client">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
         <h2 className="text-2xl font-semibold text-slate-900">{matter.title}</h2>
-        <p className="text-sm text-slate-500">
-          Tür: {matter.type} | Müvekkil: {clientName}
-        </p>
-        <p className="text-sm text-slate-500">
-          Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
-          <div>
-            <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
+          <p className="text-sm text-slate-500">
+            Tür: {matter.type} | Müvekkil:{" "}
+            <ContactDetailsHoverCard
+              contactId={matter.client.id}
+              fallbackName={clientName}
+              email={matter.client.email}
+              currentUserRole={currentUserRole}
+            />
+          </p>
+          <p className="text-sm text-slate-500">
+            Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
+            <div>
+              <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
+            </div>
+            <div>
+              <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
+            </div>
+            <div>
+              <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
+            </div>
           </div>
-          <div>
-            <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
+        {workflowsLoading ? (
+          <p className="mt-2 text-sm text-slate-500">Loading...</p>
+        ) : workflows.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No workflows.</p>
+        ) : !workflowSummary ? (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            All workflow steps are complete.
           </div>
-          <div>
-            <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
+        ) : (
+          <div className="mt-4 flex items-stretch gap-3">
+            <div className={`flex-1 rounded-xl border px-4 py-3 ${getStepClasses("prev", workflowSummary.prev?.actionState)}`}>
+              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Previous</div>
+              <div className="mt-1 text-sm font-medium">
+                {workflowSummary.prev ? workflowSummary.prev.title : "—"}
+              </div>
+              {workflowSummary.prev ? (
+                <div className="mt-1 text-xs text-slate-500">
+                  #{workflowSummary.prev.order + 1} · {workflowSummary.instance.template.name}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex items-center px-1 text-slate-400">→</div>
+            <div className={`flex-1 rounded-xl border px-4 py-3 ${getStepClasses("current", workflowSummary.current.actionState)}`}>
+              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current</div>
+              <div className="mt-1 text-sm font-medium">
+                {workflowSummary.current.title}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                #{workflowSummary.current.order + 1} · {workflowSummary.instance.template.name}
+              </div>
+            </div>
+            <div className="flex items-center px-1 text-slate-400">→</div>
+            <div className={`flex-1 rounded-xl border px-4 py-3 ${getStepClasses("next", workflowSummary.next?.actionState)}`}>
+              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Next</div>
+              <div className="mt-1 text-sm font-medium">
+                {workflowSummary.next ? workflowSummary.next.title : "—"}
+              </div>
+              {workflowSummary.next ? (
+                <div className="mt-1 text-xs text-slate-500">
+                  #{workflowSummary.next.order + 1} · {workflowSummary.instance.template.name}
+                </div>
+              ) : null}
+            </div>
           </div>
+        )}
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-2">
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900">Taraflar</h3>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              onClick={() => setPartyModalOpen(true)}
+            >
+              Taraf Ekle
+            </button>
+          </div>
+
+          <ul className="mt-4 space-y-3 text-sm text-slate-600">
+            {parties.length ? (
+              parties.map((party) => (
+                <PartyCard key={party.id} party={party} onRemove={removeParty} />
+              ))
+            ) : (
+              <li className="text-slate-400">Taraf bulunmuyor.</li>
+            )}
+          </ul>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900">Related Documents</h3>
+            <Link
+              href={`/documents?matterId=${matter.id}&page=1`}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            >
+              View All
+            </Link>
+          </div>
+          <ul className="mt-4 space-y-3 text-sm text-slate-600">
+            {docsLoading ? (
+              <li className="text-slate-500">Loading...</li>
+            ) : relatedDocs.length ? (
+              relatedDocs.map((doc) => (
+                <li key={doc.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                  <div>
+                    <div className="font-medium text-slate-900">{doc.filename}</div>
+                    <div className="text-xs text-slate-500">
+                      {dateFormatter.format(new Date(doc.createdAt))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openDocDetail(doc)}
+                    className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  >
+                    Detay
+                  </button>
+                </li>
+              ))
+            ) : (
+              <li className="text-slate-400">No documents.</li>
+            )}
+          </ul>
         </div>
       </div>
 
@@ -729,6 +1016,16 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
                   >
                     {actionLoading === `${workflow.id}:advance` ? "Güncelleniyor..." : "Adım Durumlarını Güncelle"}
                   </button>
+                  {isWorkflowRemovable && (
+                    <button
+                      type="button"
+                      onClick={() => removeWorkflow(workflow.id)}
+                      className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      disabled={actionLoading === `${workflow.id}:deleteInstance`}
+                    >
+                      {actionLoading === `${workflow.id}:deleteInstance` ? "Siliniyor..." : "Workflow'u Kaldır"}
+                    </button>
+                  )}
                 </div>
                 {renderStepForm(workflow.id)}
                 <div className="mt-3 space-y-2">
@@ -783,54 +1080,12 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900">Taraflar</h3>
-          <button
-            type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            onClick={() => setPartyModalOpen(true)}
-          >
-            Taraf Ekle
-          </button>
-        </div>
-
-        <ul className="mt-4 space-y-3 text-sm text-slate-600">
-          {parties.length ? (
-            parties.map((party) => (
-              <li key={party.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
-                <div>
-                  <div className="font-medium text-slate-900">
-                    {party.contact.firstName} {party.contact.lastName}
-                  </div>
-                  <div className="text-xs uppercase tracking-widest text-slate-500">
-                    {party.role}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                  onClick={() => removeParty(party.id)}
-                >
-                  Sil
-                </button>
-              </li>
-            ))
-          ) : (
-            <li className="text-slate-400">Taraf bulunmuyor.</li>
-          )}
-        </ul>
-      </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
         <h3 className="text-lg font-semibold text-slate-900">Görevler</h3>
         <p className="mt-2 text-sm text-slate-500">Sprint 2 kapsamında placeholder.</p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <h3 className="text-lg font-semibold text-slate-900">Dokümanlar</h3>
-        <p className="mt-2 text-sm text-slate-500">Sprint 2 kapsamında placeholder.</p>
-      </div>
 
       {partyModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
@@ -897,11 +1152,17 @@ export function MatterDetailClient({ matter, contacts }: MatterDetailClientProps
         </div>
       ) : null}
 
+        <DocumentDetailDrawer
+          documentId={selectedDocumentId}
+          initialDocument={selectedDocument}
+          onClose={closeDocDetail}
+          onUpdated={handleDocUpdated}
+        />
+
       {toast ? (
         <div
-          className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${
-            toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-          }`}
+          className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+            }`}
         >
           {toast.message}
         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChecklistBuilder } from "@/components/workflows/checklist-builder";
+import Link from "next/link";
 import { TemplateCard } from "@/components/workflows/TemplateCard";
 import { TemplateGroup } from "@/components/workflows/TemplateGroup";
 
@@ -419,6 +420,13 @@ export function WorkflowTemplatesClient() {
         >
           New Template
         </button>
+        <Link
+          href="/workflows/ai"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 flex items-center justify-center"
+          style={{ textDecoration: "none" }}
+        >
+          AI Workflow Oluştur
+        </Link>
       </div>
 
       {error ? (

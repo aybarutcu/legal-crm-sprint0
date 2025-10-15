@@ -1,3 +1,5 @@
+import type { DocumentListItem } from "@/components/documents/types";
+
 export type MatterListItem = {
   id: string;
   title: string;
@@ -52,4 +54,5 @@ export type MatterDetail = {
     email: string | null;
   } | null;
   parties: MatterParty[];
+  documents?: DocumentListItem[]; 
 };

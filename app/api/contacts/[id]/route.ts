@@ -15,6 +15,16 @@ export const GET = withApiHandler<ContactParams>(async (_req, { params }) => {
     where: { id: params!.id },
     include: {
       owner: { select: { id: true, name: true, email: true } },
+      user: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          invitedAt: true,
+          activatedAt: true,
+          isActive: true,
+        },
+      },
     },
   });
 

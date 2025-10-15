@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Legal CRM",
-  description: "Sprint 0 starter",
+  description: "Starter package",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

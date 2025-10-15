@@ -147,7 +147,7 @@ export function ContactDetailsHoverCard({
 
   return (
     <span className={`relative inline-block ${className ?? ""}`} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      <span className="cursor-help underline decoration-dotted underline-offset-2">
+      <span className="cursor-help underline decoration-dotted underline-offset-2 text-base font-semibold text-slate-900">
         {fullName}
       </span>
 

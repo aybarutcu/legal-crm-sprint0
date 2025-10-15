@@ -24,6 +24,10 @@ model User {
   isActive               Boolean    @default(true)
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
+  deletedAt              DateTime?
+  deletedBy              String?
+
+  @@index([email])
 
   accounts              Account[]
   sessions              Session[]
@@ -88,26 +92,39 @@ model Session {
 }
 
 model Contact {
-  id        String        @id @default(cuid())
-  type      ContactType   @default(LEAD)
-  firstName String
-  lastName  String
-  email     String?
-  phone     String?
-  company   String?
-  status    ContactStatus @default(NEW)
-  source    String?
-  tags      String[]
-  ownerId   String?
-  userId    String?       @unique
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  type              ContactType   @default(LEAD)
+  firstName         String
+  lastName          String
+  email             String?
+  phone             String?
+  company           String?
+  status            ContactStatus @default(NEW)
+  source            String?
+  tags              String[]
+  ownerId           String?
+  userId            String?       @unique
+  address           String?
+  city              String?
+  state             String?
+  zip               String?
+  country           String?
+  notes             String?
+  preferredLanguage String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+  deletedBy         String?
 
   owner         User?           @relation("ContactOwner", fields: [ownerId], references: [id])
   matters       MatterContact[]
   clientMatters Matter[]        @relation("MatterClient")
   documents     Document[]      @relation("DocumentContact")
   user          User?           @relation("ContactUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
 }
 
 enum ContactType {
@@ -125,16 +142,24 @@ enum ContactStatus {
 }
 
 model Matter {
-  id            String       @id @default(cuid())
-  title         String
-  type          String
-  status        MatterStatus @default(OPEN)
-  jurisdiction  String?
-  court         String?
-  openedAt      DateTime     @default(now())
-  nextHearingAt DateTime?
-  clientId      String
-  ownerId       String?
+  id              String       @id @default(cuid())
+  title           String
+  type            String
+  status          MatterStatus @default(OPEN)
+  jurisdiction    String?
+  court           String?
+  openedAt        DateTime     @default(now())
+  nextHearingAt   DateTime?
+  closedAt        DateTime?
+  closedBy        String?
+  estimatedValue  Decimal?     @db.Decimal(10, 2)
+  actualValue     Decimal?     @db.Decimal(10, 2)
+  clientId        String
+  ownerId         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+  deletedBy       String?
 
   client Contact @relation("MatterClient", fields: [clientId], references: [id])
   owner  User?   @relation("MatterOwner", fields: [ownerId], references: [id])
@@ -146,6 +171,11 @@ model Matter {
   workflowInstances WorkflowInstance[]
   messages          Message[]
   approvals         Approval[]
+
+  @@index([status])
+  @@index([type])
+  @@index([openedAt])
+  @@index([createdAt])
 }
 
 enum MatterStatus {
@@ -175,29 +205,37 @@ enum PartyRole {
 }
 
 model Document {
-  id         String    @id @default(cuid())
-  matterId   String?
-  contactId  String?
-  uploaderId String
-  filename   String
-  mime       String
-  size       Int
-  version    Int       @default(1)
-  tags       String[]
-  storageKey String
-  hash       String?
-  signedAt   DateTime?
-  createdAt  DateTime  @default(now())
+  id               String     @id @default(cuid())
+  matterId         String?
+  contactId        String?
+  uploaderId       String
+  filename         String
+  mime             String
+  size             Int
+  version          Int        @default(1)
+  tags             String[]
+  storageKey       String
+  hash             String?
+  signedAt         DateTime?
+  metadata         Json?
+  parentDocumentId String?
+  createdAt        DateTime   @default(now())
+  deletedAt        DateTime?
+  deletedBy        String?
 
-  matter    Matter?    @relation(fields: [matterId], references: [id])
-  contact   Contact?   @relation("DocumentContact", fields: [contactId], references: [id])
-  uploader  User       @relation("DocumentUploader", fields: [uploaderId], references: [id])
-  taskLinks TaskLink[]
-  approvals Approval[]
+  matter         Matter?    @relation(fields: [matterId], references: [id])
+  contact        Contact?   @relation("DocumentContact", fields: [contactId], references: [id])
+  uploader       User       @relation("DocumentUploader", fields: [uploaderId], references: [id])
+  parentDocument Document?  @relation("DocumentVersions", fields: [parentDocumentId], references: [id])
+  versions       Document[] @relation("DocumentVersions")
+  taskLinks      TaskLink[]
+  approvals      Approval[]
 
   @@index([matterId, filename])
   @@index([contactId])
   @@index([matterId, hash])
+  @@index([parentDocumentId])
+  @@index([createdAt])
 }
 
 model Message {
@@ -268,6 +306,8 @@ model Event {
   reminderSentAt  DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  deletedBy       String?
 
   calendar  Calendar?  @relation(fields: [calendarId], references: [id])
   matter    Matter?    @relation(fields: [matterId], references: [id])
@@ -276,6 +316,7 @@ model Event {
 
   @@index([startAt])
   @@index([calendarId, externalCalId])
+  @@index([createdAt])
 }
 
 model Calendar {
@@ -317,6 +358,8 @@ model Task {
   updatedAt          DateTime     @updatedAt
   reminderNotified   Boolean      @default(false)
   reminderNotifiedAt DateTime?
+  deletedAt          DateTime?
+  deletedBy          String?
 
   matter     Matter?         @relation(fields: [matterId], references: [id])
   assignee   User?           @relation("TaskAssignee", fields: [assigneeId], references: [id])
@@ -329,6 +372,7 @@ model Task {
   @@index([priority])
   @@index([dueAt])
   @@index([assigneeId, status, dueAt])
+  @@index([createdAt])
 }
 
 enum TaskPriority {
@@ -418,6 +462,7 @@ model WorkflowInstance {
   templateVersion Int
   createdById     String
   status          WorkflowInstanceStatus @default(DRAFT)
+  contextData     Json?                  // Shared data across all workflow steps
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
@@ -431,21 +476,24 @@ model WorkflowInstance {
 }
 
 model WorkflowInstanceStep {
-  id             String      @id @default(cuid())
+  id             String        @id @default(cuid())
   instanceId     String
   templateStepId String?
   order          Int
   title          String
   actionType     ActionType
   roleScope      RoleScope
-  required       Boolean     @default(true)
-  actionState    ActionState @default(PENDING)
+  required       Boolean       @default(true)
+  actionState    ActionState   @default(PENDING)
   actionData     Json?
   assignedToId   String?
+  dueDate        DateTime?
+  priority       TaskPriority? @default(MEDIUM)
+  notes          String?
   startedAt      DateTime?
   completedAt    DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   instance     WorkflowInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   templateStep WorkflowTemplateStep? @relation(fields: [templateStepId], references: [id], onDelete: SetNull)
@@ -454,6 +502,7 @@ model WorkflowInstanceStep {
   @@unique([instanceId, order])
   @@index([instanceId, actionState])
   @@index([assignedToId])
+  @@index([dueDate])
 }
 
 enum ActionType {

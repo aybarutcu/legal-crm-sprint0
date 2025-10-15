@@ -1,1 +1,0 @@
--- Migration intentionally left blank after workflow schema refactor.

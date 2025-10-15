@@ -27,6 +27,7 @@ export type WorkflowRuntimeContext<TConfig = unknown, TData = unknown> = {
   config: TConfig;
   data: TData;
   now: Date;
+  context: Record<string, unknown>; // Shared workflow context
 };
 
 export type ActionEvent = {

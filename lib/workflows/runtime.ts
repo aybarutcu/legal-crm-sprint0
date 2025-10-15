@@ -71,6 +71,7 @@ function buildContext<TConfig, TData>(
 ): WorkflowRuntimeContext<TConfig, TData> {
   const config = extractConfig<TConfig>(step);
   const data = ensureActionData(step) as unknown as TData;
+  const context = isJsonObject(instance.contextData) ? instance.contextData as Record<string, unknown> : {};
   return {
     tx,
     instance,
@@ -79,6 +80,7 @@ function buildContext<TConfig, TData>(
     config,
     data,
     now,
+    context,
   };
 }
 

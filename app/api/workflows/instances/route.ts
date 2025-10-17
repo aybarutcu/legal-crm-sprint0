@@ -14,10 +14,22 @@ export const GET = withApiHandler(async (req: NextRequest, { session }) => {
     Object.fromEntries(req.nextUrl.searchParams),
   );
 
+  // Build matter access filter - allow if user is matter owner OR is a team member
+  const matterAccessFilter = user.role === "ADMIN"
+    ? {}
+    : {
+        matter: {
+          OR: [
+            { ownerId: user.id },
+            { teamMembers: { some: { userId: user.id } } },
+          ],
+        },
+      };
+
   const instances = await prisma.workflowInstance.findMany({
     where: {
       matterId,
-      ...(user.role !== "ADMIN" && { matter: { ownerId: user.id } }),
+      ...matterAccessFilter,
     },
     include: {
       template: { select: { id: true, name: true } },

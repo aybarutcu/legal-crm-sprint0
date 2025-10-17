@@ -1,0 +1,2177 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Legal CRM API",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/api"
+    }
+  ],
+  "paths": {
+    "/uploads": {
+      "post": {
+        "summary": "Create signed upload target",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upload target created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contacts": {
+      "get": {
+        "summary": "List contacts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create contact",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/contacts/{id}": {
+      "get": {
+        "summary": "Get contact",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update contact",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete contact",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/matters": {
+      "get": {
+        "summary": "List matters",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create matter",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatterCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "List events",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create event",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "summary": "List tasks",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create task",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "summary": "List documents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "matterId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contactId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uploaderId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tags",
+            "schema": {
+              "type": "string",
+              "description": "Comma separated tag list"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create document metadata record",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{id}": {
+      "get": {
+        "summary": "Get document detail",
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update document metadata",
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete document",
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/documents/{id}/download": {
+      "get": {
+        "summary": "Create a signed download URL",
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/templates": {
+      "get": {
+        "summary": "List workflow templates",
+        "tags": [
+          "Workflows"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search by template name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of workflow templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowTemplate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create workflow template",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowTemplateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowTemplate"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        }
+      }
+    },
+    "/workflows/templates/{id}": {
+      "get": {
+        "summary": "Get workflow template by ID",
+        "tags": [
+          "Workflows"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowTemplate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update workflow template",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowTemplateUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Template updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowTemplate"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      }
+    },
+    "/workflows/templates/{id}/publish": {
+      "post": {
+        "summary": "Publish workflow template",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Marks template as active and ready for instantiation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Template has no steps"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      }
+    },
+    "/workflows/templates/{id}/instantiate": {
+      "post": {
+        "summary": "Instantiate template to matter",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Creates a workflow instance from template for a specific matter",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "matterId"
+                ],
+                "properties": {
+                  "matterId": {
+                    "type": "string",
+                    "description": "ID of the matter to attach workflow to"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workflow instance created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Template has no steps"
+          },
+          "404": {
+            "description": "Template or matter not found"
+          },
+          "409": {
+            "description": "Template is not published"
+          }
+        }
+      }
+    },
+    "/workflows/instances": {
+      "get": {
+        "summary": "List workflow instances",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "matterId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by matter ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of workflow instances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowInstance"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/instances/{id}": {
+      "get": {
+        "summary": "Get workflow instance by ID",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instance details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstance"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update workflow instance",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Update instance title or status (pause, cancel)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "DRAFT",
+                      "ACTIVE",
+                      "PAUSED",
+                      "COMPLETED",
+                      "CANCELED"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Instance updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstance"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        }
+      }
+    },
+    "/workflows/instances/{id}/steps": {
+      "post": {
+        "summary": "Add step to workflow instance",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Add a new step to an existing workflow instance",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStepCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Step added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        }
+      }
+    },
+    "/workflows/instances/{id}/steps/{stepId}": {
+      "patch": {
+        "summary": "Update workflow instance step",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "required": true,
+            "name": "stepId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStepUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Step updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete workflow instance step",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "required": true,
+            "name": "stepId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Step deleted"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      }
+    },
+    "/workflows/instances/{id}/advance": {
+      "post": {
+        "summary": "Advance workflow to next eligible step",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Automatically advances workflow by marking completed steps and making next steps READY",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow advanced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stepsAdvanced": {
+                      "type": "integer",
+                      "description": "Number of steps that were advanced"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        }
+      }
+    },
+    "/workflows/instances/{id}/context": {
+      "get": {
+        "summary": "Get workflow instance context data",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Retrieve shared context data for workflow instance",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        }
+      }
+    },
+    "/workflows/steps/{id}/claim": {
+      "post": {
+        "summary": "Claim a workflow step",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Assign step to current user if eligible",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Step claimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Step not in READY state or already assigned"
+          },
+          "403": {
+            "description": "User not eligible to claim this step"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      }
+    },
+    "/workflows/steps/{id}/start": {
+      "post": {
+        "summary": "Start executing a workflow step",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Transitions step to IN_PROGRESS and invokes action handler",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Step started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Step not in READY state"
+          },
+          "403": {
+            "description": "User not authorized to start this step"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      }
+    },
+    "/workflows/steps/{id}/complete": {
+      "post": {
+        "summary": "Complete a workflow step",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Marks step as COMPLETED and invokes handler completion logic",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Action-specific completion payload",
+                "additionalProperties": true,
+                "example": {
+                  "approved": true,
+                  "comment": "Looks good to proceed"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Step completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Step not in IN_PROGRESS state"
+          },
+          "403": {
+            "description": "User not authorized to complete this step"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      }
+    },
+    "/workflows/steps/{id}/fail": {
+      "post": {
+        "summary": "Fail a workflow step",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Marks step as FAILED with reason",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Reason for failure"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Step marked as failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Step not in IN_PROGRESS state"
+          },
+          "403": {
+            "description": "User not authorized to fail this step"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      }
+    },
+    "/workflows/steps/{id}/skip": {
+      "post": {
+        "summary": "Skip a workflow step",
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Marks step as SKIPPED (admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "required": true,
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Step skipped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInstanceStep"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Step not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ContactCreate": {
+        "type": "object",
+        "required": [
+          "firstName",
+          "lastName"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "LEAD",
+              "CLIENT",
+              "OTHER"
+            ]
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MatterCreate": {
+        "type": "object",
+        "required": [
+          "title",
+          "type",
+          "clientId"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "jurisdiction": {
+            "type": "string"
+          },
+          "court": {
+            "type": "string"
+          }
+        }
+      },
+      "UploadRequest": {
+        "type": "object",
+        "required": [
+          "filename",
+          "mime",
+          "size"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "matterId": {
+            "type": "string"
+          },
+          "contactId": {
+            "type": "string"
+          }
+        }
+      },
+      "UploadResponse": {
+        "type": "object",
+        "required": [
+          "documentId",
+          "storageKey",
+          "version",
+          "upload"
+        ],
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "storageKey": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "upload": {
+            "type": "object",
+            "required": [
+              "url",
+              "method"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "PUT",
+                  "POST"
+                ]
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "mime",
+          "size",
+          "version",
+          "storageKey",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "storageKey": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "matterId": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactId": {
+            "type": "string",
+            "nullable": true
+          },
+          "signedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "matter": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "contact": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "firstName": {
+                "type": "string"
+              },
+              "lastName": {
+                "type": "string"
+              }
+            }
+          },
+          "uploader": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "nullable": true
+              }
+            }
+          }
+        }
+      },
+      "DocumentCreate": {
+        "type": "object",
+        "required": [
+          "documentId",
+          "filename",
+          "mime",
+          "size",
+          "storageKey"
+        ],
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "storageKey": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "matterId": {
+            "type": "string"
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DocumentUpdate": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "matterId": {
+            "type": "string",
+            "nullable": true
+          },
+          "version": {
+            "type": "integer"
+          },
+          "signedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "DocumentListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "required": [
+              "page",
+              "pageSize",
+              "total",
+              "totalPages"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "pageSize": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "totalPages": {
+                "type": "integer"
+              },
+              "hasNext": {
+                "type": "boolean"
+              },
+              "hasPrev": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "DownloadResponse": {
+        "type": "object",
+        "required": [
+          "getUrl",
+          "mime",
+          "expiresAt"
+        ],
+        "properties": {
+          "getUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WorkflowTemplate": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "isActive",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Template name",
+            "example": "Client Onboarding Workflow"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Template description"
+          },
+          "version": {
+            "type": "integer",
+            "description": "Template version number",
+            "example": 1
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Whether template is published and can be instantiated",
+            "example": true
+          },
+          "createdById": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User ID who created the template"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowTemplateStep"
+            }
+          }
+        }
+      },
+      "WorkflowTemplateStep": {
+        "type": "object",
+        "required": [
+          "id",
+          "templateId",
+          "order",
+          "title",
+          "actionType",
+          "roleScope",
+          "required"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "order": {
+            "type": "integer",
+            "description": "Step order in sequence",
+            "example": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "Step title",
+            "example": "Lawyer Approval"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "APPROVAL_LAWYER",
+              "SIGNATURE_CLIENT",
+              "REQUEST_DOC_CLIENT",
+              "PAYMENT_CLIENT",
+              "CHECKLIST"
+            ],
+            "description": "Type of action to perform"
+          },
+          "actionConfig": {
+            "type": "object",
+            "description": "Action-specific configuration (JSON)",
+            "additionalProperties": true,
+            "example": {
+              "approverRole": "LAWYER",
+              "message": "Please review and approve"
+            }
+          },
+          "roleScope": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "LAWYER",
+              "PARALEGAL",
+              "CLIENT"
+            ],
+            "description": "Role required to execute this step"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether step is required",
+            "default": true
+          }
+        }
+      },
+      "WorkflowTemplateCreate": {
+        "type": "object",
+        "required": [
+          "name",
+          "steps"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "example": "Client Onboarding Workflow"
+          },
+          "description": {
+            "type": "string",
+            "example": "Standard workflow for new client onboarding"
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "title",
+                "actionType",
+                "roleScope"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "actionType": {
+                  "type": "string",
+                  "enum": [
+                    "APPROVAL_LAWYER",
+                    "SIGNATURE_CLIENT",
+                    "REQUEST_DOC_CLIENT",
+                    "PAYMENT_CLIENT",
+                    "CHECKLIST"
+                  ]
+                },
+                "roleScope": {
+                  "type": "string",
+                  "enum": [
+                    "ADMIN",
+                    "LAWYER",
+                    "PARALEGAL",
+                    "CLIENT"
+                  ]
+                },
+                "required": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "actionConfig": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "WorkflowTemplateUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Existing step ID (for updates)"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "actionType": {
+                  "type": "string",
+                  "enum": [
+                    "APPROVAL_LAWYER",
+                    "SIGNATURE_CLIENT",
+                    "REQUEST_DOC_CLIENT",
+                    "PAYMENT_CLIENT",
+                    "CHECKLIST"
+                  ]
+                },
+                "roleScope": {
+                  "type": "string",
+                  "enum": [
+                    "ADMIN",
+                    "LAWYER",
+                    "PARALEGAL",
+                    "CLIENT"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "actionConfig": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "WorkflowInstance": {
+        "type": "object",
+        "required": [
+          "id",
+          "templateId",
+          "matterId",
+          "status",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "matterId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Matter this workflow is attached to"
+          },
+          "templateVersion": {
+            "type": "integer",
+            "description": "Version of template used"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "PAUSED",
+              "COMPLETED",
+              "CANCELED"
+            ],
+            "description": "Current workflow status"
+          },
+          "context": {
+            "type": "object",
+            "description": "Shared workflow context data",
+            "additionalProperties": true
+          },
+          "createdById": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "template": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "createdBy": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "nullable": true
+              }
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowInstanceStep"
+            }
+          }
+        }
+      },
+      "WorkflowInstanceStep": {
+        "type": "object",
+        "required": [
+          "id",
+          "instanceId",
+          "order",
+          "title",
+          "actionType",
+          "roleScope",
+          "actionState"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateStepId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Reference to template step (if from template)"
+          },
+          "order": {
+            "type": "integer",
+            "description": "Step order in workflow"
+          },
+          "title": {
+            "type": "string",
+            "example": "Collect Client Signature"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "APPROVAL_LAWYER",
+              "SIGNATURE_CLIENT",
+              "REQUEST_DOC_CLIENT",
+              "PAYMENT_CLIENT",
+              "CHECKLIST"
+            ]
+          },
+          "roleScope": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "LAWYER",
+              "PARALEGAL",
+              "CLIENT"
+            ]
+          },
+          "actionState": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "READY",
+              "IN_PROGRESS",
+              "BLOCKED",
+              "COMPLETED",
+              "FAILED",
+              "SKIPPED"
+            ],
+            "description": "Current state of the step"
+          },
+          "actionConfig": {
+            "type": "object",
+            "description": "Action configuration",
+            "additionalProperties": true
+          },
+          "actionData": {
+            "type": "object",
+            "nullable": true,
+            "description": "Runtime action data",
+            "additionalProperties": true
+          },
+          "assignedToId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "User assigned to this step"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WorkflowStepCreate": {
+        "type": "object",
+        "required": [
+          "title",
+          "actionType",
+          "roleScope"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "example": "Review Documents"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "APPROVAL_LAWYER",
+              "SIGNATURE_CLIENT",
+              "REQUEST_DOC_CLIENT",
+              "PAYMENT_CLIENT",
+              "CHECKLIST"
+            ]
+          },
+          "roleScope": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "LAWYER",
+              "PARALEGAL",
+              "CLIENT"
+            ]
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "order": {
+            "type": "integer",
+            "description": "Position in workflow (auto-assigned if not provided)"
+          },
+          "actionConfig": {
+            "type": "object",
+            "description": "Action-specific configuration",
+            "additionalProperties": true,
+            "example": {
+              "items": [
+                "Verify ID",
+                "Check address"
+              ]
+            }
+          }
+        }
+      },
+      "WorkflowStepUpdate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "APPROVAL_LAWYER",
+              "SIGNATURE_CLIENT",
+              "REQUEST_DOC_CLIENT",
+              "PAYMENT_CLIENT",
+              "CHECKLIST"
+            ]
+          },
+          "roleScope": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "LAWYER",
+              "PARALEGAL",
+              "CLIENT"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "actionConfig": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { assertMatterAccess } from "@/lib/authorization";
@@ -7,21 +8,32 @@ import "@/lib/workflows";
 import {
   getWorkflowStepOrThrow,
   toStepWithTemplate,
-  setStepState,
   advanceInstanceReadySteps,
   refreshInstanceStatus,
 } from "@/lib/workflows/service";
-import { ActionState, Role } from "@prisma/client";
+import { skipWorkflowStep } from "@/lib/workflows/runtime";
+import { Role } from "@prisma/client";
 
-type Params = { params: { id: string } };
+const payloadSchema = z.object({
+  reason: z.string().trim().optional(),
+});
 
-export const POST = withApiHandler(
-  async (_req: NextRequest, { params, session }: Params) => {
+export const POST = withApiHandler<{ id: string }>(
+  async (req: NextRequest, context) => {
+    const params = await context.params!;
+    const session = context.session;
     const user = session!.user!;
+    const actor = { id: user.id, role: user.role! };
 
-    if (user.role !== Role.ADMIN) {
-      return NextResponse.json({ error: "Only admins may skip steps" }, { status: 403 });
+    // Only admins can skip steps
+    if (actor.role !== Role.ADMIN) {
+      return NextResponse.json(
+        { error: "Only administrators can skip workflow steps" },
+        { status: 403 },
+      );
     }
+
+    const body = payloadSchema.parse(await req.json().catch(() => ({})));
 
     const updatedStep = await prisma.$transaction(async (tx) => {
       const row = await getWorkflowStepOrThrow(tx, params.id);
@@ -29,11 +41,27 @@ export const POST = withApiHandler(
 
       await assertMatterAccess(user, step.instance.matterId);
 
-      await setStepState(tx, step, ActionState.SKIPPED, {
-        actor: { id: user.id, role: user.role! },
+      const latest = await tx.workflowInstanceStep.findUnique({
+        where: { id: step.id },
+        include: {
+          templateStep: true,
+          instance: true,
+        },
       });
-      await advanceInstanceReadySteps(tx, step.instanceId);
-      await refreshInstanceStatus(tx, step.instanceId);
+
+      const runtimeStep = toStepWithTemplate(latest!);
+
+      // This will validate that the step is not required and throw if it cannot be skipped
+      await skipWorkflowStep({
+        tx,
+        instance: runtimeStep.instance,
+        step: runtimeStep,
+        actor,
+        reason: body.reason,
+      });
+
+      await advanceInstanceReadySteps(tx, runtimeStep.instanceId);
+      await refreshInstanceStatus(tx, runtimeStep.instanceId);
 
       return tx.workflowInstanceStep.findUnique({
         where: { id: step.id },

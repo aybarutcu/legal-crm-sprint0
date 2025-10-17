@@ -580,6 +580,53 @@ async function main() {
       description: "İlk keşif adımları ve kontrol listesi",
       createdById: admin.id,
       isActive: true,
+      contextSchema: {
+        version: 1,
+        fields: {
+          clientApproved: {
+            type: "boolean",
+            label: "Client Approved",
+            description: "Whether the client has approved the discovery plan",
+            required: true,
+            default: false,
+          },
+          documentCount: {
+            type: "number",
+            label: "Document Count",
+            description: "Number of documents to be discovered",
+            required: true,
+            min: 0,
+            max: 1000,
+            default: 0,
+          },
+          approverName: {
+            type: "string",
+            label: "Approver Name",
+            description: "Name of the person who approved the plan",
+            required: false,
+            minLength: 2,
+            maxLength: 100,
+          },
+          discoveryDeadline: {
+            type: "string",
+            label: "Discovery Deadline",
+            description: "Deadline for discovery completion (ISO date format)",
+            required: false,
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+            placeholder: "YYYY-MM-DD",
+          },
+          requestedDocuments: {
+            type: "array",
+            label: "Requested Documents",
+            description: "List of document types requested from client",
+            required: false,
+            minItems: 1,
+            maxItems: 50,
+            itemType: "string",
+            default: [],
+          },
+        },
+      },
       steps: {
         create: [
           {

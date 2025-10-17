@@ -1,6 +1,6 @@
 import { ActionState, Role } from "@prisma/client";
 import { WorkflowTransitionError } from "./errors";
-import type { WorkflowActionGuardOptions } from "./types";
+import type { WorkflowActionGuardOptions, WorkflowInstanceStepWithTemplate } from "./types";
 
 const NEXT_STATE_MAP: Record<ActionState, readonly ActionState[]> = {
   [ActionState.PENDING]: [ActionState.READY],
@@ -31,6 +31,37 @@ export function canTransition(from: ActionState, to: ActionState, options?: Work
     return options?.actor?.role === Role.ADMIN || options?.allowAdminOverride === true;
   }
   return true;
+}
+
+/**
+ * Check if a step can be skipped based on its required field and actor permissions
+ * @param step - The workflow step to check
+ * @param actor - The actor attempting to skip
+ * @returns true if the step can be skipped, false otherwise
+ */
+export function canSkipStep(
+  step: WorkflowInstanceStepWithTemplate,
+  actor?: { id: string; role: Role },
+): { canSkip: boolean; reason?: string } {
+  // Only admins can skip steps
+  if (!actor || actor.role !== Role.ADMIN) {
+    return {
+      canSkip: false,
+      reason: "Only administrators can skip workflow steps",
+    };
+  }
+
+  // Check if the step is marked as required
+  const isRequired = step.templateStep?.required ?? true; // Default to required if not specified
+  
+  if (isRequired) {
+    return {
+      canSkip: false,
+      reason: "This step is marked as required and cannot be skipped",
+    };
+  }
+
+  return { canSkip: true };
 }
 
 export function assertTransition(

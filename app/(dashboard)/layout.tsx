@@ -32,6 +32,11 @@ const NAV_GROUPS: SidebarNavGroup[] = [
     items: [
       { href: "/tasks", label: "Tasks" },
       { href: "/workflows/templates", label: "Workflows" },
+      { 
+        href: "/questionnaires", 
+        label: "Questionnaires",
+        allowedRoles: [Role.ADMIN, Role.LAWYER],
+      },
     ],
   },
   {

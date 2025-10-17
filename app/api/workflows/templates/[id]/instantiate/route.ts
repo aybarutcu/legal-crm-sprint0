@@ -5,6 +5,7 @@ import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { workflowInstantiateSchema } from "@/lib/validation/workflow";
 import { buildMatterAccessFilter } from "@/lib/tasks/service";
+import { WorkflowMetrics } from "@/lib/workflows/observability";
 
 type Params = { params: { id: string } };
 
@@ -93,6 +94,19 @@ export const POST = withApiHandler(
         },
       },
     });
+
+    // Record instance creation metric
+    WorkflowMetrics.recordInstanceCreated(template.id);
+
+    // Send notification for the first READY step
+    const { notifyStepReady } = await import("@/lib/workflows/notifications");
+    const firstReadyStep = instance.steps.find((s) => s.actionState === ActionState.READY);
+    if (firstReadyStep) {
+      await notifyStepReady(prisma, firstReadyStep.id).catch((error) => {
+        console.error("[Workflow Instantiate] Notification failed:", error);
+        // Don't fail the request if notification fails
+      });
+    }
 
     return NextResponse.json(instance, { status: 201 });
   },

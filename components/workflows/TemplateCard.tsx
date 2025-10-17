@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { WorkflowTemplate } from "./types";
+import { ActionConfigDisplay } from "./ActionConfigDisplay";
 
 type TemplateCardProps = {
   template: WorkflowTemplate;
@@ -95,43 +96,38 @@ export function TemplateCard({
         </header>
       </div>
       {isExpanded && (
-        <div className="mt-4 space-y-3">
-          {template.steps.map((step) => (
+        <div className="mt-6 space-y-3">
+          {template.steps.map((step, index) => (
             <div
               key={`${template.id}-${step.order}`}
-              className="flex flex-col rounded-xl border border-slate-200 px-4 py-3 text-sm"
+              className="relative flex flex-col rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm hover:border-slate-300 transition-colors"
             >
+              <div className="absolute -left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 border-2 border-white">
+                {index + 1}
+              </div>
               <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-medium text-slate-900">{step.title}</div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-900 text-base">{step.title}</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 font-medium text-blue-700 border border-blue-200">
                       {step.actionType.replace(/_/g, " ")}
                     </span>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
+                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-medium text-slate-700 border border-slate-200">
                       {step.roleScope}
                     </span>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                      {step.required ? "Required" : "Optional"}
-                    </span>
+                    {step.required && (
+                      <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 font-medium text-amber-700 border border-amber-200">
+                        Required
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-              <div className="mt-2">
-                {step.actionType === "CHECKLIST" ? (
-                  <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-widest text-slate-500">Checklist Items</h4>
-                    <ul className="list-disc pl-5 mt-1">
-                      {(step.actionConfig.items as { title: string }[]).map((item, i) => (
-                        <li key={i}>{item.title}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : Object.keys(step.actionConfig ?? {}).length > 0 ? (
-                  <pre className="mt-2 max-w-full overflow-auto rounded bg-slate-100 px-2 py-1 text-[11px] font-mono text-slate-600">
-                    {JSON.stringify(step.actionConfig, null, 2)}
-                  </pre>
-                ) : null}
+              <div className="mt-3 pt-3 border-t border-slate-200">
+                <ActionConfigDisplay
+                  actionType={step.actionType}
+                  config={step.actionConfig}
+                />
               </div>
             </div>
           ))}

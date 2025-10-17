@@ -2,22 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MATTER_STATUS } from "@/lib/validation/matter";
+import { MATTER_TYPES } from "@/lib/validation/matter";
 import type { ContactOption, MatterDetail, MatterParty } from "@/components/matters/types";
 import { WorkflowDialog } from "./workflow-dialog";
-import { PartyCard } from "./PartyCard";
-import Link from "next/link";
 import type { DocumentListItem } from "@/components/documents/types";
 import { DocumentDetailDrawer } from "@/components/documents/DocumentDetailDrawer";
 import { ContactDetailsHoverCard } from "@/components/contact/ContactDetailsHoverCard";
 import { isTerminal } from "@/lib/workflows/state-machine";
+import { MatterDocumentUploadDialog } from "@/components/documents/MatterDocumentUploadDialog";
+import { MatterWorkflowsSection } from "@/components/matters/workflows";
+import {
+  MatterPartiesSection,
+  MatterDocumentsSection,
+  MatterStatusUpdateSection,
+} from "@/components/matters/sections";
+import { MatterTeamSection } from "@/components/matters/MatterTeamSection";
 
 type ActionType =
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
   | "REQUEST_DOC_CLIENT"
   | "PAYMENT_CLIENT"
-  | "CHECKLIST";
+  | "CHECKLIST"
+  | "WRITE_TEXT"
+  | "POPULATE_QUESTIONNAIRE";
 
 type ActionState =
   | "PENDING"
@@ -37,9 +45,20 @@ function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
     case "SIGNATURE_CLIENT":
       return { documentId: null, provider: "mock" };
     case "REQUEST_DOC_CLIENT":
-      return { requestText: "", acceptedTypes: [] };
+      return { requestText: "", documentNames: [] };
     case "PAYMENT_CLIENT":
       return { amount: 0, currency: "USD", provider: "mock" };
+    case "WRITE_TEXT":
+      return {
+        title: "",
+        description: "",
+        placeholder: "Enter your text here...",
+        minLength: 0,
+        maxLength: undefined,
+        required: true,
+      };
+    case "POPULATE_QUESTIONNAIRE":
+      return { questionnaireId: null, title: "", description: "", dueInDays: undefined };
     case "CHECKLIST":
     default:
       return { items: [] };
@@ -104,6 +123,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [parties, setParties] = useState<MatterParty[]>(matter.parties);
   const [partyModalOpen, setPartyModalOpen] = useState(false);
   const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [partyForm, setPartyForm] = useState(initialPartyForm);
   const [loading, setLoading] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
@@ -126,9 +146,28 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [relatedDocs, setRelatedDocs] = useState<DocumentListItem[]>(matter.documents ?? []);
   const [docsLoading, setDocsLoading] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [_downloadingId, _setDownloadingId] = useState<string | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<DocumentListItem | null>(null);
+  
+  // State for action execution UIs
+  const [checklistStates, setChecklistStates] = useState<Record<string, Set<string>>>({});
+  const [approvalComments, setApprovalComments] = useState<Record<string, string>>({});
+  const [documentFiles, setDocumentFiles] = useState<Record<string, File | null>>({});
+  
+  // State for execution log
+  const [hoveredStep, setHoveredStep] = useState<string | null>(null);
+  
+  // State for tabs and editing
+  const [activeTab, setActiveTab] = useState<"overview" | "team" | "settings">("overview");
+  const [isEditingMatter, setIsEditingMatter] = useState(false);
+  const [matterEditForm, setMatterEditForm] = useState({
+    title: matter.title,
+    type: matter.type,
+    jurisdiction: matter.jurisdiction ?? "",
+    court: matter.court ?? "",
+  });
+  
   const isWorkflowRemovable = useMemo(
     () => currentUserRole === "ADMIN" || currentUserRole === "LAWYER",
     [currentUserRole],
@@ -221,11 +260,13 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   async function loadRelatedDocuments() {
     setDocsLoading(true);
     try {
-      const response = await fetch(`/api/documents?matterId=${matter.id}&page=1&pageSize=5`);
+      const response = await fetch(`/api/documents?matterId=${matter.id}&page=1&pageSize=50`);
       if (!response.ok) {
         throw new Error("Documents could not be loaded");
       }
       const payload: { data: DocumentListItem[] } = await response.json();
+      console.log("📄 Loaded documents:", payload.data.length, "documents for matter", matter.id);
+      console.log("Documents:", payload.data);
       setRelatedDocs(payload.data);
     } catch (error) {
       console.error(error);
@@ -281,6 +322,37 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         throw new Error("Dava güncellenemedi");
       }
       showToast("success", "Dava bilgileri güncellendi.");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      showToast("error", "Güncelleme başarısız oldu.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitMatterEdit() {
+    if (!matterEditForm.title.trim()) {
+      showToast("error", "Dava başlığı gerekli.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/matters/${matter.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: matterEditForm.title.trim(),
+          type: matterEditForm.type,
+          jurisdiction: matterEditForm.jurisdiction.trim() || null,
+          court: matterEditForm.court.trim() || null,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Dava güncellenemedi");
+      }
+      showToast("success", "Dava bilgileri güncellendi.");
+      setIsEditingMatter(false);
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -349,8 +421,8 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
-  async function handleDownload(doc: DocumentListItem) {
-    setDownloadingId(doc.id);
+  async function _handleDownload(doc: DocumentListItem) {
+    _setDownloadingId(doc.id);
     try {
       const response = await fetch(`/api/documents/${doc.id}/download`);
       if (!response.ok) {
@@ -367,7 +439,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
       console.error(error);
       showToast("error", "İndirme bağlantısı oluşturulamadı.");
     } finally {
-      setDownloadingId(null);
+      _setDownloadingId(null);
     }
   }
 
@@ -568,248 +640,146 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
-  function renderStateBadge(state: ActionState) {
-    const classes: Record<ActionState, string> = {
-      PENDING: "bg-slate-100 text-slate-600",
-      READY: "bg-blue-100 text-blue-700",
-      IN_PROGRESS: "bg-amber-100 text-amber-700",
-      BLOCKED: "bg-red-100 text-red-700",
-      COMPLETED: "bg-emerald-100 text-emerald-700",
-      FAILED: "bg-red-100 text-red-700",
-      SKIPPED: "bg-slate-200 text-slate-600",
-    };
-    return (
-      <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-widest ${classes[state]}`}>
-        {state.replace(/_/g, " ")}
-      </span>
-    );
-  }
-
-  function renderStepActions(instance: WorkflowInstance, step: WorkflowInstanceStep, index: number) {
-    return (
-      <div className="flex flex-wrap gap-2">
-        {step.actionState === "READY" && (
-          <button
-            type="button"
-            onClick={() => runStepAction(step.id, "start")}
-            className="rounded border border-blue-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-blue-700 hover:bg-blue-50 disabled:opacity-60"
-            disabled={actionLoading === `${step.id}:start`}
-          >
-            {actionLoading === `${step.id}:start` ? "Başlatılıyor..." : "Başlat"}
-          </button>
-        )}
-        {step.actionState === "READY" && !step.assignedToId && (
-          <button
-            type="button"
-            onClick={() => runStepAction(step.id, "claim")}
-            className="rounded border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-60"
-            disabled={actionLoading === `${step.id}:claim`}
-          >
-            {actionLoading === `${step.id}:claim` ? "Atanıyor..." : "Sahiplen"}
-          </button>
-        )}
-        {step.actionState === "IN_PROGRESS" && (
-          <>
-            <button
-              type="button"
-              onClick={() => runStepAction(step.id, "complete", { payload: {} })}
-              className="rounded border border-emerald-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
-              disabled={actionLoading === `${step.id}:complete`}
-            >
-              {actionLoading === `${step.id}:complete` ? "Tamamlanıyor..." : "Tamamla"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const reason = window.prompt("Hata nedeni?");
-                if (!reason) return;
-                void runStepAction(step.id, "fail", { reason });
-              }}
-              className="rounded border border-red-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-red-600 hover:bg-red-50 disabled:opacity-60"
-              disabled={actionLoading === `${step.id}:fail`}
-            >
-              {actionLoading === `${step.id}:fail` ? "İşleniyor..." : "Hata"}
-            </button>
-          </>
-        )}
-        {step.actionState !== "COMPLETED" && step.actionState !== "SKIPPED" && (
-          <button
-            type="button"
-            onClick={() => runStepAction(step.id, "skip")}
-            className="rounded border border-yellow-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-yellow-700 hover:bg-yellow-50 disabled:opacity-60"
-            disabled={actionLoading === `${step.id}:skip`}
-          >
-            {actionLoading === `${step.id}:skip` ? "Atlanıyor..." : "Atla"}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => openEditStep(instance.id, step)}
-          className="rounded border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
-        >
-          Düzenle
-        </button>
-        <button
-          type="button"
-          onClick={() => moveStep(instance.id, step.id, -1)}
-          className="rounded border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-60"
-          disabled={index === 0 || actionLoading === `${step.id}:move`}
-        >
-          Yukarı
-        </button>
-        <button
-          type="button"
-          onClick={() => moveStep(instance.id, step.id, 1)}
-          className="rounded border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100 disabled:opacity-60"
-          disabled={index === instance.steps.length - 1 || actionLoading === `${step.id}:move`}
-        >
-          Aşağı
-        </button>
-        <button
-          type="button"
-          onClick={() => deleteStep(instance.id, step.id)}
-          className="rounded border border-red-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-red-600 hover:bg-red-50 disabled:opacity-60"
-          disabled={actionLoading === `${step.id}:delete`}
-        >
-          Sil
-        </button>
-      </div>
-    );
-  }
-
-  function renderStepForm(instanceId: string) {
-    if (!stepFormState || stepFormState.instanceId !== instanceId) {
-      return null;
-    }
-
-    return (
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <h5 className="text-sm font-semibold text-slate-900">
-          {stepFormState.mode === "add" ? "Yeni Adım" : "Adımı Düzenle"}
-        </h5>
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
-            Başlık
-            <input
-              value={stepFormValues.title}
-              onChange={(event) =>
-                setStepFormValues((prev) => ({ ...prev, title: event.target.value }))
-              }
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-              placeholder="Adım başlığı"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Aksiyon Tipi
-            <select
-              value={stepFormValues.actionType}
-              onChange={(event) => {
-                const nextType = event.target.value as ActionType;
-                setStepFormValues((prev) => ({
-                  ...prev,
-                  actionType: nextType,
-                  actionConfig: JSON.stringify(defaultConfigFor(nextType), null, 2),
-                }));
-              }}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            >
-              {(["CHECKLIST", "APPROVAL_LAWYER", "SIGNATURE_CLIENT", "REQUEST_DOC_CLIENT", "PAYMENT_CLIENT"] as ActionType[]).map((value) => (
-                <option key={value} value={value}>
-                  {value.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Rol
-            <select
-              value={stepFormValues.roleScope}
-              onChange={(event) =>
-                setStepFormValues((prev) => ({ ...prev, roleScope: event.target.value as RoleScope }))
-              }
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            >
-              {(["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"] as RoleScope[]).map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            <input
-              type="checkbox"
-              checked={stepFormValues.required}
-              onChange={(event) =>
-                setStepFormValues((prev) => ({ ...prev, required: event.target.checked }))
-              }
-              className="h-4 w-4 rounded border border-slate-300"
-            />
-            Zorunlu
-          </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
-            Aksiyon Yapılandırması (JSON)
-            <textarea
-              value={stepFormValues.actionConfig}
-              onChange={(event) =>
-                setStepFormValues((prev) => ({ ...prev, actionConfig: event.target.value }))
-              }
-              rows={4}
-              className="rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs focus:border-accent focus:outline-none"
-            />
-          </label>
-        </div>
-        <div className="mt-4 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={submitStepForm}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
-          >
-            Kaydet
-          </button>
-          <button
-            type="button"
-            onClick={closeStepForm}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            Vazgeç
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const clientName = useMemo(() => {
     return `${matter.client.firstName} ${matter.client.lastName}`.trim();
   }, [matter.client]);
 
+  const canEditMatter = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+
   return (
     <div className="space-y-6" data-testid="matter-detail-client">
+      {/* Matter Header with Edit capability */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <h2 className="text-2xl font-semibold text-slate-900">{matter.title}</h2>
-          <p className="text-sm text-slate-500">
-            Tür: {matter.type} | Müvekkil:{" "}
-            <ContactDetailsHoverCard
-              contactId={matter.client.id}
-              fallbackName={clientName}
-              email={matter.client.email}
-              currentUserRole={currentUserRole}
-            />
-          </p>
-          <p className="text-sm text-slate-500">
-            Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
-            <div>
-              <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
+        {!isEditingMatter ? (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h2 className="text-2xl font-semibold text-slate-900">{matter.title}</h2>
+                <p className="text-sm text-slate-500">
+                  Tür: {matter.type} | Müvekkil:{" "}
+                  <ContactDetailsHoverCard
+                    contactId={matter.client.id}
+                    fallbackName={clientName}
+                    email={matter.client.email}
+                    currentUserRole={currentUserRole}
+                  />
+                </p>
+                <p className="text-sm text-slate-500">
+                  Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
+                  <div>
+                    <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
+                  </div>
+                </div>
+              </div>
+              {canEditMatter && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingMatter(true)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Düzenle
+                </button>
+              )}
             </div>
-            <div>
-              <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
+          </>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Dava Bilgilerini Düzenle</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingMatter(false);
+                  setMatterEditForm({
+                    title: matter.title,
+                    type: matter.type,
+                    jurisdiction: matter.jurisdiction ?? "",
+                    court: matter.court ?? "",
+                  });
+                }}
+                className="text-sm text-slate-500 hover:text-slate-700"
+              >
+                İptal
+              </button>
             </div>
-            <div>
-              <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-medium text-slate-700">
+                Başlık *
+                <input
+                  type="text"
+                  value={matterEditForm.title}
+                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Tür
+                <select
+                  value={matterEditForm.type}
+                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, type: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                >
+                  {MATTER_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Jurisdiction
+                <input
+                  type="text"
+                  value={matterEditForm.jurisdiction}
+                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, jurisdiction: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Mahkeme
+                <input
+                  type="text"
+                  value={matterEditForm.court}
+                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, court: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                />
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={submitMatterEdit}
+                disabled={loading}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? "Kaydediliyor..." : "Kaydet"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingMatter(false);
+                  setMatterEditForm({
+                    title: matter.title,
+                    type: matter.type,
+                    jurisdiction: matter.jurisdiction ?? "",
+                    court: matter.court ?? "",
+                  });
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                İptal
+              </button>
             </div>
           </div>
+        )}
         {workflowsLoading ? (
           <p className="mt-2 text-sm text-slate-500">Loading...</p>
         ) : workflows.length === 0 ? (
@@ -857,236 +827,182 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-2">
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">Taraflar</h3>
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              onClick={() => setPartyModalOpen(true)}
-            >
-              Taraf Ekle
-            </button>
-          </div>
-
-          <ul className="mt-4 space-y-3 text-sm text-slate-600">
-            {parties.length ? (
-              parties.map((party) => (
-                <PartyCard key={party.id} party={party} onRemove={removeParty} />
-              ))
-            ) : (
-              <li className="text-slate-400">Taraf bulunmuyor.</li>
-            )}
-          </ul>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">Related Documents</h3>
-            <Link
-              href={`/documents?matterId=${matter.id}&page=1`}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            >
-              View All
-            </Link>
-          </div>
-          <ul className="mt-4 space-y-3 text-sm text-slate-600">
-            {docsLoading ? (
-              <li className="text-slate-500">Loading...</li>
-            ) : relatedDocs.length ? (
-              relatedDocs.map((doc) => (
-                <li key={doc.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
-                  <div>
-                    <div className="font-medium text-slate-900">{doc.filename}</div>
-                    <div className="text-xs text-slate-500">
-                      {dateFormatter.format(new Date(doc.createdAt))}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => openDocDetail(doc)}
-                    className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                  >
-                    Detay
-                  </button>
-                </li>
-              ))
-            ) : (
-              <li className="text-slate-400">No documents.</li>
-            )}
-          </ul>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <h3 className="text-lg font-semibold text-slate-900">Durum Güncelle</h3>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-medium text-slate-700">
-            Durum
-            <select
-              name="status"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            >
-              {MATTER_STATUS.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Son Duruşma
-            <input
-              name="nextHearingAt"
-              type="datetime-local"
-              value={nextHearingAt ? nextHearingAt.slice(0, 16) : ""}
-              onChange={(event) => setNextHearingAt(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            />
-          </label>
-        </div>
-        <button
-          type="button"
-          onClick={submitUpdate}
-          disabled={loading}
-          className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {loading ? "Kaydediliyor..." : "Kaydet"}
-        </button>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900">Workflows</h3>
+      {/* Tab Navigation */}
+      <div className="border-b border-slate-200 bg-white rounded-t-2xl">
+        <div className="flex gap-1 px-6">
           <button
             type="button"
-            onClick={() => setWorkflowModalOpen(true)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            onClick={() => setActiveTab("overview")}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "overview"
+                ? "border-accent text-accent"
+                : "border-transparent text-slate-600 hover:text-slate-900"
+            }`}
           >
-            Add Workflow
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("team")}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "team"
+                ? "border-accent text-accent"
+                : "border-transparent text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Team
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("settings")}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "settings"
+                ? "border-accent text-accent"
+                : "border-transparent text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Settings
           </button>
         </div>
-        <div className="mt-4 space-y-4">
-          {workflowsLoading ? (
-            <p className="text-sm text-slate-500">Loading workflows...</p>
-          ) : workflows.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              No workflows have been instantiated for this matter.
-            </p>
-          ) : (
-            workflows.map((workflow) => (
-              <article key={workflow.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-900">
-                      {workflow.template.name}
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Created {new Date(workflow.createdAt).toLocaleString("tr-TR")}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 text-xs uppercase tracking-widest text-slate-500">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">
-                      {workflow.status}
-                    </span>
-                    {workflow.createdBy ? (
-                      <span>
-                        By {workflow.createdBy.name ?? workflow.createdBy.email ?? "Unknown"}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openAddStep(workflow.id)}
-                    className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
-                  >
-                    Yeni Adım Ekle
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => runStepAction(workflow.id, "advance")}
-                    className="rounded-lg border border-blue-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-blue-700 hover:bg-blue-50 disabled:opacity-60"
-                    disabled={actionLoading === `${workflow.id}:advance`}
-                  >
-                    {actionLoading === `${workflow.id}:advance` ? "Güncelleniyor..." : "Adım Durumlarını Güncelle"}
-                  </button>
-                  {isWorkflowRemovable && (
-                    <button
-                      type="button"
-                      onClick={() => removeWorkflow(workflow.id)}
-                      className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-red-700 hover:bg-red-50 disabled:opacity-60"
-                      disabled={actionLoading === `${workflow.id}:deleteInstance`}
-                    >
-                      {actionLoading === `${workflow.id}:deleteInstance` ? "Siliniyor..." : "Workflow'u Kaldır"}
-                    </button>
-                  )}
-                </div>
-                {renderStepForm(workflow.id)}
-                <div className="mt-3 space-y-2">
-                  {workflow.steps.map((step, index) => (
-                    <div
-                      key={step.id}
-                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-medium text-slate-900">{step.title}</div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                            <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                              {step.actionType.replace(/_/g, " ")}
-                            </span>
-                            <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                              {step.roleScope}
-                            </span>
-                            <span className="rounded bg-slate-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-600">
-                              {step.required ? "Required" : "Optional"}
-                            </span>
-                            {renderStateBadge(step.actionState)}
-                          </div>
-                          {step.startedAt || step.completedAt ? (
-                            <div className="mt-1 text-xs text-slate-500">
-                              {step.startedAt ? `Started ${new Date(step.startedAt).toLocaleString("tr-TR")}` : ""}
-                              {step.startedAt && step.completedAt ? " • " : ""}
-                              {step.completedAt
-                                ? `Completed ${new Date(step.completedAt).toLocaleString("tr-TR")}`
-                                : ""}
-                            </div>
-                          ) : null}
-                          {step.actionData && Object.keys(step.actionData).length > 0 ? (
-                            <pre className="mt-2 max-w-xl overflow-auto rounded bg-slate-100 px-2 py-1 text-[11px] font-mono text-slate-600">
-                              {JSON.stringify(step.actionData, null, 2)}
-                            </pre>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-500">
-                            #{step.order + 1}
-                          </span>
-                          {renderStepActions(workflow, step, index)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))
-          )}
+      </div>
+
+      {/* Overview Tab */}
+      {activeTab === "overview" && (
+        <>
+          {/* Workflows (2/3) and Documents (1/3) Grid */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Workflows Section - 2/3 width on large screens */}
+            <div className="lg:col-span-2">
+              <MatterWorkflowsSection
+                workflows={workflows}
+                matterId={matter.id}
+                actionLoading={workflowsLoading ? "workflows:fetch" : actionLoading}
+                hoveredWorkflow={hoveredStep?.startsWith("workflow-") ? hoveredStep.replace("workflow-", "") : null}
+                hoveredStep={hoveredStep?.startsWith("workflow-") ? null : hoveredStep}
+                currentUserRole={currentUserRole ?? "CLIENT"}
+                currentStepFormInstanceId={stepFormState?.instanceId ?? null}
+                stepFormMode={stepFormState?.mode ?? "add"}
+                editingStep={stepFormState?.mode === "edit" && stepFormState?.stepId ? workflows.flatMap(w => w.steps).find(s => s.id === stepFormState.stepId) ?? null : null}
+                stepFormData={{
+                  title: stepFormValues.title,
+                  actionType: stepFormValues.actionType,
+                  roleScope: stepFormValues.roleScope,
+                  required: stepFormValues.required,
+                  config: JSON.parse(stepFormValues.actionConfig || "{}"),
+                }}
+                onSetHoveredWorkflow={(id) => setHoveredStep(id ? `workflow-${id}` : null)}
+                onSetHoveredStep={setHoveredStep}
+                onOpenAddStepForm={openAddStep}
+                onSetIsStepFormOpen={(open) => {
+                  if (!open) {
+                    closeStepForm();
+                  }
+                }}
+                onSetStepFormMode={(_mode) => {
+                  // Mode is managed through openAddStep/openEditStep which is called from WorkflowInstanceCard
+                  // This callback is not used - the form mode is set via those functions
+                }}
+                onSetEditingStep={(step) => {
+                  if (step) {
+                    // Find which workflow this step belongs to
+                    const workflow = workflows.find(w => w.steps.some(s => s.id === step.id));
+                    if (workflow) {
+                      openEditStep(workflow.id, step);
+                    }
+                  }
+                }}
+                onSetStepFormData={(updater) => {
+                  const current = {
+                    title: stepFormValues.title,
+                    actionType: stepFormValues.actionType,
+                    roleScope: stepFormValues.roleScope,
+                    required: stepFormValues.required,
+                    config: JSON.parse(stepFormValues.actionConfig || "{}"),
+                  };
+                  const next = typeof updater === "function" ? updater(current) : updater;
+                  setStepFormValues({
+                    title: next.title,
+                    actionType: next.actionType,
+                    roleScope: next.roleScope,
+                    required: next.required,
+                    actionConfig: JSON.stringify(next.config, null, 2),
+                  });
+                }}
+                onSetWorkflowsModalOpen={setWorkflowModalOpen}
+                onRunStepAction={runStepAction}
+                onMoveStep={moveStep}
+                onDeleteStep={deleteStep}
+                onRemoveWorkflow={removeWorkflow}
+                onAdvanceWorkflow={(instanceId) => runStepAction(instanceId, "advance")}
+                onAddOrEditStep={(instanceId) => {
+                  // Set the instanceId in stepFormState first, then submit
+                  if (stepFormState && stepFormState.instanceId === instanceId) {
+                    return submitStepForm();
+                  }
+                  return Promise.resolve();
+                }}
+                checklistStates={checklistStates}
+                approvalComments={approvalComments}
+                documentFiles={documentFiles}
+                onSetChecklistStates={setChecklistStates}
+                onSetApprovalComments={setApprovalComments}
+                onSetDocumentFiles={setDocumentFiles}
+              />
+            </div>
+
+            {/* Documents Section - 1/3 width on large screens */}
+            <MatterDocumentsSection
+              documents={relatedDocs}
+              loading={docsLoading}
+              onUploadClick={() => setIsUploadDialogOpen(true)}
+              onViewDocument={openDocDetail}
+            />
+          </div>
+
+          {/* Tasks Section */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+            <h3 className="text-lg font-semibold text-slate-900">Görevler</h3>
+            <p className="mt-2 text-sm text-slate-500">Sprint 2 kapsamında placeholder.</p>
+          </div>
+        </>
+      )}
+
+      {/* Team Tab */}
+      {activeTab === "team" && (
+        <div className="space-y-6">
+          <MatterTeamSection 
+            matterId={matter.id} 
+            currentUserRole={currentUserRole}
+            matterOwnerId={matter.owner?.id}
+          />
         </div>
-      </div>
+      )}
 
+      {/* Settings Tab */}
+      {activeTab === "settings" && (
+        <div className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Parties Section */}
+            <MatterPartiesSection
+              parties={parties}
+              onAddParty={() => setPartyModalOpen(true)}
+              onRemoveParty={removeParty}
+            />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <h3 className="text-lg font-semibold text-slate-900">Görevler</h3>
-        <p className="mt-2 text-sm text-slate-500">Sprint 2 kapsamında placeholder.</p>
-      </div>
+            {/* Status Update Section */}
+            <MatterStatusUpdateSection
+              status={status}
+              nextHearingAt={nextHearingAt}
+              loading={loading}
+              onStatusChange={setStatus}
+              onHearingDateChange={setNextHearingAt}
+              onSubmit={submitUpdate}
+            />
+          </div>
+        </div>
+      )}
 
-
+      {/* Modals */}
       {partyModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
@@ -1175,6 +1091,18 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         onInstantiated={async () => {
           await loadWorkflowInstances();
           showToast("success", "Workflow added to matter.");
+        }}
+      />
+
+      <MatterDocumentUploadDialog
+        isOpen={isUploadDialogOpen}
+        onClose={() => setIsUploadDialogOpen(false)}
+        matterId={matter.id}
+        onUploadComplete={async () => {
+          console.log("🔄 Upload complete callback triggered, reloading documents...");
+          await loadRelatedDocuments();
+          console.log("✅ Documents reloaded, showing toast...");
+          showToast("success", "Document uploaded successfully.");
         }}
       />
     </div>

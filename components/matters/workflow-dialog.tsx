@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ActionConfigDisplay } from "@/components/workflows/ActionConfigDisplay";
 
 type ActionType =
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
   | "REQUEST_DOC_CLIENT"
   | "PAYMENT_CLIENT"
-  | "CHECKLIST";
+  | "CHECKLIST"
+  | "WRITE_TEXT"
+  | "POPULATE_QUESTIONNAIRE";
 
 type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 
@@ -234,9 +237,13 @@ export function WorkflowDialog({
                           </span>
                         </div>
                         {step.actionConfig && Object.keys(step.actionConfig).length > 0 ? (
-                          <pre className="mt-2 overflow-auto rounded bg-slate-100 px-2 py-1 text-[11px] font-mono text-slate-600">
-                            {JSON.stringify(step.actionConfig, null, 2)}
-                          </pre>
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <ActionConfigDisplay
+                              actionType={step.actionType}
+                              config={step.actionConfig}
+                              variant="compact"
+                            />
+                          </div>
                         ) : null}
                       </div>
                     </div>

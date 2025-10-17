@@ -41,7 +41,7 @@ export function buildMatterAccessFilter(user: { id: string; role?: Role | null }
   return {
     OR: [
       { ownerId: user.id },
-      { tasks: { some: { assigneeId: user.id } } },
+      { teamMembers: { some: { userId: user.id } } },
     ],
   } satisfies Prisma.MatterWhereInput;
 }

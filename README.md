@@ -2,6 +2,21 @@
 
 Legal CRM, hukuk büroları için müşteri, dava (matter), doküman ve takvim yönetimini tek platformda buluşturur. Sprint 0 paketi; mimari özet, ADR kayıtları, veritabanı şeması, API/OpenAPI başlangıcı, Docker Compose, seed scriptleri, CI ve temel UI iskeletini içerir.
 
+## 📚 Dokümantasyon
+
+**🎯 Ana Dokümantasyon**: [`docs/MASTER-SYSTEM-DOCUMENTATION.md`](./docs/MASTER-SYSTEM-DOCUMENTATION.md)
+- Tüm sistem mimarisi
+- Veritabanı şeması
+- API endpoint'leri
+- Workflow sistemi
+- Geliştirme rehberi
+- Bilinen sorunlar ve çözümler
+
+**📖 Dokümantasyon Rehberi**: [`docs/README.md`](./docs/README.md)
+- Tüm dokümanların listesi ve durumu
+- Nasıl kullanılır rehberi
+- Dokümantasyon standartları
+
 ## Mimari Özet
 - **UI / App:** Next.js 15 (App Router), TypeScript, TailwindCSS, shadcn/ui.
 - **API:** Next.js Route Handlers (`app/api/*`), REST + OpenAPI (`/api/openapi`).

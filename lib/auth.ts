@@ -19,13 +19,13 @@ const providers: NonEmptyProviders = [
       const email = credentials?.email?.toLowerCase().trim();
       if (!email) return null;
 
-      const user =
-        (await prisma.user.findUnique({
-          where: { email },
-        })) ??
-        (await prisma.user.create({
-          data: { email, role: Role.LAWYER, status: UserStatus.ACTIVE },
-        }));
+      const user = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user) {
+        return null;
+      }
 
       if (user.status !== UserStatus.ACTIVE || user.isActive === false) {
         return null;

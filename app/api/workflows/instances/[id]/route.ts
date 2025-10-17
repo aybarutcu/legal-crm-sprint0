@@ -11,7 +11,7 @@ export const GET = withApiHandler<{ id: string }>(
     const instance = await prisma.workflowInstance.findUnique({
       where: { id: params!.id },
       include: {
-        template: { select: { name: true } },
+        template: { select: { name: true, contextSchema: true } },
         matter: { select: { id: true, title: true } },
         createdBy: { select: { name: true } },
         steps: {

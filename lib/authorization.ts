@@ -22,10 +22,20 @@ export async function assertMatterAccess(user: { id: string; role?: Role }, matt
 
   const matter = await prisma.matter.findUnique({
     where: { id: matterId },
-    select: { ownerId: true },
+    select: { 
+      ownerId: true,
+      teamMembers: {
+        where: { userId: user.id },
+        select: { id: true },
+        take: 1,
+      },
+    },
   });
 
-  if (matter?.ownerId !== user.id) {
+  // Allow access if user is the matter owner OR is a team member
+  const hasAccess = matter?.ownerId === user.id || (matter?.teamMembers && matter.teamMembers.length > 0);
+  
+  if (!hasAccess) {
     throw new NotAuthorizedError("Matter access denied");
   }
 }

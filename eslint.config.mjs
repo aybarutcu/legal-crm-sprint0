@@ -50,6 +50,8 @@ export default [
         HTMLFormElement: "readonly",
         URLSearchParams: "readonly",
         RequestInit: "readonly",
+        File: "readonly",
+        FileList: "readonly",
       },
     },
     plugins: {

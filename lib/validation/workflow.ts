@@ -8,6 +8,8 @@ export const actionTypeSchema = z.enum([
   "REQUEST_DOC_CLIENT",
   "PAYMENT_CLIENT",
   "CHECKLIST",
+  "WRITE_TEXT",
+  "POPULATE_QUESTIONNAIRE",
 ]);
 
 export const roleScopeSchema = z.enum(["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"]);

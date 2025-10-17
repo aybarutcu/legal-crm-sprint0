@@ -20,10 +20,10 @@ export async function loadWorkflowActorSnapshot(
       select: {
         ownerId: true,
         owner: { select: { id: true, role: true } },
-        tasks: {
+        teamMembers: {
           select: {
-            assigneeId: true,
-            assignee: { select: { id: true, role: true } },
+            userId: true,
+            user: { select: { id: true, role: true } },
           },
         },
         client: {
@@ -38,17 +38,19 @@ export async function loadWorkflowActorSnapshot(
   const lawyerIds = new Set<string>();
   const paralegalIds = new Set<string>();
 
+  // Add owner if they are a lawyer
   if (matter?.owner && matter.owner.role === Role.LAWYER) {
     lawyerIds.add(matter.owner.id);
   }
 
-  for (const task of matter?.tasks ?? []) {
-    if (!task.assignee) continue;
-    if (task.assignee.role === Role.LAWYER) {
-      lawyerIds.add(task.assignee.id);
+  // Add team members based on their roles
+  for (const member of matter?.teamMembers ?? []) {
+    if (!member.user) continue;
+    if (member.user.role === Role.LAWYER) {
+      lawyerIds.add(member.user.id);
     }
-    if (task.assignee.role === Role.PARALEGAL) {
-      paralegalIds.add(task.assignee.id);
+    if (member.user.role === Role.PARALEGAL) {
+      paralegalIds.add(member.user.id);
     }
   }
 

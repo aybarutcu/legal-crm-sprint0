@@ -14,7 +14,7 @@ type Draft = {
   steps: {
     order: number; // start at 0, consecutive
     title: string;
-    actionType: "APPROVAL_LAWYER" | "SIGNATURE_CLIENT" | "REQUEST_DOC_CLIENT" | "PAYMENT_CLIENT" | "CHECKLIST";
+    actionType: "APPROVAL_LAWYER" | "SIGNATURE_CLIENT" | "REQUEST_DOC_CLIENT" | "PAYMENT_CLIENT" | "CHECKLIST" | "WRITE_TEXT";
     roleScope: "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
     required?: boolean; // default true
     actionConfig?: Record<string, any>;
@@ -27,6 +27,7 @@ Rules:
 - roleScope MUST be one of the allowed values.
 - steps[].order must be consecutive starting at 0. If not provided, infer.
 - Use concise step titles; put extra parameters into actionConfig.
+- For WRITE_TEXT action type, actionConfig should include: title (required), description, placeholder, minLength, maxLength, required.
 `;
 
 export async function POST(req: NextRequest) {

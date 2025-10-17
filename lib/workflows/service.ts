@@ -5,6 +5,7 @@ import { canPerformAction } from "./permissions";
 import { loadWorkflowActorSnapshot } from "./roles";
 import { WorkflowNotFoundError, WorkflowPermissionError } from "./errors";
 import { assertTransition } from "./state-machine";
+import { WorkflowMetrics } from "./observability";
 import type { WorkflowActionGuardOptions } from "./types";
 
 export type PrismaClientOrTransaction = PrismaClient | Prisma.TransactionClient;
@@ -94,6 +95,9 @@ export async function claimWorkflowStep(
       updatedAt: new Date(),
     },
   });
+  
+  // Record claim metric
+  WorkflowMetrics.recordStepClaim(step.actionType);
 }
 
 export async function advanceInstanceReadySteps(
@@ -117,6 +121,15 @@ export async function advanceInstanceReadySteps(
       updatedAt: new Date(),
     },
   });
+
+  // Record advancement metric
+  WorkflowMetrics.recordStepAdvanced(firstPending.actionType);
+  WorkflowMetrics.recordTransition(firstPending.actionType, ActionState.PENDING, ActionState.READY);
+
+  // Send notification for newly READY step
+  // Import dynamically to avoid circular dependencies
+  const { notifyStepReady } = await import("./notifications");
+  await notifyStepReady(tx, firstPending.id);
 
   return 1;
 }

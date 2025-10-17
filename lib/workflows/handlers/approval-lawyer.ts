@@ -1,4 +1,4 @@
-import { ActionState, ActionType } from "@prisma/client";
+import { ActionState, ActionType, Role, RoleScope } from "@prisma/client";
 import { z } from "zod";
 import type { IActionHandler, WorkflowRuntimeContext } from "../types";
 import { ActionHandlerError } from "../errors";
@@ -30,8 +30,24 @@ export class ApprovalActionHandler implements IActionHandler<ApprovalConfig, App
     configSchema.parse(config ?? {});
   }
 
-  canStart(_ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>): boolean {
-    return true;
+  canStart(ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>): boolean {
+    // This action requires lawyer approval - only lawyers and admins can perform it
+    if (!ctx.actor) {
+      return false;
+    }
+
+    // Admins can always perform any action
+    if (ctx.actor.role === Role.ADMIN) {
+      return true;
+    }
+
+    // For APPROVAL_LAWYER, the step's roleScope must be LAWYER
+    // and the actor must be a lawyer
+    if (ctx.step.roleScope === RoleScope.LAWYER && ctx.actor.role === Role.LAWYER) {
+      return true;
+    }
+
+    return false;
   }
 
   async start(_ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>): Promise<ActionState> {
@@ -54,6 +70,18 @@ export class ApprovalActionHandler implements IActionHandler<ApprovalConfig, App
       decidedBy: ctx.actor?.id,
     };
 
+    // Update workflow context
+    ctx.updateContext({
+      lastApproval: {
+        approved: parsed.data.approved,
+        approvedBy: ctx.actor?.id,
+        approvedAt: ctx.now.toISOString(),
+        comment: parsed.data.comment,
+      },
+      approvalCount: ((ctx.context.approvalCount as number) || 0) + 1,
+      clientApproved: parsed.data.approved, // For schema validation
+    });
+
     return ActionState.COMPLETED;
   }
 
@@ -66,7 +94,7 @@ export class ApprovalActionHandler implements IActionHandler<ApprovalConfig, App
 
   getNextStateOnEvent(
     _ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>,
-    _event,
+    _event: import("../types").ActionEvent,
   ): ActionState | null {
     return null;
   }

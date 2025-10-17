@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { ActionState, ActionType } from "@prisma/client";
+import { ActionState, ActionType, Role, RoleScope } from "@prisma/client";
 import { z } from "zod";
 import type { IActionHandler, WorkflowRuntimeContext } from "../types";
 import { ActionHandlerError } from "../errors";
@@ -23,8 +23,25 @@ export class SignatureActionHandler implements IActionHandler<SignatureConfig, S
     configSchema.parse(config ?? {});
   }
 
-  canStart(_ctx: WorkflowRuntimeContext<SignatureConfig, SignatureData>): boolean {
-    return true;
+  canStart(ctx: WorkflowRuntimeContext<SignatureConfig, SignatureData>): boolean {
+    // Signature requests must be completed by clients
+    if (!ctx.actor) {
+      return false;
+    }
+
+    // Admins can test/complete any signature action
+    if (ctx.actor.role === Role.ADMIN) {
+      return true;
+    }
+
+    // Only clients can complete signature requests
+    // The roleScope should be CLIENT for this action type
+    if (ctx.step.roleScope === RoleScope.CLIENT && ctx.actor.role === Role.CLIENT) {
+      return true;
+    }
+
+    // Lawyers and paralegals cannot complete client signatures
+    return false;
   }
 
   async start(ctx: WorkflowRuntimeContext<SignatureConfig, SignatureData>): Promise<ActionState> {
@@ -42,6 +59,15 @@ export class SignatureActionHandler implements IActionHandler<SignatureConfig, S
       throw new ActionHandlerError("Signature completion payload must be an object", "INVALID_PAYLOAD");
     }
     ctx.data.completedAt = ctx.now.toISOString();
+
+    // Update workflow context
+    ctx.updateContext({
+      signatureCompleted: true,
+      signedBy: ctx.actor?.id,
+      signedAt: ctx.now.toISOString(),
+      documentId: ctx.config.documentId,
+    });
+
     return ActionState.COMPLETED;
   }
 
@@ -54,7 +80,7 @@ export class SignatureActionHandler implements IActionHandler<SignatureConfig, S
 
   getNextStateOnEvent(
     ctx: WorkflowRuntimeContext<SignatureConfig, SignatureData>,
-    event,
+    event: import("../types").ActionEvent,
   ): ActionState | null {
     if (event.type === "SIGNATURE_COMPLETED") {
       ctx.data.completedAt = ctx.now.toISOString();

@@ -28,6 +28,12 @@ export type WorkflowRuntimeContext<TConfig = unknown, TData = unknown> = {
   data: TData;
   now: Date;
   context: Record<string, unknown>; // Shared workflow context
+  
+  // Method to update workflow context (persisted to instance)
+  updateContext: (updates: Record<string, unknown>) => void;
+  
+  // Internal: Get pending context updates (for runtime use)
+  _getContextUpdates?: () => Record<string, unknown>;
 };
 
 export type ActionEvent = {

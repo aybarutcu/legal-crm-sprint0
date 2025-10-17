@@ -1,4 +1,4 @@
-import { ActionState, ActionType } from "@prisma/client";
+import { ActionState, ActionType, Role } from "@prisma/client";
 import { z } from "zod";
 import type { IActionHandler, WorkflowRuntimeContext } from "../types";
 import { ActionHandlerError } from "../errors";
@@ -23,7 +23,21 @@ export class ChecklistActionHandler implements IActionHandler<ChecklistConfig, C
     configSchema.parse(config ?? {});
   }
 
-  canStart(_ctx: WorkflowRuntimeContext<ChecklistConfig, ChecklistData>): boolean {
+  canStart(ctx: WorkflowRuntimeContext<ChecklistConfig, ChecklistData>): boolean {
+    // Checklist can be performed by anyone assigned based on roleScope
+    // The ensureActorCanPerform() in the service layer already validates this
+    // Here we just check that we have an actor
+    if (!ctx.actor) {
+      return false;
+    }
+
+    // Admins can always perform checklists
+    if (ctx.actor.role === Role.ADMIN) {
+      return true;
+    }
+
+    // For other roles, rely on the roleScope validation done in ensureActorCanPerform
+    // which checks if the actor is in the eligible list for the step's roleScope
     return true;
   }
 
@@ -35,15 +49,26 @@ export class ChecklistActionHandler implements IActionHandler<ChecklistConfig, C
     ctx: WorkflowRuntimeContext<ChecklistConfig, ChecklistData>,
     payload?: unknown,
   ): Promise<ActionState> {
+    let completedItems: string[];
     if (payload) {
       const parsed = completePayloadSchema.safeParse(payload);
       if (!parsed.success) {
         throw new ActionHandlerError("Invalid checklist completion payload", "INVALID_PAYLOAD");
       }
-      ctx.data.completedItems = parsed.data.completedItems ?? ctx.config.items;
+      completedItems = parsed.data.completedItems ?? ctx.config.items;
     } else {
-      ctx.data.completedItems = ctx.config.items;
+      completedItems = ctx.config.items;
     }
+    ctx.data.completedItems = completedItems;
+
+    // Update workflow context
+    ctx.updateContext({
+      checklistCompleted: true,
+      totalItemsCompleted: completedItems.length,
+      completedBy: ctx.actor?.id,
+      completedAt: ctx.now.toISOString(),
+    });
+
     return ActionState.COMPLETED;
   }
 

@@ -16,6 +16,7 @@ const addStepSchema = z.object({
     "REQUEST_DOC_CLIENT",
     "PAYMENT_CLIENT",
     "CHECKLIST",
+    "WRITE_TEXT",
   ]),
   roleScope: z.enum(["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"]),
   required: z.boolean().optional().default(true),
@@ -100,6 +101,20 @@ export const POST = withApiHandler(
       }
 
       await reindexInstanceSteps(tx, instance.id);
+
+      // Send notification if the new step is READY (order === 0)
+      if (createdStepId) {
+        const createdStep = await tx.workflowInstanceStep.findUnique({
+          where: { id: createdStepId },
+          select: { actionState: true },
+        });
+        if (createdStep?.actionState === "READY") {
+          const { notifyStepReady } = await import("@/lib/workflows/notifications");
+          await notifyStepReady(tx, createdStepId).catch((error) => {
+            console.error("[Add Step] Notification failed:", error);
+          });
+        }
+      }
 
       return tx.workflowInstanceStep.findMany({
         where: { instanceId: instance.id },

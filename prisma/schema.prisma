@@ -11,7 +11,7 @@ model User {
   id                     String     @id @default(cuid())
   name                   String?
   email                  String     @unique
-  role                   Role       @default(LAWYER)
+  role                   Role
   status                 UserStatus @default(ACTIVE)
   image                  String?
   passwordHash           String?
@@ -34,6 +34,7 @@ model User {
   contacts              Contact[]              @relation("ContactOwner")
   tasks                 Task[]                 @relation("TaskAssignee")
   matters               Matter[]               @relation("MatterOwner")
+  matterTeamMemberships MatterTeamMember[]     @relation("MatterTeamMembers")
   documents             Document[]             @relation("DocumentUploader")
   events                Event[]                @relation("EventOrganizer")
   calendars             Calendar[]
@@ -46,9 +47,11 @@ model User {
   invitedClients        User[]                 @relation("UserInvitations")
   clientProfile         Contact?               @relation("ContactUser")
   sentMessages          Message[]              @relation("MessageSender")
-  requestedApprovals    Approval[]             @relation("ApprovalRequester")
-  clientApprovals       Approval[]             @relation("ApprovalClient")
-  resolvedApprovals     Approval[]             @relation("ApprovalResolver")
+  requestedApprovals       Approval[]                  @relation("ApprovalRequester")
+  clientApprovals          Approval[]                  @relation("ApprovalClient")
+  resolvedApprovals        Approval[]                  @relation("ApprovalResolver")
+  createdQuestionnaires    Questionnaire[]             @relation("QuestionnaireCreator")
+  questionnaireResponses   QuestionnaireResponse[]     @relation("QuestionnaireRespondent")
 }
 
 enum Role {
@@ -164,13 +167,15 @@ model Matter {
   client Contact @relation("MatterClient", fields: [clientId], references: [id])
   owner  User?   @relation("MatterOwner", fields: [ownerId], references: [id])
 
-  parties           MatterContact[]
-  documents         Document[]
-  events            Event[]
-  tasks             Task[]
-  workflowInstances WorkflowInstance[]
-  messages          Message[]
-  approvals         Approval[]
+  parties               MatterContact[]
+  teamMembers           MatterTeamMember[]
+  documents             Document[]
+  events                Event[]
+  tasks                 Task[]
+  workflowInstances     WorkflowInstance[]
+  messages              Message[]
+  approvals             Approval[]
+  questionnaireResponses QuestionnaireResponse[]
 
   @@index([status])
   @@index([type])
@@ -202,6 +207,22 @@ enum PartyRole {
   DEFENDANT
   WITNESS
   OPPOSING_COUNSEL
+}
+
+model MatterTeamMember {
+  id        String   @id @default(cuid())
+  matterId  String
+  userId    String
+  role      Role
+  addedAt   DateTime @default(now())
+  addedBy   String?
+
+  matter Matter @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  user   User   @relation("MatterTeamMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matterId, userId])
+  @@index([matterId])
+  @@index([userId])
 }
 
 model Document {
@@ -421,14 +442,15 @@ model TaskLink {
 }
 
 model WorkflowTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  version     Int      @default(1)
-  isActive    Boolean  @default(false)
-  createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  version       Int      @default(1)
+  isActive      Boolean  @default(false)
+  contextSchema Json?    // Schema definition for workflow context (validation, defaults, types)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   createdBy User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
   steps     WorkflowTemplateStep[]
@@ -511,6 +533,8 @@ enum ActionType {
   REQUEST_DOC_CLIENT
   PAYMENT_CLIENT
   CHECKLIST
+  WRITE_TEXT
+  POPULATE_QUESTIONNAIRE
 }
 
 enum RoleScope {
@@ -570,4 +594,98 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   actor User @relation(fields: [actorId], references: [id])
+}
+
+model Questionnaire {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  deletedBy   String?
+
+  createdBy User                      @relation("QuestionnaireCreator", fields: [createdById], references: [id])
+  questions QuestionnaireQuestion[]
+  responses QuestionnaireResponse[]
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model QuestionnaireQuestion {
+  id              String       @id @default(cuid())
+  questionnaireId String
+  questionText    String
+  questionType    QuestionType
+  order           Int          @default(0)
+  required        Boolean      @default(true)
+  placeholder     String?
+  helpText        String?
+  options         Json?
+  validation      Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  questionnaire Questionnaire                 @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  answers       QuestionnaireResponseAnswer[]
+
+  @@unique([questionnaireId, order])
+  @@index([questionnaireId])
+}
+
+enum QuestionType {
+  FREE_TEXT
+  SINGLE_CHOICE
+  MULTI_CHOICE
+}
+
+model QuestionnaireResponse {
+  id              String         @id @default(cuid())
+  questionnaireId String
+  workflowStepId  String?
+  matterId        String?
+  respondentId    String
+  status          ResponseStatus @default(IN_PROGRESS)
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  questionnaire Questionnaire                 @relation(fields: [questionnaireId], references: [id])
+  respondent    User                          @relation("QuestionnaireRespondent", fields: [respondentId], references: [id])
+  matter        Matter?                       @relation(fields: [matterId], references: [id])
+  answers       QuestionnaireResponseAnswer[]
+
+  @@index([questionnaireId])
+  @@index([workflowStepId])
+  @@index([matterId])
+  @@index([respondentId])
+  @@index([status])
+}
+
+enum ResponseStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+model QuestionnaireResponseAnswer {
+  id         String   @id @default(cuid())
+  responseId String
+  questionId String
+  answerText String?
+  answerJson Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  response QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question QuestionnaireQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([responseId, questionId])
+  @@index([responseId])
+  @@index([questionId])
 }

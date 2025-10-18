@@ -32,8 +32,8 @@ const NAV_GROUPS: SidebarNavGroup[] = [
     items: [
       { href: "/tasks", label: "Tasks" },
       { href: "/workflows/templates", label: "Workflows" },
-      { 
-        href: "/questionnaires", 
+      {
+        href: "/questionnaires",
         label: "Questionnaires",
         allowedRoles: [Role.ADMIN, Role.LAWYER],
       },
@@ -96,7 +96,7 @@ export default async function DashboardLayout({
         <SidebarNav navGroups={NAV_GROUPS} userRole={session.user.role} />
       </aside>
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 min-w-0 flex-col">
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur">
           <div className="flex items-center justify-between">
             <div>
@@ -120,7 +120,7 @@ export default async function DashboardLayout({
           </div>
         </header>
 
-        <main className="flex-1 bg-slate-50 px-6 py-8">{children}</main>
+        <main className="flex-1 min-w-0 bg-slate-50 px-6 py-8">{children}</main>
       </div>
     </div>
   );

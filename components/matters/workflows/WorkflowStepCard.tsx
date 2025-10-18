@@ -350,7 +350,7 @@ export function WorkflowStepCard({
 
   return (
     <div
-      className={`rounded-lg border-2 px-3 py-2 text-sm ${
+      className={`rounded-lg border-2 px-3 py-2 text-sm max-w-full overflow-hidden ${
         isCompleted
           ? "border-emerald-300 bg-emerald-50/50"
           : isSkipped
@@ -361,7 +361,7 @@ export function WorkflowStepCard({
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <div className="font-medium text-slate-900">{step.title}</div>
             {isCompleted && (
@@ -450,9 +450,13 @@ export function WorkflowStepCard({
         </div>
       </div>
       {/* Action-specific execution UI */}
-      {renderStepExecutionUI()}
+      <div className="max-w-full overflow-hidden">
+        {renderStepExecutionUI()}
+      </div>
       {/* Action output for completed steps */}
-      {renderStepOutputUI()}
+      <div className="max-w-full overflow-hidden">
+        {renderStepOutputUI()}
+      </div>
     </div>
   );
 }

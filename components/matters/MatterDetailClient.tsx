@@ -10,7 +10,7 @@ import { DocumentDetailDrawer } from "@/components/documents/DocumentDetailDrawe
 import { ContactDetailsHoverCard } from "@/components/contact/ContactDetailsHoverCard";
 import { isTerminal } from "@/lib/workflows/state-machine";
 import { MatterDocumentUploadDialog } from "@/components/documents/MatterDocumentUploadDialog";
-import { MatterWorkflowsSection } from "@/components/matters/workflows";
+import { MatterWorkflowsSection, WorkflowTimeline, WorkflowStepDetail } from "@/components/matters/workflows";
 import {
   MatterPartiesSection,
   MatterDocumentsSection,
@@ -96,7 +96,7 @@ const dateFormatter = new Intl.DateTimeFormat("tr-TR", {
 type MatterDetailClientProps = {
   matter: MatterDetail;
   contacts: ContactOption[];
-  documents?: DocumentListItem[]; 
+  documents?: DocumentListItem[];
   currentUserRole?: "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 };
 
@@ -149,15 +149,19 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [_downloadingId, _setDownloadingId] = useState<string | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<DocumentListItem | null>(null);
-  
+
   // State for action execution UIs
   const [checklistStates, setChecklistStates] = useState<Record<string, Set<string>>>({});
   const [approvalComments, setApprovalComments] = useState<Record<string, string>>({});
   const [documentFiles, setDocumentFiles] = useState<Record<string, File | null>>({});
-  
+
   // State for execution log
   const [hoveredStep, setHoveredStep] = useState<string | null>(null);
-  
+
+  // State for new timeline and detail view
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+
   // State for tabs and editing
   const [activeTab, setActiveTab] = useState<"overview" | "team" | "settings">("overview");
   const [isEditingMatter, setIsEditingMatter] = useState(false);
@@ -167,66 +171,38 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     jurisdiction: matter.jurisdiction ?? "",
     court: matter.court ?? "",
   });
-  
+
   const isWorkflowRemovable = useMemo(
     () => currentUserRole === "ADMIN" || currentUserRole === "LAWYER",
     [currentUserRole],
   );
 
-  const workflowSummary = useMemo(() => {
-    if (!workflows.length) return null;
-
-    const candidates = workflows
-      .map((instance) => {
-        const steps = instance.steps;
-        const idx = steps.findIndex((s) => !isTerminal(s.actionState));
-        if (idx === -1) return null;
-        return {
-          instance,
-          prev: idx > 0 ? steps[idx - 1] : null,
-          current: steps[idx],
-          next: idx + 1 < steps.length ? steps[idx + 1] : null,
-          index: idx,
-        };
-      })
-      .filter(Boolean) as Array<{
-        instance: WorkflowInstance;
-        prev: WorkflowInstanceStep | null;
-        current: WorkflowInstanceStep;
-        next: WorkflowInstanceStep | null;
-        index: number;
-      }>;
-
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    const statusPriority: Record<WorkflowInstance["status"], number> = {
-      ACTIVE: 0,
-      DRAFT: 1,
-      PAUSED: 2,
-      COMPLETED: 3,
-      CANCELED: 4,
-    } as const;
-
-    candidates.sort((a, b) => {
-      const sp =
-        (statusPriority[a.instance.status as keyof typeof statusPriority] ?? 99) -
-        (statusPriority[b.instance.status as keyof typeof statusPriority] ?? 99);
-      if (sp !== 0) return sp;
-      const ca = new Date(a.instance.createdAt).getTime();
-      const cb = new Date(b.instance.createdAt).getTime();
-      if (ca !== cb) return ca - cb;
-      return a.index - b.index;
-    });
-
-    return candidates[0];
-  }, [workflows]);
-
   useEffect(() => {
     void loadWorkflowInstances();
     void loadRelatedDocuments();
   }, []);
+
+  // Auto-select current step when workflows load or change
+  useEffect(() => {
+    if (workflows.length > 0 && !selectedStepId) {
+      // Find the first active workflow and its current step
+      const activeWorkflow = workflows.find(w => w.status === "ACTIVE") || workflows[0];
+      if (activeWorkflow) {
+        const currentStep = activeWorkflow.steps.find(s => !isTerminal(s.actionState));
+        if (currentStep) {
+          setSelectedWorkflowId(activeWorkflow.id);
+          setSelectedStepId(currentStep.id);
+        } else {
+          // If all steps are terminal, select the last step
+          const lastStep = activeWorkflow.steps[activeWorkflow.steps.length - 1];
+          if (lastStep) {
+            setSelectedWorkflowId(activeWorkflow.id);
+            setSelectedStepId(lastStep.id);
+          }
+        }
+      }
+    }
+  }, [workflows, selectedStepId]);
 
   async function loadWorkflowInstances() {
     setWorkflowsLoading(true);
@@ -265,8 +241,6 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         throw new Error("Documents could not be loaded");
       }
       const payload: { data: DocumentListItem[] } = await response.json();
-      console.log("📄 Loaded documents:", payload.data.length, "documents for matter", matter.id);
-      console.log("Documents:", payload.data);
       setRelatedDocs(payload.data);
     } catch (error) {
       console.error(error);
@@ -613,33 +587,6 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
-  function getStepClasses(kind: "prev" | "current" | "next", state?: ActionState) {
-    if (kind === "next") return "border-slate-200 bg-white text-slate-700";
-    if (kind === "prev") {
-      switch (state) {
-        case "COMPLETED":
-          return "border-emerald-200 bg-emerald-50 text-emerald-700";
-        case "FAILED":
-          return "border-red-200 bg-red-50 text-red-700";
-        case "SKIPPED":
-          return "border-slate-200 bg-slate-50 text-slate-600";
-        default:
-          return "border-slate-200 bg-slate-50 text-slate-600";
-      }
-    }
-    switch (state) {
-      case "READY":
-        return "border-blue-200 bg-blue-50 text-blue-700";
-      case "IN_PROGRESS":
-        return "border-amber-200 bg-amber-50 text-amber-700";
-      case "BLOCKED":
-        return "border-red-200 bg-red-50 text-red-700";
-      case "PENDING":
-      default:
-        return "border-slate-200 bg-slate-50 text-slate-600";
-    }
-  }
-
   const clientName = useMemo(() => {
     return `${matter.client.firstName} ${matter.client.lastName}`.trim();
   }, [matter.client]);
@@ -647,219 +594,37 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const canEditMatter = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
 
   return (
-    <div className="space-y-6" data-testid="matter-detail-client">
-      {/* Matter Header with Edit capability */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        {!isEditingMatter ? (
-          <>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <h2 className="text-2xl font-semibold text-slate-900">{matter.title}</h2>
-                <p className="text-sm text-slate-500">
-                  Tür: {matter.type} | Müvekkil:{" "}
-                  <ContactDetailsHoverCard
-                    contactId={matter.client.id}
-                    fallbackName={clientName}
-                    email={matter.client.email}
-                    currentUserRole={currentUserRole}
-                  />
-                </p>
-                <p className="text-sm text-slate-500">
-                  Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
-                  <div>
-                    <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
-                  </div>
-                </div>
-              </div>
-              {canEditMatter && (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingMatter(true)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  Düzenle
-                </button>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Dava Bilgilerini Düzenle</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditingMatter(false);
-                  setMatterEditForm({
-                    title: matter.title,
-                    type: matter.type,
-                    jurisdiction: matter.jurisdiction ?? "",
-                    court: matter.court ?? "",
-                  });
-                }}
-                className="text-sm text-slate-500 hover:text-slate-700"
-              >
-                İptal
-              </button>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700">
-                Başlık *
-                <input
-                  type="text"
-                  value={matterEditForm.title}
-                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, title: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Tür
-                <select
-                  value={matterEditForm.type}
-                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, type: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                >
-                  {MATTER_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Jurisdiction
-                <input
-                  type="text"
-                  value={matterEditForm.jurisdiction}
-                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, jurisdiction: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Mahkeme
-                <input
-                  type="text"
-                  value={matterEditForm.court}
-                  onChange={(e) => setMatterEditForm((prev) => ({ ...prev, court: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={submitMatterEdit}
-                disabled={loading}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {loading ? "Kaydediliyor..." : "Kaydet"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditingMatter(false);
-                  setMatterEditForm({
-                    title: matter.title,
-                    type: matter.type,
-                    jurisdiction: matter.jurisdiction ?? "",
-                    court: matter.court ?? "",
-                  });
-                }}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              >
-                İptal
-              </button>
-            </div>
-          </div>
-        )}
-        {workflowsLoading ? (
-          <p className="mt-2 text-sm text-slate-500">Loading...</p>
-        ) : workflows.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">No workflows.</p>
-        ) : !workflowSummary ? (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            All workflow steps are complete.
-          </div>
-        ) : (
-          <div className="mt-4 flex items-stretch gap-3">
-            <div className={`flex-1 rounded-xl border px-4 py-3 ${getStepClasses("prev", workflowSummary.prev?.actionState)}`}>
-              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Previous</div>
-              <div className="mt-1 text-sm font-medium">
-                {workflowSummary.prev ? workflowSummary.prev.title : "—"}
-              </div>
-              {workflowSummary.prev ? (
-                <div className="mt-1 text-xs text-slate-500">
-                  #{workflowSummary.prev.order + 1} · {workflowSummary.instance.template.name}
-                </div>
-              ) : null}
-            </div>
-            <div className="flex items-center px-1 text-slate-400">→</div>
-            <div className={`flex-1 rounded-xl border px-4 py-3 ${getStepClasses("current", workflowSummary.current.actionState)}`}>
-              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current</div>
-              <div className="mt-1 text-sm font-medium">
-                {workflowSummary.current.title}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                #{workflowSummary.current.order + 1} · {workflowSummary.instance.template.name}
-              </div>
-            </div>
-            <div className="flex items-center px-1 text-slate-400">→</div>
-            <div className={`flex-1 rounded-xl border px-4 py-3 ${getStepClasses("next", workflowSummary.next?.actionState)}`}>
-              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Next</div>
-              <div className="mt-1 text-sm font-medium">
-                {workflowSummary.next ? workflowSummary.next.title : "—"}
-              </div>
-              {workflowSummary.next ? (
-                <div className="mt-1 text-xs text-slate-500">
-                  #{workflowSummary.next.order + 1} · {workflowSummary.instance.template.name}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
-      </div>
-
+    <div className="space-y-6 w-full" data-testid="matter-detail-client">
       {/* Tab Navigation */}
       <div className="border-b border-slate-200 bg-white rounded-t-2xl">
         <div className="flex gap-1 px-6">
           <button
             type="button"
             onClick={() => setActiveTab("overview")}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "overview"
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "overview"
                 ? "border-accent text-accent"
                 : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             Overview
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("team")}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "team"
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "team"
                 ? "border-accent text-accent"
                 : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             Team
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("settings")}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "settings"
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "settings"
                 ? "border-accent text-accent"
                 : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             Settings
           </button>
@@ -869,78 +634,172 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
       {/* Overview Tab */}
       {activeTab === "overview" && (
         <>
+          {/* Matter Header with Edit capability */}
+          <div className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+            {!isEditingMatter ? (
+              <>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h2 className="text-2xl font-semibold text-slate-900">{matter.title}</h2>
+                    <p className="text-sm text-slate-500">
+                      Tür: {matter.type} | Müvekkil:{" "}
+                      <ContactDetailsHoverCard
+                        contactId={matter.client.id}
+                        fallbackName={clientName}
+                        email={matter.client.email}
+                        currentUserRole={currentUserRole}
+                      />
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
+                      <div>
+                        <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
+                      </div>
+                    </div>
+                  </div>
+                  {canEditMatter && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingMatter(true)}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                    >
+                      Düzenle
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">Dava Bilgilerini Düzenle</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingMatter(false);
+                      setMatterEditForm({
+                        title: matter.title,
+                        type: matter.type,
+                        jurisdiction: matter.jurisdiction ?? "",
+                        court: matter.court ?? "",
+                      });
+                    }}
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    İptal
+                  </button>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Başlık *
+                    <input
+                      type="text"
+                      value={matterEditForm.title}
+                      onChange={(e) => setMatterEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    />
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Tür
+                    <select
+                      value={matterEditForm.type}
+                      onChange={(e) => setMatterEditForm((prev) => ({ ...prev, type: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                    >
+                      {MATTER_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Jurisdiction
+                    <input
+                      type="text"
+                      value={matterEditForm.jurisdiction}
+                      onChange={(e) => setMatterEditForm((prev) => ({ ...prev, jurisdiction: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    />
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Mahkeme
+                    <input
+                      type="text"
+                      value={matterEditForm.court}
+                      onChange={(e) => setMatterEditForm((prev) => ({ ...prev, court: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={submitMatterEdit}
+                    disabled={loading}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {loading ? "Kaydediliyor..." : "Kaydet"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingMatter(false);
+                      setMatterEditForm({
+                        title: matter.title,
+                        type: matter.type,
+                        jurisdiction: matter.jurisdiction ?? "",
+                        court: matter.court ?? "",
+                      });
+                    }}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    İptal
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Workflow Timeline - Horizontal Timeline */}
+          {workflows.length > 0 && (
+            <WorkflowTimeline
+              workflows={workflows}
+              selectedStepId={selectedStepId}
+              onStepClick={(workflowId, stepId) => {
+                setSelectedWorkflowId(workflowId);
+                setSelectedStepId(stepId);
+              }}
+            />
+          )}
+          
           {/* Workflows (2/3) and Documents (1/3) Grid */}
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Workflows Section - 2/3 width on large screens */}
             <div className="lg:col-span-2">
-              <MatterWorkflowsSection
-                workflows={workflows}
+              <WorkflowStepDetail
+                step={selectedStepId ? workflows.flatMap(w => w.steps).find(s => s.id === selectedStepId) ?? null : null}
+                workflow={selectedWorkflowId ? workflows.find(w => w.id === selectedWorkflowId) ?? null : null}
                 matterId={matter.id}
-                actionLoading={workflowsLoading ? "workflows:fetch" : actionLoading}
-                hoveredWorkflow={hoveredStep?.startsWith("workflow-") ? hoveredStep.replace("workflow-", "") : null}
-                hoveredStep={hoveredStep?.startsWith("workflow-") ? null : hoveredStep}
+                actionLoading={actionLoading}
+                hoveredStep={hoveredStep}
                 currentUserRole={currentUserRole ?? "CLIENT"}
-                currentStepFormInstanceId={stepFormState?.instanceId ?? null}
-                stepFormMode={stepFormState?.mode ?? "add"}
-                editingStep={stepFormState?.mode === "edit" && stepFormState?.stepId ? workflows.flatMap(w => w.steps).find(s => s.id === stepFormState.stepId) ?? null : null}
-                stepFormData={{
-                  title: stepFormValues.title,
-                  actionType: stepFormValues.actionType,
-                  roleScope: stepFormValues.roleScope,
-                  required: stepFormValues.required,
-                  config: JSON.parse(stepFormValues.actionConfig || "{}"),
+                onClose={() => {
+                  setSelectedStepId(null);
+                  setSelectedWorkflowId(null);
                 }}
-                onSetHoveredWorkflow={(id) => setHoveredStep(id ? `workflow-${id}` : null)}
                 onSetHoveredStep={setHoveredStep}
-                onOpenAddStepForm={openAddStep}
-                onSetIsStepFormOpen={(open) => {
-                  if (!open) {
-                    closeStepForm();
-                  }
-                }}
-                onSetStepFormMode={(_mode) => {
-                  // Mode is managed through openAddStep/openEditStep which is called from WorkflowInstanceCard
-                  // This callback is not used - the form mode is set via those functions
-                }}
-                onSetEditingStep={(step) => {
-                  if (step) {
-                    // Find which workflow this step belongs to
-                    const workflow = workflows.find(w => w.steps.some(s => s.id === step.id));
-                    if (workflow) {
-                      openEditStep(workflow.id, step);
-                    }
-                  }
-                }}
-                onSetStepFormData={(updater) => {
-                  const current = {
-                    title: stepFormValues.title,
-                    actionType: stepFormValues.actionType,
-                    roleScope: stepFormValues.roleScope,
-                    required: stepFormValues.required,
-                    config: JSON.parse(stepFormValues.actionConfig || "{}"),
-                  };
-                  const next = typeof updater === "function" ? updater(current) : updater;
-                  setStepFormValues({
-                    title: next.title,
-                    actionType: next.actionType,
-                    roleScope: next.roleScope,
-                    required: next.required,
-                    actionConfig: JSON.stringify(next.config, null, 2),
-                  });
-                }}
-                onSetWorkflowsModalOpen={setWorkflowModalOpen}
+                onOpenEditStep={openEditStep}
                 onRunStepAction={runStepAction}
                 onMoveStep={moveStep}
                 onDeleteStep={deleteStep}
-                onRemoveWorkflow={removeWorkflow}
-                onAdvanceWorkflow={(instanceId) => runStepAction(instanceId, "advance")}
-                onAddOrEditStep={(instanceId) => {
-                  // Set the instanceId in stepFormState first, then submit
-                  if (stepFormState && stepFormState.instanceId === instanceId) {
-                    return submitStepForm();
-                  }
-                  return Promise.resolve();
-                }}
                 checklistStates={checklistStates}
                 approvalComments={approvalComments}
                 documentFiles={documentFiles}
@@ -958,20 +817,14 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
               onViewDocument={openDocDetail}
             />
           </div>
-
-          {/* Tasks Section */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-            <h3 className="text-lg font-semibold text-slate-900">Görevler</h3>
-            <p className="mt-2 text-sm text-slate-500">Sprint 2 kapsamında placeholder.</p>
-          </div>
         </>
       )}
 
       {/* Team Tab */}
       {activeTab === "team" && (
         <div className="space-y-6">
-          <MatterTeamSection 
-            matterId={matter.id} 
+          <MatterTeamSection
+            matterId={matter.id}
             currentUserRole={currentUserRole}
             matterOwnerId={matter.owner?.id}
           />
@@ -1068,12 +921,12 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         </div>
       ) : null}
 
-        <DocumentDetailDrawer
-          documentId={selectedDocumentId}
-          initialDocument={selectedDocument}
-          onClose={closeDocDetail}
-          onUpdated={handleDocUpdated}
-        />
+      <DocumentDetailDrawer
+        documentId={selectedDocumentId}
+        initialDocument={selectedDocument}
+        onClose={closeDocDetail}
+        onUpdated={handleDocUpdated}
+      />
 
       {toast ? (
         <div
@@ -1099,9 +952,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         onClose={() => setIsUploadDialogOpen(false)}
         matterId={matter.id}
         onUploadComplete={async () => {
-          console.log("🔄 Upload complete callback triggered, reloading documents...");
           await loadRelatedDocuments();
-          console.log("✅ Documents reloaded, showing toast...");
           showToast("success", "Document uploaded successfully.");
         }}
       />

@@ -30,7 +30,7 @@ export function WriteTextViewer({ content, metadata }: WriteTextViewerProps) {
       {/* Content */}
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <div className="prose prose-sm max-w-none">
-          <p className="whitespace-pre-wrap text-slate-700 text-sm leading-relaxed">
+          <p className="whitespace-pre-wrap break-words text-slate-700 text-sm leading-relaxed overflow-hidden">
             {displayContent}
             {!expanded && isLong && "..."}
           </p>

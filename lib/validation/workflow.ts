@@ -75,9 +75,9 @@ const workflowStepSchema = z
     order: z.coerce.number().int().min(0).optional(),
     // Conditional execution fields
     conditionType: conditionTypeSchema.optional(),
-    conditionConfig: conditionConfigSchema.optional(),
-    nextStepOnTrue: z.number().int().min(0).optional(),
-    nextStepOnFalse: z.number().int().min(0).optional(),
+    conditionConfig: conditionConfigSchema.optional().nullable(),
+    nextStepOnTrue: z.number().int().min(0).optional().nullable(),
+    nextStepOnFalse: z.number().int().min(0).optional().nullable(),
     // Dependency fields (P0.2)
     dependsOn: z
       .array(z.number().int().min(0))

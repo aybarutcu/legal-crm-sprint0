@@ -1,4 +1,5 @@
 export { ActionConfigForm } from "./ActionConfigForm";
+export { TaskConfigForm } from "./TaskConfigForm";
 export { ChecklistConfigForm } from "./ChecklistConfigForm";
 export { ApprovalConfigForm } from "./ApprovalConfigForm";
 export { SignatureConfigForm } from "./SignatureConfigForm";

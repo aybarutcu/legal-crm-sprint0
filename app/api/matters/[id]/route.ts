@@ -14,7 +14,7 @@ export const GET = withApiHandler<MatterParams>(async (_req, { params }) => {
     where: { id: params!.id },
     include: {
       client: {
-        select: { id: true, firstName: true, lastName: true, email: true },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
       },
       owner: {
         select: { id: true, name: true, email: true },
@@ -25,7 +25,6 @@ export const GET = withApiHandler<MatterParams>(async (_req, { params }) => {
             select: { id: true, firstName: true, lastName: true, email: true },
           },
         },
-        orderBy: { createdAt: "desc" },
       },
       documents: {
         select: { id: true, filename: true, createdAt: true },

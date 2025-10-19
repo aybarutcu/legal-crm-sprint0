@@ -65,7 +65,7 @@ async function main() {
     data: {
       firstName: "Jane",
       lastName: "Doe",
-      email: "jane.doe@example.com",
+      email: "jane.doe@legalcrm.local",
       phone: "+90 532 123 4567",
       type: "LEAD",
       status: "NEW",
@@ -83,7 +83,7 @@ async function main() {
     data: {
       firstName: "Ahmet",
       lastName: "Öztürk",
-      email: "ahmet.ozturk@example.com",
+      email: "ahmet.ozturk@legalcrm.local",
       phone: "+90 533 234 5678",
       type: "CLIENT",
       status: "ACTIVE",
@@ -103,7 +103,7 @@ async function main() {
     data: {
       firstName: "Elif",
       lastName: "Yıldız",
-      email: "elif.yildiz@example.com",
+      email: "elif.yildiz@legalcrm.local",
       phone: "+90 534 345 6789",
       type: "CLIENT",
       status: "ACTIVE",
@@ -121,7 +121,7 @@ async function main() {
     data: {
       firstName: "Can",
       lastName: "Aydın",
-      email: "can.aydin@example.com",
+      email: "can.aydin@legalcrm.local",
       phone: "+90 535 456 7890",
       type: "LEAD",
       status: "QUALIFIED",
@@ -141,7 +141,7 @@ async function main() {
     data: {
       firstName: "Deniz",
       lastName: "Şahin",
-      email: "deniz.sahin@example.com",
+      email: "deniz.sahin@legalcrm.local",
       phone: "+90 536 567 8901",
       type: "LEAD",
       status: "QUALIFIED",
@@ -159,7 +159,7 @@ async function main() {
     data: {
       firstName: "Merve",
       lastName: "Çelik",
-      email: "merve.celik@example.com",
+      email: "merve.celik@legalcrm.local",
       phone: "+90 537 678 9012",
       type: "CLIENT",
       status: "ACTIVE",
@@ -171,6 +171,27 @@ async function main() {
       zip: "35220",
       country: "Türkiye",
       notes: "Ceza davası müvekkili.",
+    },
+  });
+
+  // Test Lead for E2E tests
+  const testLead = await prisma.contact.create({
+    data: {
+      id: "cmgxmy9r000018yc5l7d9xbsg", // Fixed ID for E2E tests
+      firstName: "Test",
+      lastName: "Lead",
+      email: "test.lead@legalcrm.local",
+      phone: "+90 555 000 0001",
+      type: "LEAD",
+      status: "NEW",
+      tags: ["test", "e2e"],
+      ownerId: admin.id,
+      address: "Test Address No: 1",
+      city: "Test City",
+      state: "Test State",
+      zip: "00000",
+      country: "Türkiye",
+      notes: "Contact for E2E testing - do not delete",
     },
   });
 
@@ -325,19 +346,114 @@ async function main() {
     },
   });
 
-  await prisma.taskLink.create({
+  // ============================================
+  // LEAD WORKFLOW TEMPLATE - Client Intake
+  // ============================================
+  const clientIntakeTemplate = await prisma.workflowTemplate.create({
     data: {
-      taskId: reviewTask.id,
-      documentId: document.id,
+      name: "Client Intake Process",
+      description: "Complete client intake workflow for new leads - from initial contact to engagement",
+      createdById: admin.id,
+      isActive: true,
+      version: 1,
+      steps: {
+        create: [
+          {
+            order: 0,
+            title: "Initial Contact Checklist",
+            actionType: ActionType.CHECKLIST,
+            roleScope: RoleScope.LAWYER,
+            actionConfig: {
+              items: [
+                "Record initial contact details",
+                "Verify contact information (phone, email)",
+                "Document nature of legal issue",
+                "Check for conflicts of interest",
+                "Set follow-up reminder",
+              ],
+            },
+          },
+          {
+            order: 1,
+            title: "Conflict Check Approval",
+            actionType: ActionType.APPROVAL_LAWYER,
+            roleScope: RoleScope.LAWYER,
+            actionConfig: {
+              approverRole: "LAWYER",
+              message: "Review conflict check results and approve to proceed with client intake.",
+            },
+          },
+          {
+            order: 2,
+            title: "Request Initial Documents from Client",
+            actionType: ActionType.REQUEST_DOC_CLIENT,
+            roleScope: RoleScope.CLIENT,
+            actionConfig: {
+              requestText: "Please upload the following documents to begin your case evaluation:\n- Government-issued ID\n- Any relevant contracts or agreements\n- Supporting documentation related to your legal matter",
+              acceptedTypes: ["application/pdf", "image/png", "image/jpeg"],
+            },
+          },
+          {
+            order: 3,
+            title: "Client Intake Questionnaire",
+            actionType: ActionType.POPULATE_QUESTIONNAIRE,
+            roleScope: RoleScope.CLIENT,
+            actionConfig: {
+              title: "Client Background Information",
+              description: "Please provide detailed information about yourself and your legal matter",
+            },
+          },
+          {
+            order: 4,
+            title: "Engagement Letter Signature",
+            actionType: ActionType.SIGNATURE_CLIENT,
+            roleScope: RoleScope.CLIENT,
+            actionConfig: {
+              documentId: document.id,
+              provider: "mock",
+            },
+          },
+          {
+            order: 5,
+            title: "Collect Retainer Payment",
+            actionType: ActionType.PAYMENT_CLIENT,
+            roleScope: RoleScope.CLIENT,
+            actionConfig: {
+              amount: 2500,
+              currency: "USD",
+              provider: "mock",
+            },
+          },
+          {
+            order: 6,
+            title: "Final Intake Review",
+            actionType: ActionType.WRITE_TEXT,
+            roleScope: RoleScope.LAWYER,
+            actionConfig: {
+              prompt: "Summarize the client intake process and any special notes or action items for the case team.",
+              minLength: 100,
+            },
+          },
+        ],
+      },
+    },
+    include: {
+      steps: true,
     },
   });
 
+  console.log("✅ Created LEAD workflow template: Client Intake Process");
+
+  // ============================================
+  // MATTER WORKFLOW TEMPLATE - Discovery
+  // ============================================
   const discoveryTemplate = await prisma.workflowTemplate.create({
     data: {
       name: "Discovery Kickoff",
       description: "İlk keşif adımları ve kontrol listesi",
       createdById: admin.id,
       isActive: true,
+      version: 1,
       steps: {
         create: [
           {
@@ -418,6 +534,44 @@ async function main() {
             step.actionType === ActionType.CHECKLIST
               ? ({ completedItems: [] } satisfies Prisma.JsonObject)
               : undefined,
+        })),
+      },
+    },
+  });
+
+  // ============================================
+  // TEST LEAD WORKFLOW - for E2E tests
+  // ============================================
+  await prisma.workflowInstance.create({
+    data: {
+      templateId: clientIntakeTemplate.id,
+      matterId: matter.id, // Associate with a matter for testing
+      contactId: testLead.id, // Link directly to test lead contact
+      createdById: admin.id,
+      templateVersion: clientIntakeTemplate.version,
+      status: WorkflowInstanceStatus.ACTIVE,
+      contextData: {
+        purpose: "e2e-testing",
+      } satisfies Prisma.JsonObject,
+      steps: {
+        create: clientIntakeTemplate.steps.map((step, index) => ({
+          templateStepId: step.id,
+          order: step.order,
+          title: step.title,
+          actionType: step.actionType,
+          roleScope: step.roleScope,
+          actionState:
+            index === 0
+              ? ActionState.READY
+              : index < 3
+                ? ActionState.COMPLETED
+                : ActionState.PENDING,
+          actionData:
+            step.actionType === ActionType.CHECKLIST
+              ? ({ completedItems: [] } satisfies Prisma.JsonObject)
+              : undefined,
+          // Mark first few steps as completed for testing progress
+          completedAt: index < 3 ? new Date(now.getTime() - (3 - index) * 24 * 60 * 60 * 1000) : null,
         })),
       },
     },

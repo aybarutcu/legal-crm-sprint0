@@ -1,4 +1,4 @@
-import { CheckCircle, FileText, CreditCard, Upload, UserCheck, FileEdit, FileQuestion } from "lucide-react";
+import { CheckCircle, FileText, CreditCard, Upload, UserCheck, FileEdit, FileQuestion, CheckCheck } from "lucide-react";
 
 type ActionConfigDisplayProps = {
   actionType: string;
@@ -11,11 +11,14 @@ type ActionConfigDisplayProps = {
  * Used in both workflow templates and workflow instances.
  * 
  * Supports all action types:
+ * - TASK: Shows task description, time estimate, and evidence requirement
  * - CHECKLIST: Shows list of items with checkmarks
  * - APPROVAL_LAWYER: Shows approver role and message
  * - SIGNATURE_CLIENT: Shows provider and document ID
  * - REQUEST_DOC_CLIENT: Shows request text and document names
  * - PAYMENT_CLIENT: Shows amount, currency, and provider
+ * - WRITE_TEXT: Shows title, description, and length requirements
+ * - POPULATE_QUESTIONNAIRE: Shows questionnaire title and description
  */
 export function ActionConfigDisplay({ 
   actionType, 
@@ -33,6 +36,45 @@ export function ActionConfigDisplay({
   }
 
   switch (actionType) {
+    case "TASK": {
+      const description = config.description as string;
+      const requiresEvidence = config.requiresEvidence as boolean;
+      const estimatedMinutes = config.estimatedMinutes as number;
+      
+      return (
+        <div className={`flex items-start gap-3 ${variant === "compact" ? "text-xs" : "text-sm"}`}>
+          <CheckCheck className={`${variant === "compact" ? "h-4 w-4" : "h-5 w-5"} text-cyan-500 flex-shrink-0 mt-0.5`} />
+          <div className="space-y-1">
+            {description && (
+              <div className="text-slate-700">{description}</div>
+            )}
+            {(estimatedMinutes || requiresEvidence) && (
+              <div className="flex flex-wrap gap-1.5">
+                {estimatedMinutes && (
+                  <span 
+                    className={`inline-flex items-center rounded-md bg-cyan-50 px-2 py-0.5 font-medium text-cyan-700 border border-cyan-200 ${
+                      variant === "compact" ? "text-[10px]" : "text-xs"
+                    }`}
+                  >
+                    ~{estimatedMinutes} min
+                  </span>
+                )}
+                {requiresEvidence && (
+                  <span 
+                    className={`inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 font-medium text-amber-700 border border-amber-200 ${
+                      variant === "compact" ? "text-[10px]" : "text-xs"
+                    }`}
+                  >
+                    Evidence Required
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
     case "CHECKLIST": {
       const items = (config.items as Array<{ title: string; completed?: boolean }> | string[]) || [];
       

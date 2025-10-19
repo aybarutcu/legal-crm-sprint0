@@ -11,19 +11,100 @@ import {
   taskAccessInclude,
 } from "@/app/api/tasks/_helpers";
 
-export const GET = withApiHandler(
+export const GET = withApiHandler<{ id: string }>(
   async (_req: NextRequest, { params, session }) => {
     const user = session!.user!;
-    const task = await requireTask(params!.id);
+    const resolvedParams = await params;
+    const itemId = resolvedParams!.id;
+
+    // Try to find as workflow step first
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const workflowStep = (await prisma.workflowInstanceStep.findUnique({
+      where: { id: itemId },
+      include: {
+        assignedTo: { select: { id: true, name: true, email: true } },
+        instance: {
+          include: {
+            matter: { select: { id: true, title: true, ownerId: true } },
+            // @ts-expect-error - contact relation exists but Prisma types need refresh
+            contact: { select: { id: true, firstName: true, lastName: true, type: true, ownerId: true } },
+            template: { select: { id: true, name: true } },
+          },
+        },
+      },
+    })) as any;
+
+    if (workflowStep) {
+      // Check access: user must be assigned OR be on matter team OR own the contact OR be admin
+      const isAssigned = workflowStep.assignedToId === user.id;
+      const isAdmin = user.role === "ADMIN";
+      
+      let hasAccess = isAssigned || isAdmin;
+      
+      // Check matter team access
+      if (workflowStep.instance.matterId && !hasAccess) {
+        const isMatterTeamMember = await prisma.matterTeamMember.findFirst({
+          where: {
+            matterId: workflowStep.instance.matterId,
+            userId: user.id,
+          },
+        });
+        hasAccess = !!isMatterTeamMember;
+      }
+      
+      // Check contact ownership access
+      if (workflowStep.instance.contactId && !hasAccess) {
+        const ownsContact = workflowStep.instance.contact?.ownerId === user.id;
+        hasAccess = ownsContact;
+      }
+
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      // Transform to task-like format
+      let status: "OPEN" | "IN_PROGRESS" | "DONE" | "CANCELED" = "OPEN";
+      if (["READY", "PENDING"].includes(workflowStep.actionState)) status = "OPEN";
+      else if (workflowStep.actionState === "IN_PROGRESS") status = "IN_PROGRESS";
+      else if (workflowStep.actionState === "COMPLETED") status = "DONE";
+      else if (["SKIPPED", "FAILED"].includes(workflowStep.actionState)) status = "CANCELED";
+
+      return NextResponse.json({
+        id: workflowStep.id,
+        title: workflowStep.title,
+        description: workflowStep.notes || `${workflowStep.actionType} action in workflow`,
+        dueAt: workflowStep.dueDate?.toISOString() || null,
+        priority: workflowStep.priority || "MEDIUM",
+        status,
+        assignee: workflowStep.assignedTo,
+        assigneeId: workflowStep.assignedToId,
+        matter: workflowStep.instance.matter,
+        matterId: workflowStep.instance.matterId,
+        contact: workflowStep.instance.contact,
+        contactId: workflowStep.instance.contactId,
+        checklists: [],
+        links: [],
+        itemType: 'WORKFLOW_STEP' as const,
+        actionType: workflowStep.actionType,
+        actionState: workflowStep.actionState,
+        roleScope: workflowStep.roleScope,
+        workflowName: workflowStep.instance.template?.name || "Ad-hoc Workflow",
+        instanceId: workflowStep.instance.id,
+      });
+    }
+
+    // Fall back to legacy task
+    const task = await requireTask(itemId);
     assertTaskAccess(user, task);
 
     return NextResponse.json(task);
   },
 );
 
-export const PATCH = withApiHandler(
+export const PATCH = withApiHandler<{ id: string }>(
   async (req: NextRequest, { params, session }) => {
-    const task = await requireTask(params!.id, taskAccessInclude);
+    const resolvedParams = await params;
+    const task = await requireTask(resolvedParams!.id, taskAccessInclude);
     const user = session!.user!;
 
     assertTaskAccess(user, task);
@@ -122,9 +203,10 @@ export const PATCH = withApiHandler(
   },
 );
 
-export const DELETE = withApiHandler(
+export const DELETE = withApiHandler<{ id: string }>(
   async (_req: NextRequest, { params, session }) => {
-    const task = await requireTask(params!.id, {
+    const resolvedParams = await params;
+    const task = await requireTask(resolvedParams!.id, {
       matter: { select: { ownerId: true } },
     });
     const user = session!.user!;

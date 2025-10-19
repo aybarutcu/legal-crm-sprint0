@@ -38,7 +38,9 @@ docs/
 │   ├── matter/                           Matter management
 │   ├── document/                         Document management
 │   ├── context/                          Context system
-│   └── auth/                             Auth & client portal
+│   ├── auth/                             Auth & client portal
+│   ├── CONTACT-WORKFLOWS-SUMMARY.md      ⭐ Contact workflows implementation
+│   └── contact-workflows-quick-ref.md    Contact workflows quick reference
 │
 ├── 📁 bug-fixes/                         Important bug fixes
 ├── 📁 archive/                           Historical docs
@@ -48,6 +50,7 @@ docs/
 │
 ├── 📁 adr/                               Architecture decisions
 └── 📁 runbooks/                          Operational procedures
+    └── contact-workflow-testing.md       Contact workflow testing guide
 ```
 
 ---
@@ -133,6 +136,20 @@ Key docs:
 - `QUICKSTART-CONTACT-TO-CLIENT.md` - Quick guide
 
 **Status**: ✅ Current
+
+### Contact Workflows
+**3 documents** about workflow management for LEAD contacts (without matters).
+
+Located in `features/`:
+- `CONTACT-WORKFLOWS-SUMMARY.md` - Complete implementation details ⭐
+- `contact-workflows-quick-ref.md` - Quick reference card
+
+Testing guide in `runbooks/`:
+- `contact-workflow-testing.md` - Manual testing checklist
+
+**What it does**: Enables workflow automation for LEAD contacts before they're converted to clients. Includes 7-step "Client Intake Process" template with checklist, approval, document request, questionnaire, signature, payment, and text summary steps.
+
+**Status**: ✅ Current (October 2025)
 
 ---
 

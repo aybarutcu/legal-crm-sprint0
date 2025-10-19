@@ -1,5 +1,6 @@
 "use client";
 
+import { TaskConfigForm } from "./TaskConfigForm";
 import { ChecklistConfigForm } from "./ChecklistConfigForm";
 import { ApprovalConfigForm } from "./ApprovalConfigForm";
 import { SignatureConfigForm } from "./SignatureConfigForm";
@@ -9,6 +10,7 @@ import { WriteTextConfigForm } from "./WriteTextConfigForm";
 import { PopulateQuestionnaireConfigForm } from "./PopulateQuestionnaireConfigForm";
 
 type ActionType =
+  | "TASK"
   | "CHECKLIST"
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
@@ -25,6 +27,14 @@ interface ActionConfigFormProps {
 
 export function ActionConfigForm({ actionType, config, onChange }: ActionConfigFormProps) {
   switch (actionType) {
+    case "TASK":
+      return (
+        <TaskConfigForm
+          initialConfig={config as { description?: string; requiresEvidence?: boolean; estimatedMinutes?: number }}
+          onChange={(newConfig) => onChange(newConfig)}
+        />
+      );
+
     case "CHECKLIST":
       return (
         <ChecklistConfigForm

@@ -119,11 +119,12 @@ model Contact {
   deletedAt         DateTime?
   deletedBy         String?
 
-  owner         User?           @relation("ContactOwner", fields: [ownerId], references: [id])
+  owner         User?               @relation("ContactOwner", fields: [ownerId], references: [id])
   matters       MatterContact[]
-  clientMatters Matter[]        @relation("MatterClient")
-  documents     Document[]      @relation("DocumentContact")
-  user          User?           @relation("ContactUser", fields: [userId], references: [id], onDelete: SetNull)
+  clientMatters Matter[]            @relation("MatterClient")
+  documents     Document[]          @relation("DocumentContact")
+  user          User?               @relation("ContactUser", fields: [userId], references: [id], onDelete: SetNull)
+  workflowInstances WorkflowInstance[]
 
   @@index([type])
   @@index([status])
@@ -480,7 +481,8 @@ model WorkflowTemplateStep {
 model WorkflowInstance {
   id              String                 @id @default(cuid())
   templateId      String
-  matterId        String
+  matterId        String?                // Optional - for matter workflows
+  contactId       String?                // Optional - for lead workflows
   templateVersion Int
   createdById     String
   status          WorkflowInstanceStatus @default(DRAFT)
@@ -489,11 +491,13 @@ model WorkflowInstance {
   updatedAt       DateTime               @updatedAt
 
   template  WorkflowTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  matter    Matter                 @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  matter    Matter?                @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  contact   Contact?               @relation(fields: [contactId], references: [id], onDelete: Cascade)
   createdBy User                   @relation(fields: [createdById], references: [id], onDelete: Restrict)
   steps     WorkflowInstanceStep[]
 
   @@index([matterId, status])
+  @@index([contactId, status])
   @@index([createdById])
 }
 
@@ -532,6 +536,7 @@ enum ActionType {
   SIGNATURE_CLIENT
   REQUEST_DOC_CLIENT
   PAYMENT_CLIENT
+  TASK
   CHECKLIST
   WRITE_TEXT
   POPULATE_QUESTIONNAIRE

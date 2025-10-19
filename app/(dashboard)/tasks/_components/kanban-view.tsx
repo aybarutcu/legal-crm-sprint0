@@ -6,7 +6,7 @@ import type { TaskListItem } from "@/lib/tasks/types";
 type KanbanViewProps = {
   tasks: TaskListItem[];
   isLoading?: boolean;
-  onSelectTask?: (taskId: string) => void;
+  onSelectTask?: (taskId: string, itemType: 'TASK' | 'WORKFLOW_STEP') => void;
   onMoveTask?: (
     taskId: string,
     status: TaskListItem["status"],
@@ -118,8 +118,9 @@ export function KanbanView({ tasks, isLoading, onSelectTask, onMoveTask }: Kanba
                   return (
                     <button
                       key={task.id}
+                      data-testid={`task-card-${task.id}`}
                       type="button"
-                      onClick={() => onSelectTask?.(task.id)}
+                      onClick={() => onSelectTask?.(task.id, task.itemType || 'TASK')}
                       draggable={!isWorkflowStep}
                       onDragStart={(event) => handleDragStart(event, task.id)}
                       onDragEnd={handleDragEnd}

@@ -1,3 +1,4 @@
+export { TaskExecution } from "./TaskExecution";
 export { ChecklistExecution } from "./ChecklistExecution";
 export { ApprovalExecution } from "./ApprovalExecution";
 export { SignatureExecution } from "./SignatureExecution";

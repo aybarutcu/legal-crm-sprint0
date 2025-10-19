@@ -2,21 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Calendar, Scale, Building, User, Plus } from "lucide-react";
 import { MATTER_TYPES } from "@/lib/validation/matter";
 import type { ContactOption, MatterDetail, MatterParty } from "@/components/matters/types";
 import { WorkflowDialog } from "./workflow-dialog";
 import type { DocumentListItem } from "@/components/documents/types";
 import { DocumentDetailDrawer } from "@/components/documents/DocumentDetailDrawer";
-import { ContactDetailsHoverCard } from "@/components/contact/ContactDetailsHoverCard";
 import { isTerminal } from "@/lib/workflows/state-machine";
 import { MatterDocumentUploadDialog } from "@/components/documents/MatterDocumentUploadDialog";
-import { MatterWorkflowsSection, WorkflowTimeline, WorkflowStepDetail } from "@/components/matters/workflows";
+import { WorkflowTimeline, WorkflowStepDetail } from "@/components/matters/workflows";
 import {
   MatterPartiesSection,
   MatterDocumentsSection,
   MatterStatusUpdateSection,
 } from "@/components/matters/sections";
 import { MatterTeamSection } from "@/components/matters/MatterTeamSection";
+import { MatterStatusBadge } from "./MatterStatusBadge";
+import { MetadataCard } from "./MetadataCard";
+import { QuickActionsMenu } from "./QuickActionsMenu";
+import { formatDateWithRelative } from "@/lib/date-utils";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { ClientInfoCard } from "./ClientInfoCard";
 
 type ActionType =
   | "APPROVAL_LAWYER"
@@ -88,7 +94,7 @@ type WorkflowInstance = {
   steps: WorkflowInstanceStep[];
 };
 
-const dateFormatter = new Intl.DateTimeFormat("tr-TR", {
+const _dateFormatter = new Intl.DateTimeFormat("tr-TR", {
   dateStyle: "medium",
   timeStyle: "short",
 });
@@ -127,7 +133,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [partyForm, setPartyForm] = useState(initialPartyForm);
   const [loading, setLoading] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
-  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [_workflowsLoading, setWorkflowsLoading] = useState(false);
   const [stepFormState, setStepFormState] = useState<
     | null
     | {
@@ -432,7 +438,8 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     setSelectedDocument((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
   }, []);
 
-  async function submitStepForm() {
+  // TODO: Re-implement step form modal for adding/editing steps
+  async function _submitStepForm() {
     if (!stepFormState) return;
     try {
       const configString = stepFormValues.actionConfig?.trim() ?? "";
@@ -593,8 +600,21 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
 
   const canEditMatter = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
 
+  // Breadcrumb items
+  const breadcrumbItems = [
+    { label: "Matters", href: "/dashboard/matters" },
+    { label: matter.type, href: `/dashboard/matters?type=${matter.type}` },
+    { label: matter.title },
+  ];
+
+  // Mobile FAB state
+  const [isMobileFabOpen, setIsMobileFabOpen] = useState(false);
+
   return (
     <div className="space-y-6 w-full" data-testid="matter-detail-client">
+      {/* Breadcrumb Navigation */}
+      <Breadcrumb items={breadcrumbItems} />
+
       {/* Tab Navigation */}
       <div className="border-b border-slate-200 bg-white rounded-t-2xl">
         <div className="flex gap-1 px-6">
@@ -635,49 +655,77 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
       {activeTab === "overview" && (
         <>
           {/* Matter Header with Edit capability */}
-          <div className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+          <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-card">
             {!isEditingMatter ? (
               <>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <h2 className="text-2xl font-semibold text-slate-900">{matter.title}</h2>
-                    <p className="text-sm text-slate-500">
-                      Tür: {matter.type} | Müvekkil:{" "}
-                      <ContactDetailsHoverCard
-                        contactId={matter.client.id}
-                        fallbackName={clientName}
-                        email={matter.client.email}
-                        currentUserRole={currentUserRole}
-                      />
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      Açılış Tarihi: {dateFormatter.format(new Date(matter.openedAt))}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
-                      <div>
-                        <span className="font-semibold text-slate-700">Jurisdiction:</span> {matter.jurisdiction ?? "—"}
-                      </div>
-                      <div>
-                        <span className="font-semibold text-slate-700">Mahkeme:</span> {matter.court ?? "—"}
-                      </div>
-                      <div>
-                        <span className="font-semibold text-slate-700">Dosya Sahibi:</span> {matter.owner?.name ?? matter.owner?.email ?? "—"}
-                      </div>
-                    </div>
+                {/* Status Badge & Actions Row */}
+                <div className="flex items-center justify-between gap-4 px-6 pt-6 pb-4 border-b border-slate-100">
+                  <MatterStatusBadge status="OPEN" />
+                  <div className="flex items-center gap-2">
+                    {canEditMatter && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingMatter(true)}
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                      >
+                        Düzenle
+                      </button>
+                    )}
+                    <QuickActionsMenu
+                      onAddDocument={() => setIsUploadDialogOpen(true)}
+                      onAddParty={() => setPartyModalOpen(true)}
+                      onAddTask={() => {
+                        // TODO: Implement add task functionality
+                        showToast("success", "Task feature coming soon");
+                      }}
+                      onAddWorkflow={() => setWorkflowModalOpen(true)}
+                    />
                   </div>
-                  {canEditMatter && (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingMatter(true)}
-                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                    >
-                      Düzenle
-                    </button>
-                  )}
+                </div>
+
+                {/* Matter Title & Client Section */}
+                <div className="px-6 py-6">
+                  <h2 className="text-3xl font-bold text-slate-900 mb-6">{matter.title}</h2>
+                  
+                  {/* Client Info Card (Expandable) */}
+                  <div className="mb-6">
+                    <ClientInfoCard
+                      contactId={matter.client.id}
+                      clientName={clientName}
+                      email={matter.client.email}
+                      phone={matter.client.phone}
+                      currentUserRole={currentUserRole}
+                    />
+                  </div>
+
+                  {/* Metadata Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <MetadataCard
+                      icon={<Calendar className="h-5 w-5 text-blue-600" />}
+                      label="Opened"
+                      value={formatDateWithRelative(matter.openedAt).absolute}
+                      subtitle={formatDateWithRelative(matter.openedAt).relative}
+                    />
+                    <MetadataCard
+                      icon={<Scale className="h-5 w-5 text-purple-600" />}
+                      label="Type"
+                      value={matter.type}
+                    />
+                    <MetadataCard
+                      icon={<Building className="h-5 w-5 text-slate-600" />}
+                      label="Court"
+                      value={matter.court || "—"}
+                    />
+                    <MetadataCard
+                      icon={<User className="h-5 w-5 text-emerald-600" />}
+                      label="Owner"
+                      value={matter.owner?.name || matter.owner?.email || "Unassigned"}
+                    />
+                  </div>
                 </div>
               </>
             ) : (
-              <div className="space-y-4">
+              <div className="p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-slate-900">Dava Bilgilerini Düzenle</h3>
                   <button
@@ -769,17 +817,20 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
           </div>
 
           {/* Workflow Timeline - Horizontal Timeline */}
-          {workflows.length > 0 && (
-            <WorkflowTimeline
-              workflows={workflows}
-              selectedStepId={selectedStepId}
-              onStepClick={(workflowId, stepId) => {
-                setSelectedWorkflowId(workflowId);
-                setSelectedStepId(stepId);
-              }}
-            />
-          )}
+          <WorkflowTimeline
+            workflows={workflows}
+            selectedStepId={selectedStepId}
+            currentUserRole={currentUserRole}
+            onStepClick={(workflowId, stepId) => {
+              setSelectedWorkflowId(workflowId);
+              setSelectedStepId(stepId);
+            }}
+            onAddWorkflow={() => setWorkflowModalOpen(true)}
+            onRemoveWorkflow={removeWorkflow}
+            onAddStep={openAddStep}
+          />
           
+
           {/* Workflows (2/3) and Documents (1/3) Grid */}
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Workflows Section - 2/3 width on large screens */}
@@ -956,6 +1007,65 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
           showToast("success", "Document uploaded successfully.");
         }}
       />
+
+      {/* Mobile Floating Action Button (FAB) */}
+      <div className="fixed bottom-6 right-6 z-40 md:hidden">
+        {isMobileFabOpen && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-slate-900/20"
+              onClick={() => setIsMobileFabOpen(false)}
+              aria-hidden="true"
+            />
+            
+            {/* Action buttons */}
+            <div className="relative mb-4 flex flex-col gap-3 items-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsUploadDialogOpen(true);
+                  setIsMobileFabOpen(false);
+                }}
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-lg border border-slate-200 hover:bg-slate-50"
+              >
+                <span>Add Document</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPartyModalOpen(true);
+                  setIsMobileFabOpen(false);
+                }}
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-lg border border-slate-200 hover:bg-slate-50"
+              >
+                <span>Add Party</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setWorkflowModalOpen(true);
+                  setIsMobileFabOpen(false);
+                }}
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-lg border border-slate-200 hover:bg-slate-50"
+              >
+                <span>Add Workflow</span>
+              </button>
+            </div>
+          </>
+        )}
+        
+        {/* Main FAB Button */}
+        <button
+          type="button"
+          onClick={() => setIsMobileFabOpen(!isMobileFabOpen)}
+          className={`flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl hover:bg-blue-700 transition-all ${isMobileFabOpen ? 'rotate-45' : ''}`}
+          aria-label="Quick actions"
+          aria-expanded={isMobileFabOpen}
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      </div>
     </div>
   );
 }

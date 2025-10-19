@@ -156,6 +156,30 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
   }
 
   async function openEditDialog(taskId: string, itemType: 'TASK' | 'WORKFLOW_STEP') {
+    // For workflow steps, redirect to matter or contact page instead of opening dialog
+    if (itemType === 'WORKFLOW_STEP') {
+      setDialogLoading(true);
+      try {
+        const detail = await getTask(taskId);
+        if ('matterId' in detail && detail.matterId) {
+          window.location.href = `/matters/${detail.matterId}`;
+        } else if ('contactId' in detail && detail.contactId) {
+          window.location.href = `/contacts/${detail.contactId}`;
+        } else {
+          showToast("Unable to navigate to workflow step.", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast(
+          err instanceof Error ? err.message : "Unable to load workflow step.",
+          "error",
+        );
+      } finally {
+        setDialogLoading(false);
+      }
+      return;
+    }
+
     setDialogState({ open: true, mode: "edit", taskId, itemType });
     setDialogLoading(true);
     try {
@@ -201,7 +225,7 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
   }
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-6" data-testid="tasks-container">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           {(["all", "mine", "overdue", "upcoming"] as const).map((tab) => (

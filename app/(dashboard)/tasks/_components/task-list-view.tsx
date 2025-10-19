@@ -8,7 +8,7 @@ type TaskListViewProps = {
   tasks: TaskListItem[];
   assignees: TaskAssigneeOption[];
   isLoading: boolean;
-  onEdit: (taskId: string) => void;
+  onEdit: (taskId: string, itemType: 'TASK' | 'WORKFLOW_STEP') => void;
   onUpdateTask: (taskId: string, payload: Partial<{ status: string; assigneeId: string | null; dueAt: Date | null; priority: string }>) => Promise<void>;
 };
 
@@ -84,14 +84,14 @@ export function TaskListView({
               return (
                 <tr
                   key={task.id}
+                  data-testid={`task-card-${task.id}`}
                   className="border-b border-slate-100 last:border-none hover:bg-slate-50"
                 >
                   <td className="px-4 py-3 font-medium text-slate-900">
                     <button
                       type="button"
-                      onClick={() => onEdit(task.id)}
+                      onClick={() => onEdit(task.id, task.itemType || 'TASK')}
                       className="hover:underline"
-                      disabled={isWorkflowStep}
                     >
                       {task.title}
                     </button>
@@ -191,7 +191,7 @@ export function TaskListView({
                   <td className="px-4 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => onEdit(task.id)}
+                      onClick={() => onEdit(task.id, task.itemType || 'TASK')}
                       className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-600 hover:bg-slate-100"
                     >
                       View

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { QuestionnaireCreateDialog } from "@/components/questionnaires/QuestionnaireCreateDialog";
 import type { QuestionnaireListItem } from "@/components/questionnaires/types";
 
@@ -155,7 +156,16 @@ export function QuestionnaireListClient({
             Anket şablonlarını oluşturun ve yönetin.
           </p>
         </div>
-        <QuestionnaireCreateDialog onCreated={handleQuestionnaireCreated} />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/questionnaires/ai"
+            className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white hover:from-emerald-700 hover:to-teal-700 shadow-lg hover:shadow-xl transition-all"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI ile Oluştur
+          </Link>
+          <QuestionnaireCreateDialog onCreated={handleQuestionnaireCreated} />
+        </div>
       </div>
 
       {/* Filters */}

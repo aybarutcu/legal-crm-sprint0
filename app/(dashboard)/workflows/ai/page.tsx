@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TWorkflowTemplateDraft } from "@/lib/workflows/schema";
-import { CheckCircle, UserCheck, FileText, Upload, CreditCard, Sparkles, Loader2, CheckCheck, ArrowLeft } from "lucide-react";
+import { CheckCircle, UserCheck, FileText, Upload, CreditCard, Sparkles, Loader2, CheckCheck, ArrowLeft, Edit, ClipboardList } from "lucide-react";
 import Link from "next/link";
 
 // Action config renderer (same as TemplateCard)
@@ -115,6 +115,86 @@ function renderActionConfig(actionType: string, config: Record<string, unknown>)
                 Provider: <span className="font-medium">{provider}</span>
               </div>
             )}
+          </div>
+        </div>
+      );
+    }
+    
+    case "WRITE_TEXT": {
+      const title = config.title as string;
+      const description = config.description as string;
+      const minLength = config.minLength as number;
+      const maxLength = config.maxLength as number;
+      
+      return (
+        <div className="flex items-start gap-3 text-sm">
+          <Edit className="h-5 w-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="text-slate-700 font-medium">{title}</div>
+            {description && (
+              <div className="text-slate-600 text-xs">{description}</div>
+            )}
+            {(minLength || maxLength) && (
+              <div className="text-slate-600 text-xs">
+                Length: {minLength ? `min ${minLength}` : ''}{minLength && maxLength ? ' - ' : ''}{maxLength ? `max ${maxLength}` : ''} characters
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    case "POPULATE_QUESTIONNAIRE": {
+      const title = config.title as string;
+      const description = config.description as string;
+      const questionnaireId = config.questionnaireId as string;
+      const dueInDays = config.dueInDays as number;
+      
+      return (
+        <div className="flex items-start gap-3 text-sm">
+          <ClipboardList className="h-5 w-5 text-teal-500 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="text-slate-700 font-medium">{title}</div>
+            {description && (
+              <div className="text-slate-600 text-xs">{description}</div>
+            )}
+            <div className="text-slate-600 text-xs font-mono">
+              Questionnaire ID: {questionnaireId}
+            </div>
+            {dueInDays && (
+              <div className="text-slate-600 text-xs">
+                Due in: <span className="font-medium">{dueInDays} days</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    case "TASK": {
+      const description = config.description as string;
+      const requiresEvidence = config.requiresEvidence as boolean;
+      const estimatedMinutes = config.estimatedMinutes as number;
+      
+      return (
+        <div className="flex items-start gap-3 text-sm">
+          <CheckCheck className="h-5 w-5 text-cyan-500 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            {description && (
+              <div className="text-slate-700">{description}</div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {estimatedMinutes && (
+                <span className="inline-flex items-center rounded-md bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 border border-cyan-200">
+                  ~{estimatedMinutes} min
+                </span>
+              )}
+              {requiresEvidence && (
+                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+                  Evidence Required
+                </span>
+              )}
+            </div>
           </div>
         </div>
       );

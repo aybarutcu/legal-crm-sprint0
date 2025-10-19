@@ -6,7 +6,10 @@ export const ActionType = z.enum([
   "SIGNATURE_CLIENT",
   "REQUEST_DOC_CLIENT",
   "PAYMENT_CLIENT",
+  "TASK",
   "CHECKLIST",
+  "WRITE_TEXT",
+  "POPULATE_QUESTIONNAIRE",
 ]);
 export const RoleScope = z.enum(["ADMIN","LAWYER","PARALEGAL","CLIENT"]);
 

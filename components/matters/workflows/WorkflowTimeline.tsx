@@ -49,7 +49,11 @@ export type WorkflowTimelineInstance = {
 type WorkflowTimelineProps = {
   workflows: WorkflowTimelineInstance[];
   selectedStepId: string | null;
+  currentUserRole?: "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
   onStepClick: (workflowId: string, stepId: string) => void;
+  onAddWorkflow?: () => void;
+  onRemoveWorkflow?: (workflowId: string) => void;
+  onAddStep?: (workflowId: string) => void;
 };
 
 function getStepIcon(state: ActionState) {
@@ -156,7 +160,15 @@ function getStateLabel(state: ActionState): string {
   }
 }
 
-export function WorkflowTimeline({ workflows, selectedStepId, onStepClick }: WorkflowTimelineProps) {
+export function WorkflowTimeline({ 
+  workflows, 
+  selectedStepId, 
+  currentUserRole,
+  onStepClick,
+  onAddWorkflow,
+  onRemoveWorkflow,
+  onAddStep,
+}: WorkflowTimelineProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const selectedStepRef = useRef<any>(null);
 
@@ -167,19 +179,41 @@ export function WorkflowTimeline({ workflows, selectedStepId, onStepClick }: Wor
     }
   }, [selectedStepId]);
 
+  const canManageWorkflows = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+
   if (workflows.length === 0) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-        <p className="text-sm text-slate-500">No workflows yet</p>
+        <p className="mb-4 text-sm text-slate-500">No workflows yet</p>
+        {onAddWorkflow && canManageWorkflows && (
+          <button
+            type="button"
+            onClick={onAddWorkflow}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            + Add Workflow
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-card max-w-full">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <h3 className="text-lg font-semibold text-slate-900">Workflow Progress</h3>
-        <p className="text-sm text-slate-500">Click on any step to view details</p>
+    <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-card max-w-full" data-testid="workflow-timeline">
+      <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">Workflow Progress</h3>
+          <p className="text-sm text-slate-500">Click on any step to view details</p>
+        </div>
+        {onAddWorkflow && canManageWorkflows && (
+          <button
+            type="button"
+            onClick={onAddWorkflow}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            + Add Workflow
+          </button>
+        )}
       </div>
       
       <div className="px-6 py-6">
@@ -196,8 +230,38 @@ export function WorkflowTimeline({ workflows, selectedStepId, onStepClick }: Wor
                     )}
                   </p>
                 </div>
-                <div className="flex-shrink-0 text-xs text-slate-500">
-                  {workflow.steps.filter((step) => step.actionState === "COMPLETED").length} / {workflow.steps.length} completed
+                <div className="flex items-center gap-2">
+                  <div className="flex-shrink-0 text-xs text-slate-500" data-testid="workflow-progress">
+                    {workflow.steps.filter((step) => step.actionState === "COMPLETED").length} / {workflow.steps.length} completed
+                  </div>
+                  {canManageWorkflows && (
+                    <>
+                      {onAddStep && workflow.status === "DRAFT" && (
+                        <button
+                          type="button"
+                          onClick={() => onAddStep(workflow.id)}
+                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          title="Add Step"
+                        >
+                          + Add Step
+                        </button>
+                      )}
+                      {onRemoveWorkflow && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm("Are you sure you want to remove this workflow?")) {
+                              onRemoveWorkflow(workflow.id);
+                            }
+                          }}
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                          title="Remove Workflow"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -213,6 +277,8 @@ export function WorkflowTimeline({ workflows, selectedStepId, onStepClick }: Wor
                       <div
                         ref={isSelected ? selectedStepRef : null}
                         onClick={() => onStepClick(workflow.id, step.id)}
+                        data-testid={`timeline-step-${step.id}`}
+                        data-state={step.actionState}
                         className={`flex w-64 shrink-0 flex-col gap-3 rounded-xl border-2 p-4 transition-transform duration-200 ${getStepStyles(step.actionState, isSelected)}`}
                       >
                         {/* Header with Icon and Number */}

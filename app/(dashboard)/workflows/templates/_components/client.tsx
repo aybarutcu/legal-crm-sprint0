@@ -6,6 +6,7 @@ import { TemplateGroup } from "@/components/workflows/TemplateGroup";
 import { ActionConfigForm } from "@/components/workflows/config-forms";
 
 const ACTION_TYPES = [
+  { value: "TASK", label: "Task" },
   { value: "CHECKLIST", label: "Checklist" },
   { value: "APPROVAL_LAWYER", label: "Lawyer Approval" },
   { value: "SIGNATURE_CLIENT", label: "Client Signature" },
@@ -27,6 +28,8 @@ type RoleScope = (typeof ROLE_SCOPES)[number]["value"];
 
 function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
   switch (actionType) {
+    case "TASK":
+      return { description: "", requiresEvidence: false, estimatedMinutes: undefined };
     case "APPROVAL_LAWYER":
       return { approverRole: "LAWYER", message: "" };
     case "SIGNATURE_CLIENT":
@@ -82,7 +85,7 @@ type WorkflowTemplateDraft = {
   steps: WorkflowStep[];
 };
 
-const defaultChecklistConfig = defaultConfigFor("CHECKLIST");
+const defaultTaskConfig = defaultConfigFor("TASK");
 
 const emptyDraft: WorkflowTemplateDraft = {
   name: "",
@@ -90,11 +93,11 @@ const emptyDraft: WorkflowTemplateDraft = {
   steps: [
     {
       title: "New Task",
-      actionType: "CHECKLIST",
+      actionType: "TASK",
       roleScope: "ADMIN",
       required: true,
-      actionConfig: defaultChecklistConfig,
-      actionConfigInput: JSON.stringify(defaultChecklistConfig, null, 2),
+      actionConfig: defaultTaskConfig,
+      actionConfigInput: JSON.stringify(defaultTaskConfig, null, 2),
       order: 0,
     },
   ],
@@ -248,7 +251,7 @@ export function WorkflowTemplatesClient() {
       const insertAt = Math.min(Math.max(afterIndex + 1, 0), steps.length);
       const neighbourIndex = Math.max(0, insertAt - 1);
       const neighbour = steps[neighbourIndex];
-      const nextActionType = (neighbour?.actionType ?? "CHECKLIST") as ActionType;
+      const nextActionType = (neighbour?.actionType ?? "TASK") as ActionType;
       const defaultConfig = defaultConfigFor(nextActionType);
       steps.splice(insertAt, 0, {
         title: "New Step",

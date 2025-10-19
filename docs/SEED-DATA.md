@@ -1,7 +1,7 @@
 # Database Seed Data Summary
 
 ## Overview
-The database has been populated with comprehensive test data to help with development and testing.
+The database has been populated with comprehensive test data to help with development and testing. All contacts use `@legalcrm.local` email addresses for MailHog email testing.
 
 ## Data Created
 
@@ -11,15 +11,14 @@ The database has been populated with comprehensive test data to help with develo
 3. **Avukat Ayşe Kaya** - `lawyer2@legalcrm.local` (LAWYER)
 4. **Hukuk Asistanı Zeynep Demir** - `paralegal@legalcrm.local` (PARALEGAL)
 
-### Contacts (8)
-1. **Jane Doe** - LEAD, Personal Injury (Ankara)
-2. **Ahmet Öztürk** - CLIENT, Corporate Law (İstanbul) - Öztürk İnşaat A.Ş.
-3. **Elif Yıldız** - CLIENT, Family Law (İzmir)
-4. **Can Aydın** - LEAD, Employment Law (Ankara) - TechStart Yazılım Ltd.
-5. **Deniz Şahin** - LEAD, Real Estate (İstanbul)
-6. **Merve Çelik** - CLIENT, Criminal Law (İzmir)
-7. **Burak Arslan** - LEAD, Tax Law (İstanbul) - Arslan Danışmanlık
-8. **Selin Korkmaz** - CLIENT, Intellectual Property (Ankara)
+### Contacts (7)
+1. **Jane Doe** - `jane.doe@legalcrm.local` - LEAD, Personal Injury (Ankara)
+2. **Ahmet Öztürk** - `ahmet.ozturk@legalcrm.local` - CLIENT, Corporate Law (İstanbul) - Öztürk İnşaat A.Ş.
+3. **Elif Yıldız** - `elif.yildiz@legalcrm.local` - CLIENT, Family Law (İzmir)
+4. **Can Aydın** - `can.aydin@legalcrm.local` - LEAD, Employment Law (Ankara) - TechStart Yazılım Ltd.
+5. **Deniz Şahin** - `deniz.sahin@legalcrm.local` - LEAD, Real Estate (İstanbul)
+6. **Merve Çelik** - `merve.celik@legalcrm.local` - CLIENT, Criminal Law (İzmir)
+7. **Test Lead** - `test.lead@legalcrm.local` - LEAD, E2E Testing (Fixed ID: `cmgxmy9r000018yc5l7d9xbsg`)
 
 ### Matters (6)
 1. **Doe vs. Corp. - İş Kazası Tazminatı** (Civil)
@@ -108,9 +107,24 @@ The database has been populated with comprehensive test data to help with develo
 5. **iddianame-celik.pdf** - Ceza davası iddianamesi
 6. **patent-basvuru-korkmaz.pdf** - Patent başvuru belgeleri
 
-### Workflows (1)
-1. **Discovery Kickoff** - 5-step workflow template with active instance
-   - Steps include: Checklist, Lawyer approval, Client signature, Document request, Payment
+### Workflows (2)
+1. **Client Intake Process** - 7-step LEAD workflow template
+   - Steps: Checklist, Approval, Document Request, Questionnaire, Signature, Payment, Review
+   - Has active instance linked to Test Lead contact
+2. **Discovery Kickoff** - 5-step MATTER workflow template
+   - Steps: Checklist, Lawyer approval, Client signature, Document request, Payment
+   - Has active instance linked to a matter
+
+## Email Testing with MailHog
+
+All seed data contacts use `@legalcrm.local` email addresses. This allows you to test email functionality with MailHog:
+
+1. **Access MailHog**: http://localhost:8025
+2. **Send test emails** to any contact, and they will appear in MailHog
+3. **Example contacts**:
+   - `jane.doe@legalcrm.local`
+   - `test.lead@legalcrm.local`
+   - `ahmet.ozturk@legalcrm.local`
 
 ## Usage
 

@@ -1,51 +1,104 @@
 import { NextResponse } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { TaskQuery, TaskStatusValue, TASK_STATUSES } from "@/lib/tasks/types";
-import { Role } from "@prisma/client";
+import { TaskQuery, TaskStatusValue } from "@/lib/tasks/types";
 
-async function getTasks(query: TaskQuery) {
-  const where: any = {};
-  if (query.q) {
-    where.OR = [
-      { title: { contains: query.q, mode: "insensitive" } },
-      { description: { contains: query.q, mode: "insensitive" } },
-    ];
+/**
+ * GET /api/tasks/unified
+ * 
+ * Fetches workflow steps assigned to the current user based on:
+ * 1. User's role in matter teams (MatterTeamMember)
+ * 2. Workflow step's roleScope matching user's role
+ * 3. Optional filters (search, matter, status, priority, dates)
+ * 
+ * This replaces the legacy unified view (Tasks + Workflow Steps).
+ * Now only shows workflow steps assigned via matter team roles.
+ */
+export const GET = withApiHandler(async (req, { session }) => {
+  const userId = session?.user?.id;
+  const userRole = session?.user?.role;
+
+  if (!userId || !userRole) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
   }
-  if (query.matterId) where.matterId = query.matterId;
-  if (query.assigneeId) where.assigneeId = query.assigneeId;
-  if (query.status) where.status = query.status;
-  if (query.priority) where.priority = query.priority;
-  if (query.dueFrom) where.dueAt = { ...where.dueAt, gte: query.dueFrom };
-  if (query.dueTo) where.dueAt = { ...where.dueAt, lte: query.dueTo };
 
-  const [total, items] = await prisma.$transaction([
-    prisma.task.count({ where }),
-    prisma.task.findMany({
-      where,
-      orderBy: { dueAt: "asc" },
-      include: {
-        assignee: { select: { id: true, name: true, email: true } },
-        matter: { select: { id: true, title: true } },
-        _count: { select: { checklists: true, links: true } },
+  const url = new URL(req.url);
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
+  
+  const query: TaskQuery = {
+    page,
+    pageSize,
+    q: url.searchParams.get("q") || undefined,
+    matterId: url.searchParams.get("matterId") || undefined,
+    assigneeId: url.searchParams.get("assigneeId") || undefined,
+    status: url.searchParams.get("status") as TaskStatusValue || undefined,
+    priority: url.searchParams.get("priority") as TaskQuery["priority"] || undefined,
+    dueFrom: url.searchParams.get("dueFrom") ? new Date(url.searchParams.get("dueFrom")!) : undefined,
+    dueTo: url.searchParams.get("dueTo") ? new Date(url.searchParams.get("dueTo")!) : undefined,
+  };
+
+  // Find all matters where the user is a team member
+  const matterTeamMemberships = await prisma.matterTeamMember.findMany({
+    where: { userId },
+    select: { matterId: true, role: true },
+  });
+
+  const matterIds = matterTeamMemberships.map(m => m.matterId);
+
+  // Find all contacts owned by the user
+  const ownedContacts = await prisma.contact.findMany({
+    where: { ownerId: userId },
+    select: { id: true },
+  });
+
+  const contactIds = ownedContacts.map(c => c.id);
+
+  // Build where clause for workflow steps
+  // User can see steps that either:
+  // 1. Match their role scope in matters they're a team member of, OR
+  // 2. Are from contacts they own (for LEAD workflows), OR
+  // 3. Are directly assigned to them (claimed tasks)
+  const where: Record<string, unknown> = {
+    OR: [
+      // Steps from matter teams matching role scope
+      ...(matterIds.length > 0 ? [{
+        instance: {
+          matterId: { in: matterIds },
+        },
+        roleScope: { in: userRole === "ADMIN" 
+          ? ["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"] 
+          : [userRole] 
+        },
+      }] : []),
+      // Steps from contacts owned by user (LEAD workflows)
+      ...(contactIds.length > 0 ? [{
+        instance: {
+          contactId: { in: contactIds },
+        },
+      }] : []),
+      // Steps directly assigned to user (claimed tasks)
+      {
+        assignedToId: userId,
       },
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
-    }),
-  ]);
+    ],
+  };
 
-  return { items: items.map(t => ({...t, itemType: 'TASK'})), total };
-}
-
-async function getWorkflowSteps(query: TaskQuery) {
-  const where: any = {};
+  // Apply filters
   if (query.q) {
     where.title = { contains: query.q, mode: "insensitive" };
   }
-  if (query.matterId) where.instance = { matterId: query.matterId };
-  if (query.assigneeId) where.assignedToId = query.assigneeId;
+
+  if (query.matterId) {
+    where.instance = { ...where.instance as Record<string, unknown>, matterId: query.matterId };
+  }
+
+  // Filter by action state (map from task status)
   if (query.status) {
-    const stateMap: Record<TaskStatusValue, any> = {
+    const stateMap: Record<TaskStatusValue, string[]> = {
       "OPEN": ["READY", "PENDING"],
       "IN_PROGRESS": ["IN_PROGRESS"],
       "DONE": ["COMPLETED"],
@@ -54,69 +107,88 @@ async function getWorkflowSteps(query: TaskQuery) {
     where.actionState = { in: stateMap[query.status] };
   }
 
-  const [total, items] = await prisma.$transaction([
+  // Filter by priority
+  if (query.priority) {
+    where.priority = query.priority;
+  }
+
+  // Filter by due date
+  if (query.dueFrom || query.dueTo) {
+    const dueDate: Record<string, unknown> = {};
+    if (query.dueFrom) dueDate.gte = query.dueFrom;
+    if (query.dueTo) dueDate.lte = query.dueTo;
+    where.dueDate = dueDate;
+  }
+
+  // Execute query
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [total, items] = (await prisma.$transaction([
     prisma.workflowInstanceStep.count({ where }),
     prisma.workflowInstanceStep.findMany({
       where,
-      orderBy: { createdAt: "asc" },
+      orderBy: [
+        { dueDate: "asc" },
+        { createdAt: "asc" },
+      ],
       include: {
         assignedTo: { select: { id: true, name: true, email: true } },
-        instance: { include: { matter: { select: { id: true, title: true } } } },
+        instance: {
+          include: {
+            matter: { select: { id: true, title: true } },
+            // @ts-expect-error - contact relation exists but Prisma types need refresh
+            contact: { select: { id: true, firstName: true, lastName: true, type: true } },
+            template: { select: { id: true, name: true } },
+          },
+        },
       },
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     }),
-  ]);
+  ])) as [number, any[]];
 
-  const transformedItems = items.map((item) => ({
-    id: item.id,
-    title: item.title,
-    description: `Workflow Action: ${item.actionType}`,
-    dueAt: item.createdAt.toISOString(), // Or some other date logic
-    priority: "MEDIUM",
-    status: (Object.entries({
-      "OPEN": ["READY", "PENDING"],
-      "IN_PROGRESS": ["IN_PROGRESS"],
-      "DONE": ["COMPLETED"],
-      "CANCELED": ["SKIPPED", "FAILED"],
-    }).find(([, states]) => states.includes(item.actionState))?.[0] || "OPEN") as TaskStatusValue,
-    assignee: item.assignedTo,
-    matter: item.instance.matter,
-    _count: { checklists: 0, links: 0 },
-    itemType: 'WORKFLOW_STEP',
-    actionType: item.actionType,
-    roleScope: item.roleScope,
-  }));
+  // Transform workflow steps to match task interface
+  const transformedItems = items.map((item) => {
+    // Map actionState to task status
+    let status: TaskStatusValue = "OPEN";
+    if (["READY", "PENDING"].includes(item.actionState)) status = "OPEN";
+    else if (item.actionState === "IN_PROGRESS") status = "IN_PROGRESS";
+    else if (item.actionState === "COMPLETED") status = "DONE";
+    else if (["SKIPPED", "FAILED"].includes(item.actionState)) status = "CANCELED";
 
-  return { items: transformedItems, total };
-}
+    // Build title based on workflow type
+    let contextTitle = "";
+    if (item.instance.contact) {
+      const contact = item.instance.contact;
+      contextTitle = `${contact.firstName} ${contact.lastName} (${contact.type})`;
+    } else if (item.instance.matter) {
+      contextTitle = item.instance.matter.title;
+    }
 
-export const GET = withApiHandler(async (req) => {
-  const url = new URL(req.url);
-  const query: TaskQuery = {
-    page: parseInt(url.searchParams.get("page") || "1"),
-    pageSize: parseInt(url.searchParams.get("pageSize") || "20"),
-    q: url.searchParams.get("q") || undefined,
-    matterId: url.searchParams.get("matterId") || undefined,
-    assigneeId: url.searchParams.get("assigneeId") || undefined,
-    status: url.searchParams.get("status") as TaskStatusValue || undefined,
-    priority: url.searchParams.get("priority") as any || undefined,
-    dueFrom: url.searchParams.get("dueFrom") ? new Date(url.searchParams.get("dueFrom")!) : undefined,
-    dueTo: url.searchParams.get("dueTo") ? new Date(url.searchParams.get("dueTo")!) : undefined,
-  };
-
-  const [tasksResult, workflowsResult] = await Promise.all([
-    getTasks(query),
-    getWorkflowSteps(query),
-  ]);
-
-  const combinedItems = [...tasksResult.items, ...workflowsResult.items];
-  const total = tasksResult.total + workflowsResult.total;
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.notes || `${item.actionType} action in workflow`,
+      dueAt: item.dueDate?.toISOString() || item.createdAt.toISOString(),
+      priority: item.priority || "MEDIUM",
+      status,
+      assignee: item.assignedTo,
+      matter: item.instance.matter,
+      contact: item.instance.contact,
+      _count: { checklists: 0, links: 0 },
+      itemType: 'WORKFLOW_STEP' as const,
+      actionType: item.actionType,
+      roleScope: item.roleScope,
+      actionState: item.actionState,
+      workflowName: item.instance.template?.name || "Ad-hoc Workflow",
+      contextTitle,
+      instanceId: item.instance.id,
+    };
+  });
 
   return NextResponse.json({
-    items: combinedItems,
+    items: transformedItems,
     page: query.page,
     pageSize: query.pageSize,
     total,
   });
-});
+}, { requireAuth: true });

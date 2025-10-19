@@ -70,7 +70,16 @@ export const PATCH = withApiHandler(
           required: step.required ?? true,
           actionConfig: step.actionConfig ?? {},
           order: step.order ?? index,
-        })),
+          // Conditional execution fields
+          conditionType: step.conditionType ?? "ALWAYS",
+          conditionConfig: step.conditionConfig ?? null,
+          nextStepOnTrue: step.nextStepOnTrue ?? null,
+          nextStepOnFalse: step.nextStepOnFalse ?? null,
+          // Dependency fields (P0.2)
+          dependsOn: step.dependsOn ?? [],
+          dependencyLogic: step.dependencyLogic ?? "ALL",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        })) as any,
       };
     }
 

@@ -658,15 +658,303 @@ Dynamic data storage for passing information between steps:
   "clientName": "John Doe",
   "documentUrl": "https://...",
   "approvalDecision": "approved",
-  "submittedText": "..."
+  "submittedText": "...",
+  "contactType": "CORPORATE",
+  "documentCount": 5,
+  "isPreApproved": true
 }
 ```
 
 Context can be used in:
 - Step titles (templating)
-- Conditional logic
+- Conditional logic (branching)
 - Data validation
 - Next step determination
+
+### Conditional Workflow Logic (P0.1)
+
+**New Feature**: Steps can now execute conditionally based on runtime context, enabling dynamic branching workflows.
+
+#### Condition Types
+
+1. **ALWAYS** (Default)
+   - Step always executes in sequential order
+   - No conditional logic
+   - Standard behavior for existing workflows
+
+2. **IF_TRUE**
+   - Step executes only if condition evaluates to TRUE
+   - Skipped if condition evaluates to FALSE
+   - Requires `conditionConfig`
+
+3. **IF_FALSE**
+   - Step executes only if condition evaluates to FALSE
+   - Skipped if condition evaluates to TRUE
+   - Requires `conditionConfig`
+
+4. **SWITCH** (Future)
+   - Case-based routing
+   - Not yet implemented
+
+#### Operators (14 Total)
+
+**Comparison** (6):
+- `==` - Equals
+- `!=` - Not equals
+- `>` - Greater than
+- `<` - Less than
+- `>=` - Greater than or equal
+- `<=` - Less than or equal
+
+**String** (3):
+- `contains` - Substring match
+- `startsWith` - Prefix match
+- `endsWith` - Suffix match
+
+**Array** (2):
+- `in` - Value in array
+- `notIn` - Value not in array
+
+**Existence** (3):
+- `exists` - Field is not null/undefined
+- `isEmpty` - Field is null/undefined/empty string
+- `isNotEmpty` - Field has a value
+
+#### Simple Condition Example
+
+```json
+{
+  "conditionType": "IF_TRUE",
+  "conditionConfig": {
+    "field": "contactType",
+    "operator": "==",
+    "value": "CORPORATE"
+  }
+}
+```
+
+**Behavior**: Step only executes when `contactType` equals `"CORPORATE"`.
+
+#### Compound Condition Example (AND/OR)
+
+```json
+{
+  "conditionType": "IF_TRUE",
+  "conditionConfig": {
+    "operator": "AND",
+    "conditions": [
+      { "field": "approvalDecision", "operator": "==", "value": "APPROVED" },
+      { "field": "documentCount", "operator": ">=", "value": 3 }
+    ]
+  }
+}
+```
+
+**Behavior**: Step only executes when BOTH conditions are true (approved AND 3+ documents).
+
+#### Branching with nextStepOnTrue/False
+
+Steps can override sequential flow by specifying target steps:
+
+```json
+{
+  "order": 2,
+  "title": "Check Pre-Approval",
+  "conditionType": "IF_TRUE",
+  "conditionConfig": {
+    "field": "isPreApproved",
+    "operator": "==",
+    "value": true
+  },
+  "nextStepOnTrue": 5,    // Jump to step 5 if pre-approved
+  "nextStepOnFalse": null  // Continue to step 3 if not
+}
+```
+
+**Workflow Flow**:
+- If `isPreApproved == true`: Skip steps 3-4, jump to step 5
+- If `isPreApproved == false`: Continue to step 3 (sequential)
+
+#### Real-World Example: Client Onboarding
+
+```typescript
+const template = {
+  name: "Client Onboarding",
+  steps: [
+    {
+      order: 1,
+      title: "Collect Basic Info",
+      actionType: "WRITE_TEXT",
+      conditionType: "ALWAYS",
+      actionConfig: { title: "Basic Information" }
+    },
+    {
+      order: 2,
+      title: "Request Corporate Documents",
+      actionType: "REQUEST_DOC_CLIENT",
+      conditionType: "IF_TRUE",
+      conditionConfig: {
+        field: "contactType",
+        operator: "==",
+        value: "CORPORATE"
+      },
+      actionConfig: {
+        requestText: "Please upload Articles of Incorporation and Operating Agreement"
+      }
+    },
+    {
+      order: 3,
+      title: "Individual ID Verification",
+      actionType: "REQUEST_DOC_CLIENT",
+      conditionType: "IF_FALSE",
+      conditionConfig: {
+        field: "contactType",
+        operator: "==",
+        value: "CORPORATE"
+      },
+      actionConfig: {
+        requestText: "Please upload driver's license or passport"
+      }
+    },
+    {
+      order: 4,
+      title: "Manual Review",
+      actionType: "APPROVAL_LAWYER",
+      conditionType: "IF_FALSE",
+      conditionConfig: {
+        field: "isPreApproved",
+        operator: "==",
+        value: true
+      },
+      nextStepOnTrue: 6  // Skip payment setup if pre-approved
+    },
+    {
+      order: 5,
+      title: "Payment Collection",
+      actionType: "PAYMENT_CLIENT",
+      conditionType: "IF_TRUE",
+      conditionConfig: {
+        operator: "AND",
+        conditions: [
+          { field: "approvalDecision", operator: "==", value: "APPROVED" },
+          { field: "documentCount", operator: ">=", value: 2 }
+        ]
+      },
+      actionConfig: { amount: 1000, currency: "USD" }
+    },
+    {
+      order: 6,
+      title: "Final Setup",
+      actionType: "TASK",
+      conditionType: "ALWAYS",
+      actionConfig: { description: "Complete onboarding tasks" }
+    }
+  ]
+};
+```
+
+**Execution Paths**:
+
+**Path 1 - Corporate Pre-Approved Client**:
+1. Collect Info (ALWAYS) → 
+2. Request Corporate Docs (TRUE: contactType==CORPORATE) →
+3. ~~Individual ID~~ (SKIPPED: contactType!=CORPORATE) →
+4. ~~Manual Review~~ (SKIPPED: isPreApproved==true, jumps to 6) →
+5. ~~Payment~~ (SKIPPED: documentCount condition fails) →
+6. Final Setup (ALWAYS)
+
+**Path 2 - Individual Non-Approved Client**:
+1. Collect Info (ALWAYS) →
+2. ~~Corporate Docs~~ (SKIPPED: contactType!=CORPORATE) →
+3. Individual ID (TRUE: contactType!=CORPORATE) →
+4. Manual Review (TRUE: isPreApproved==false) →
+5. Payment (TRUE: approved AND documentCount≥2) →
+6. Final Setup (ALWAYS)
+
+#### Validation API
+
+`POST /api/workflows/validate-condition`
+
+Validates condition structure and optionally evaluates against test context:
+
+```typescript
+// Request
+{
+  "condition": {
+    "field": "contactType",
+    "operator": "==",
+    "value": "CORPORATE"
+  },
+  "testContext": {  // Optional
+    "contactType": "CORPORATE"
+  }
+}
+
+// Response
+{
+  "valid": true,
+  "message": "Condition is valid",
+  "evaluation": {
+    "result": true  // Only if testContext provided
+  }
+}
+```
+
+**Use Cases**:
+- Real-time validation in UI
+- Testing conditions before saving templates
+- Debugging conditional workflows
+
+#### UI Components
+
+**ConditionBuilder**: Main editor for creating conditions
+- Field autocomplete with 10 common workflow fields
+- Operator selector grouped by category
+- Smart value input (auto-type conversion)
+- Switch between Simple and AND/OR modes
+- Branching path configuration
+
+**ConditionDisplay**: Visual representation in template cards
+- Color-coded badges (✓ green for IF_TRUE, ✗ red for IF_FALSE)
+- Human-readable condition summary
+- Nested display for compound conditions
+
+**Integration**: Fully integrated into workflow template editor at `/dashboard/workflows/templates`.
+
+#### Common Workflow Context Fields
+
+Available for use in conditions:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `contactType` | string | Type of contact (LEAD, CLIENT, CORPORATE, etc.) |
+| `matterType` | string | Type of matter/case |
+| `contactEmail` | string | Email address of contact |
+| `matterStatus` | string | Current matter status |
+| `approvalDecision` | string | Result of approval step (APPROVED/REJECTED) |
+| `paymentStatus` | string | Payment status (PENDING/COMPLETED/FAILED) |
+| `documentCount` | number | Number of documents collected |
+| `isUrgent` | boolean | Whether matter is marked urgent |
+| `isPreApproved` | boolean | Whether contact is pre-approved |
+| `tags` | array | Tags associated with contact/matter |
+
+**Extensible**: Additional fields can be added to workflow context via handlers using `ctx.updateContext()`.
+
+#### Best Practices
+
+1. **Default to ALWAYS**: Only add conditions when truly needed for branching
+2. **Keep Conditions Simple**: Prefer simple conditions over deeply nested compound logic
+3. **Document Context Fields**: Comment which fields are set by which steps
+4. **Test Branching Paths**: Use validation API to test conditions with sample data
+5. **Avoid Required Conditional Steps**: Required steps should generally be ALWAYS
+6. **Use Descriptive Step Titles**: Include condition summary in title (e.g., "Request Corporate Docs (if corporate client)")
+
+#### Limitations
+
+- **Max Nesting**: Compound conditions limited to 3 levels (prevents stack overflow)
+- **SWITCH Not Implemented**: Use multiple IF_TRUE/IF_FALSE steps instead
+- **No Dynamic Context Schema**: Available fields documented but not validated at design time
+- **No Visual Flowchart**: Branching shown as text, no diagram (roadmap: P1)
 
 ### AI Workflow Generation
 

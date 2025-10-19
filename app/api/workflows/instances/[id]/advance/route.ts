@@ -3,7 +3,8 @@ import type { NextRequest } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { assertMatterAccess } from "@/lib/authorization";
-import { advanceInstanceReadySteps, refreshInstanceStatus } from "@/lib/workflows/service";
+import { refreshInstanceStatus } from "@/lib/workflows/service";
+import { determineNextSteps } from "@/lib/workflows/runtime";
 import { WorkflowNotFoundError } from "@/lib/workflows/errors";
 
 type Params = { params: { id: string } };
@@ -24,7 +25,21 @@ export const POST = withApiHandler(
 
       await assertMatterAccess(user, instance.matterId);
 
-      const promoted = await advanceInstanceReadySteps(tx, instance.id);
+      // Get full instance with contextData for condition evaluation
+      const fullInstance = await tx.workflowInstance.findUnique({
+        where: { id: instance.id },
+      });
+
+      if (!fullInstance) {
+        throw new WorkflowNotFoundError("Workflow instance not found");
+      }
+
+      // Determine and activate next steps based on conditions
+      const promoted = await determineNextSteps({
+        tx,
+        instance: fullInstance,
+      });
+      
       await refreshInstanceStatus(tx, instance.id);
 
       const steps = await tx.workflowInstanceStep.findMany({

@@ -8,10 +8,9 @@ import "@/lib/workflows";
 import {
   getWorkflowStepOrThrow,
   toStepWithTemplate,
-  advanceInstanceReadySteps,
   refreshInstanceStatus,
 } from "@/lib/workflows/service";
-import { skipWorkflowStep } from "@/lib/workflows/runtime";
+import { skipWorkflowStep, determineNextSteps } from "@/lib/workflows/runtime";
 import { Role } from "@prisma/client";
 
 const payloadSchema = z.object({
@@ -60,7 +59,13 @@ export const POST = withApiHandler<{ id: string }>(
         reason: body.reason,
       });
 
-      await advanceInstanceReadySteps(tx, runtimeStep.instanceId);
+      // Determine and activate next steps based on conditions
+      await determineNextSteps({
+        tx,
+        instance: runtimeStep.instance,
+        completedStep: runtimeStep,
+      });
+      
       await refreshInstanceStatus(tx, runtimeStep.instanceId);
 
       return tx.workflowInstanceStep.findUnique({

@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import type { Contact, Role } from "@prisma/client";
-import { InviteClientButton } from "@/components/contact/InviteClientButton";
+import { ClientInfoCard } from "@/components/matters/ClientInfoCard";
+import { EditContactDialog } from "@/components/contact/edit-contact-dialog";
 
 type ContactInfoProps = {
   contact: Contact & {
@@ -34,169 +36,42 @@ type ContactInfoProps = {
   onRefresh: () => void;
 };
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-export function ContactInfoSection({ contact, currentUserRole }: ContactInfoProps) {
-  const canInvite = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+export function ContactInfoSection({ contact, currentUserRole, onRefresh }: ContactInfoProps) {
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const fullName = `${contact.firstName} ${contact.lastName}`.trim();
-  const contactEmail = contact.email ?? null;
-  const portalUser = contact.user;
-  const isActivated = Boolean(portalUser?.activatedAt);
-  const hasInvite = Boolean(portalUser?.invitedAt);
-  
-  const portalStatus = portalUser?.activatedAt
-    ? `Active • ${dateFormatter.format(portalUser.activatedAt)}`
-    : portalUser?.invitedAt
-      ? `Invited • ${dateFormatter.format(portalUser.invitedAt)}`
-      : "Not invited";
-      
-  const inviteDisabledReason =
-    !contactEmail
-      ? "Cannot invite without email address"
-      : portalUser && portalUser.role !== "CLIENT"
-        ? "User has non-client role"
-        : null;
 
   const allMatters = [
     ...contact.clientMatters.map((m) => ({ ...m, role: "PRIMARY_CLIENT" })),
     ...contact.matters.map((m) => ({ ...m.matter, role: m.role })),
   ];
 
+  // Can edit if ADMIN or LAWYER
+  const canEdit = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-      {/* Main Info Card */}
-      <div className="space-y-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">Contact Information</h3>
-            {canInvite && contact.type === "CLIENT" && (
-              <InviteClientButton
-                fullName={fullName}
-                email={contactEmail}
-                isActivated={isActivated}
-                hasInvite={hasInvite}
-                disabledReason={inviteDisabledReason}
-              />
-            )}
+    <>
+      <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+        {/* Main Info Card - Using ClientInfoCard */}
+        <div className="space-y-6">
+          <ClientInfoCard
+            contactId={contact.id}
+            clientName={fullName}
+            email={contact.email}
+            phone={contact.phone}
+            currentUserRole={currentUserRole as "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT" | undefined}
+            initialExpanded={true}
+            onEditClick={canEdit ? () => setEditDialogOpen(true) : undefined}
+          />
+
+        {/* Notes Section - if exists */}
+        {contact.notes && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Notes</h3>
+            <p className="whitespace-pre-wrap text-sm text-slate-700">
+              {contact.notes}
+            </p>
           </div>
-
-          <dl className="mt-6 grid gap-6 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="font-medium text-slate-500">Type</dt>
-              <dd className="mt-1">
-                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                  contact.type === "LEAD" 
-                    ? "bg-amber-100 text-amber-800"
-                    : contact.type === "CLIENT"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-slate-100 text-slate-800"
-                }`}>
-                  {contact.type}
-                </span>
-              </dd>
-            </div>
-
-            <div>
-              <dt className="font-medium text-slate-500">Status</dt>
-              <dd className="mt-1">
-                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">
-                  {contact.status}
-                </span>
-              </dd>
-            </div>
-
-            <div>
-              <dt className="font-medium text-slate-500">Email</dt>
-              <dd className="mt-1 text-slate-900">{contact.email || "—"}</dd>
-            </div>
-
-            <div>
-              <dt className="font-medium text-slate-500">Phone</dt>
-              <dd className="mt-1 text-slate-900">{contact.phone || "—"}</dd>
-            </div>
-
-            <div>
-              <dt className="font-medium text-slate-500">Company</dt>
-              <dd className="mt-1 text-slate-900">{contact.company || "—"}</dd>
-            </div>
-
-            <div>
-              <dt className="font-medium text-slate-500">Owner</dt>
-              <dd className="mt-1 text-slate-900">
-                {contact.owner?.name || contact.owner?.email || "—"}
-              </dd>
-            </div>
-
-            <div className="sm:col-span-2">
-              <dt className="font-medium text-slate-500">Address</dt>
-              <dd className="mt-1 text-slate-900">
-                {contact.address && (
-                  <div>
-                    {contact.address}
-                    {(contact.city || contact.state || contact.zip) && (
-                      <div>
-                        {[contact.city, contact.state, contact.zip].filter(Boolean).join(", ")}
-                      </div>
-                    )}
-                    {contact.country && <div>{contact.country}</div>}
-                  </div>
-                )}
-                {!contact.address && "—"}
-              </dd>
-            </div>
-
-            <div className="sm:col-span-2">
-              <dt className="font-medium text-slate-500">Tags</dt>
-              <dd className="mt-2 flex flex-wrap gap-2">
-                {contact.tags.length > 0 ? (
-                  contact.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent"
-                    >
-                      #{tag}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-slate-400">No tags</span>
-                )}
-              </dd>
-            </div>
-
-            {contact.type === "CLIENT" && (
-              <div className="sm:col-span-2">
-                <dt className="font-medium text-slate-500">Portal Status</dt>
-                <dd className="mt-1 text-slate-900">{portalStatus}</dd>
-              </div>
-            )}
-
-            <div>
-              <dt className="font-medium text-slate-500">Created</dt>
-              <dd className="mt-1 text-slate-900">
-                {dateFormatter.format(contact.createdAt)}
-              </dd>
-            </div>
-
-            <div>
-              <dt className="font-medium text-slate-500">Last Updated</dt>
-              <dd className="mt-1 text-slate-900">
-                {dateFormatter.format(contact.updatedAt)}
-              </dd>
-            </div>
-          </dl>
-
-          {contact.notes && (
-            <div className="mt-6 border-t border-slate-200 pt-6">
-              <dt className="font-medium text-slate-500">Notes</dt>
-              <dd className="mt-2 whitespace-pre-wrap text-sm text-slate-900">
-                {contact.notes}
-              </dd>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Sidebar - Related Matters */}
@@ -223,5 +98,34 @@ export function ContactInfoSection({ contact, currentUserRole }: ContactInfoProp
         </div>
       </div>
     </div>
+
+    {/* Edit Dialog */}
+    {canEdit && (
+      <EditContactDialog
+        contactId={contact.id}
+        initialData={{
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          phone: contact.phone,
+          company: contact.company,
+          type: contact.type,
+          status: contact.status,
+          address: contact.address,
+          city: contact.city,
+          state: contact.state,
+          zip: contact.zip,
+          country: contact.country,
+          preferredLanguage: contact.preferredLanguage,
+          source: contact.source,
+          notes: contact.notes,
+          tags: contact.tags,
+        }}
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        onUpdated={onRefresh}
+      />
+    )}
+    </>
   );
 }

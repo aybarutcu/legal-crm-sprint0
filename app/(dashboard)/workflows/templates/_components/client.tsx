@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { TemplateGroup } from "@/components/workflows/TemplateGroup";
 import { ActionConfigForm } from "@/components/workflows/config-forms";
+import { ConditionBuilder } from "@/components/workflows/conditions";
+import type { ConditionConfig, ConditionType } from "@/components/workflows/conditions/types";
 
 const ACTION_TYPES = [
   { value: "TASK", label: "Task" },
@@ -64,6 +66,11 @@ type WorkflowStep = {
   actionConfig: Record<string, unknown>;
   actionConfigInput?: string;
   order: number;
+  // Conditional execution fields
+  conditionType?: "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
+  conditionConfig?: Record<string, unknown> | null;
+  nextStepOnTrue?: number | null;
+  nextStepOnFalse?: number | null;
 };
 
 type WorkflowTemplate = {
@@ -99,6 +106,10 @@ const emptyDraft: WorkflowTemplateDraft = {
       actionConfig: defaultTaskConfig,
       actionConfigInput: JSON.stringify(defaultTaskConfig, null, 2),
       order: 0,
+      conditionType: "ALWAYS",
+      conditionConfig: null,
+      nextStepOnTrue: null,
+      nextStepOnFalse: null,
     },
   ],
 };
@@ -120,11 +131,70 @@ export function WorkflowTemplatesClient() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft">("all");
+  const [sortBy, setSortBy] = useState<"name" | "updated" | "steps">("name");
+
   useEffect(() => {
     void fetchTemplates();
   }, []);
 
   const isEditorOpen = Boolean(draft);
+
+  // Filter and sort templates
+  const filteredTemplates = templates.filter((template) => {
+    // Search filter
+    const matchesSearch = 
+      searchQuery === "" ||
+      template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (template.description?.toLowerCase() || "").includes(searchQuery.toLowerCase());
+
+    // Status filter
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && template.isActive) ||
+      (statusFilter === "draft" && !template.isActive);
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Group by name after filtering
+  const groupedTemplates = filteredTemplates.reduce((acc, template) => {
+    if (!acc[template.name]) {
+      acc[template.name] = [];
+    }
+    acc[template.name].push(template);
+    return acc;
+  }, {} as Record<string, WorkflowTemplate[]>);
+
+  // Sort groups
+  const sortedGroups = Object.entries(groupedTemplates).sort(([nameA, versionsA], [nameB, versionsB]) => {
+    switch (sortBy) {
+      case "name":
+        return nameA.localeCompare(nameB);
+      case "updated": {
+        const latestA = Math.max(...versionsA.map(v => new Date(v.updatedAt).getTime()));
+        const latestB = Math.max(...versionsB.map(v => new Date(v.updatedAt).getTime()));
+        return latestB - latestA;
+      }
+      case "steps": {
+        const stepsA = versionsA[0]?.steps.length || 0;
+        const stepsB = versionsB[0]?.steps.length || 0;
+        return stepsB - stepsA;
+      }
+      default:
+        return 0;
+    }
+  });
+
+  // Calculate stats
+  const stats = {
+    total: templates.length,
+    active: templates.filter(t => t.isActive).length,
+    draft: templates.filter(t => !t.isActive).length,
+    uniqueTemplates: Object.keys(groupedTemplates).length,
+  };
 
   async function fetchTemplates() {
     setIsLoading(true);
@@ -261,6 +331,10 @@ export function WorkflowTemplatesClient() {
         actionConfig: defaultConfig,
         actionConfigInput: JSON.stringify(defaultConfig, null, 2),
         order: insertAt,
+        conditionType: "ALWAYS",
+        conditionConfig: null,
+        nextStepOnTrue: null,
+        nextStepOnFalse: null,
       });
       return {
         ...prev,
@@ -447,6 +521,100 @@ export function WorkflowTemplatesClient() {
         </div>
       </div>
 
+      {/* Stats Summary */}
+      {!isLoading && templates.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="rounded-xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Total Templates</div>
+            <div className="text-2xl font-bold text-slate-900">{stats.uniqueTemplates}</div>
+            <div className="text-xs text-slate-500 mt-1">{stats.total} total versions</div>
+          </div>
+          <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
+            <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Active</div>
+            <div className="text-2xl font-bold text-emerald-900">{stats.active}</div>
+            <div className="text-xs text-emerald-600 mt-1">Published versions</div>
+          </div>
+          <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+            <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Drafts</div>
+            <div className="text-2xl font-bold text-amber-900">{stats.draft}</div>
+            <div className="text-xs text-amber-600 mt-1">Unpublished versions</div>
+          </div>
+          <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4 shadow-sm">
+            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Showing</div>
+            <div className="text-2xl font-bold text-blue-900">{sortedGroups.length}</div>
+            <div className="text-xs text-blue-600 mt-1">After filters</div>
+          </div>
+        </div>
+      )}
+
+      {/* Search and Filter Section */}
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-lg">
+        <div className="grid gap-4 md:grid-cols-4">
+          {/* Search */}
+          <label className="flex flex-col gap-2 md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Search Templates
+            </span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name or description..."
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
+            />
+          </label>
+
+          {/* Status Filter */}
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Status
+            </span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "draft")}
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all bg-white"
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active Only</option>
+              <option value="draft">Drafts Only</option>
+            </select>
+          </label>
+
+          {/* Sort By */}
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Sort By
+            </span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "name" | "updated" | "steps")}
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all bg-white"
+            >
+              <option value="name">Name (A-Z)</option>
+              <option value="updated">Recently Updated</option>
+              <option value="steps">Step Count</option>
+            </select>
+          </label>
+        </div>
+
+        {/* Clear Filters Button */}
+        {(searchQuery || statusFilter !== "all" || sortBy !== "name") && (
+          <div className="mt-4 pt-4 border-t-2 border-slate-200">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setStatusFilter("all");
+                setSortBy("name");
+              }}
+              className="text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+            >
+              ✕ Clear all filters
+            </button>
+          </div>
+        )}
+      </div>
+
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
@@ -458,20 +626,60 @@ export function WorkflowTemplatesClient() {
           Loading templates...
         </div>
       ) : templates.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-card">
-          No workflow templates yet. Create your first template to standardise critical processes.
+        <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-12 text-center shadow-card">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-blue-100">
+              <span className="text-3xl">📋</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">No workflow templates yet</h3>
+              <p className="text-sm text-slate-600 mt-1">
+                Create your first template to standardise critical processes.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                type="button"
+                onClick={openCreateEditor}
+                className="rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-white hover:bg-accent/90 shadow-sm hover:shadow-md transition-all"
+              >
+                + Create Template
+              </button>
+              <Link
+                href="/workflows/ai"
+                className="rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:from-purple-700 hover:to-blue-700 shadow-sm hover:shadow-md transition-all"
+              >
+                ✨ Use AI
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : sortedGroups.length === 0 ? (
+        <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-8 text-center shadow-card">
+          <div className="flex flex-col items-center gap-3">
+            <div className="text-4xl">🔍</div>
+            <div>
+              <h3 className="text-base font-semibold text-amber-900">No templates match your filters</h3>
+              <p className="text-sm text-amber-700 mt-1">
+                Try adjusting your search or filter criteria
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setStatusFilter("all");
+                setSortBy("name");
+              }}
+              className="mt-2 text-sm font-medium text-amber-700 hover:text-amber-800 underline transition-colors"
+            >
+              Clear all filters
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
-          {Object.entries(
-            templates.reduce((acc, template) => {
-              if (!acc[template.name]) {
-                acc[template.name] = [];
-              }
-              acc[template.name].push(template);
-              return acc;
-            }, {} as Record<string, WorkflowTemplate[]>)
-          ).map(([name, versions]) => (
+          {sortedGroups.map(([name, versions]) => (
             <TemplateGroup
               key={name}
               name={name}
@@ -697,6 +905,29 @@ export function WorkflowTemplatesClient() {
                               }}
                             />
                           </div>
+                        </div>
+
+                        {/* Conditional Execution Section */}
+                        <div className="md:col-span-2 mt-2">
+                          <ConditionBuilder
+                            conditionType={(step.conditionType || "ALWAYS") as ConditionType}
+                            conditionConfig={step.conditionConfig as ConditionConfig | null}
+                            onChange={({ conditionType, conditionConfig }) => {
+                              updateStep(index, {
+                                conditionType,
+                                conditionConfig: conditionConfig as Record<string, unknown> | null,
+                              });
+                            }}
+                            nextStepOnTrue={step.nextStepOnTrue}
+                            nextStepOnFalse={step.nextStepOnFalse}
+                            onNextStepChange={(nextStepOnTrue, nextStepOnFalse) => {
+                              updateStep(index, {
+                                nextStepOnTrue,
+                                nextStepOnFalse,
+                              });
+                            }}
+                            maxStepOrder={draft.steps.length}
+                          />
                         </div>
                       </div>
                     </div>

@@ -146,17 +146,6 @@ export function ContactWorkflowsSection({
 
   return (
     <div className="space-y-6">
-      {/* Header with Start Workflow button */}
-      {canManageWorkflows && (
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => setShowStartDialog(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            + Start Workflow
-          </button>
-        </div>
-      )}
 
       {/* Workflow Timeline - Horizontal scrollable timeline */}
       <WorkflowTimeline

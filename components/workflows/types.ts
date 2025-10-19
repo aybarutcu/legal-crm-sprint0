@@ -6,6 +6,11 @@ export type WorkflowStep = {
   required: boolean;
   actionConfig: Record<string, unknown>;
   order: number;
+  // Conditional execution fields
+  conditionType?: "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
+  conditionConfig?: Record<string, unknown> | null;
+  nextStepOnTrue?: number | null;
+  nextStepOnFalse?: number | null;
 };
 
 export type WorkflowTemplate = {

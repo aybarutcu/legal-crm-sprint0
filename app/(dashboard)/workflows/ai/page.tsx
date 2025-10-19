@@ -3,8 +3,69 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TWorkflowTemplateDraft } from "@/lib/workflows/schema";
-import { CheckCircle, UserCheck, FileText, Upload, CreditCard, Sparkles, Loader2, CheckCheck, ArrowLeft, Edit, ClipboardList } from "lucide-react";
+import { CheckCircle, UserCheck, FileText, Upload, CreditCard, Sparkles, Loader2, CheckCheck, ArrowLeft, Edit, ClipboardList, Scale, Heart, Users, Home, Briefcase, Car, Gavel } from "lucide-react";
 import Link from "next/link";
+
+// Pre-generated workflow templates
+const WORKFLOW_TEMPLATES = [
+  {
+    icon: Scale,
+    title: "Client Onboarding",
+    description: "Standard new client intake process",
+    prompt: `Client onboarding workflow: lawyer reviews and approves new client, client signs engagement letter via e-signature, client uploads ID and proof of address documents, collect retainer payment, paralegal completes intake checklist (verify contact info, setup file, enter into system, schedule kickoff meeting), send welcome email`,
+    color: "from-blue-500 to-indigo-600"
+  },
+  {
+    icon: Heart,
+    title: "Divorce Case",
+    description: "Family law divorce proceedings workflow",
+    prompt: `Divorce case workflow: client completes divorce questionnaire (marriage details, assets, children), lawyer reviews questionnaire and approves case direction, draft petition for divorce, lawyer reviews and approves petition, client reviews and approves petition via e-signature, file petition with court, client pays court filing fees, serve spouse with divorce papers, wait 30 days for response, checklist for discovery documents (financial statements, property deeds, bank statements, retirement accounts), negotiate settlement or prepare for trial`,
+    color: "from-pink-500 to-rose-600"
+  },
+  {
+    icon: Car,
+    title: "Personal Injury Claim",
+    description: "PI case from intake to settlement",
+    prompt: `Personal injury workflow: client completes accident questionnaire, collect evidence (photos, police report, medical records, witness statements), lawyer reviews case and approves representation, client signs retainer agreement, send demand letter to insurance company, checklist for medical treatment documentation, negotiate settlement with insurance adjuster, lawyer approves settlement amount, client approves settlement via e-signature, receive settlement payment, distribute settlement funds (lawyer fees, medical liens, client portion), close case`,
+    color: "from-orange-500 to-red-600"
+  },
+  {
+    icon: Gavel,
+    title: "Criminal Defense",
+    description: "Criminal case representation workflow",
+    prompt: `Criminal defense workflow: client completes intake questionnaire (charges, arrest details, court dates), collect retainer payment, lawyer reviews discovery from prosecutor, schedule client meeting to discuss strategy, checklist for evidence gathering (witness contacts, alibi information, character references), file pretrial motions if needed, lawyer approval for plea bargain or trial strategy, prepare client testimony if going to trial, court appearance checklist (prepare exhibits, witness list, opening statement), post-trial follow-up (sentencing, appeal options)`,
+    color: "from-purple-500 to-violet-600"
+  },
+  {
+    icon: Home,
+    title: "Real Estate Closing",
+    description: "Property purchase/sale transaction",
+    prompt: `Real estate closing workflow: review purchase agreement, client completes property questionnaire, order title search, review title report and resolve any issues, schedule property inspection, review inspection report with client, lawyer approves contract terms, coordinate with lender for financing, client signs closing documents via e-signature, collect closing costs payment, final walkthrough checklist (utilities transferred, keys received, property condition verified), record deed with county, distribute funds, provide final closing package to client`,
+    color: "from-teal-500 to-cyan-600"
+  },
+  {
+    icon: Briefcase,
+    title: "Business Formation",
+    description: "New business entity setup",
+    prompt: `Business formation workflow: client completes business questionnaire (entity type, owners, purpose), lawyer reviews and approves entity structure, draft articles of incorporation or LLC operating agreement, client reviews and approves documents, file formation documents with state, obtain EIN from IRS, checklist for post-formation tasks (business licenses, bank account, registered agent, business insurance), draft bylaws or operating agreement, client signs all formation documents, collect formation fees, deliver corporate book and completed documents`,
+    color: "from-emerald-500 to-green-600"
+  },
+  {
+    icon: Users,
+    title: "Estate Planning",
+    description: "Will and trust preparation workflow",
+    prompt: `Estate planning workflow: client completes estate questionnaire (assets, beneficiaries, wishes), review existing documents if any, lawyer reviews questionnaire and recommends estate plan structure, draft will and/or trust documents, draft power of attorney and healthcare directive, lawyer reviews all documents, client reviews draft documents, schedule signing meeting, client signs all documents with witnesses and notary, checklist for post-signing (fund trust with assets, notify financial institutions, update beneficiaries, provide copies to executor and trustee), deliver final estate plan binder`,
+    color: "from-indigo-500 to-blue-600"
+  },
+  {
+    icon: FileText,
+    title: "Contract Review",
+    description: "Simple contract review and approval",
+    prompt: `Contract review workflow: client uploads contract document, client provides context and concerns via questionnaire, lawyer reviews contract and identifies issues, lawyer prepares markup and comments, schedule meeting with client to discuss findings, negotiate revisions with other party, client approves final version via e-signature, deliver executed contract to all parties`,
+    color: "from-slate-500 to-gray-600"
+  }
+];
+
 
 // Action config renderer (same as TemplateCard)
 function renderActionConfig(actionType: string, config: Record<string, unknown>) {
@@ -214,6 +275,13 @@ export default function AIWorkflowPage() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
+    // Handler to use a template
+    const useTemplate = (prompt: string) => {
+        setInput(prompt);
+        setError(null);
+        setDraft(null);
+    };
+
     async function generate() {
         if (!input.trim()) {
             setError("Lütfen bir workflow açıklaması girin");
@@ -302,6 +370,38 @@ export default function AIWorkflowPage() {
                         <p className="text-slate-600 mt-2">
                             Workflow'unuzu açıklayın, AI sizin için otomatik olarak oluştursun
                         </p>
+                    </div>
+                </div>
+
+                {/* Quick Templates */}
+                <div className="rounded-2xl border-2 border-white bg-white/80 backdrop-blur-sm p-6 shadow-xl">
+                    <div className="mb-4">
+                        <h2 className="text-lg font-bold text-slate-900 mb-1">Quick Start Templates</h2>
+                        <p className="text-sm text-slate-600">Click any template to generate a pre-configured workflow</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {WORKFLOW_TEMPLATES.map((template, index) => {
+                            const Icon = template.icon;
+                            return (
+                                <button
+                                    key={index}
+                                    onClick={() => useTemplate(template.prompt)}
+                                    disabled={generating}
+                                    className="group relative flex flex-col items-start gap-3 rounded-xl border-2 border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 text-left transition-all hover:border-slate-300 hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${template.color} text-white shadow-md group-hover:shadow-lg transition-shadow`}>
+                                        <Icon className="h-5 w-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-slate-900 text-sm mb-1">{template.title}</h3>
+                                        <p className="text-xs text-slate-600 line-clamp-2">{template.description}</p>
+                                    </div>
+                                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Sparkles className="h-4 w-4 text-purple-600" />
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 

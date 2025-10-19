@@ -4,12 +4,26 @@ import { actionRegistry } from "./registry";
 import { ActionHandlerError } from "./errors";
 import { assertTransition, isTerminal } from "./state-machine";
 import { WorkflowMetrics, createWorkflowSpan } from "./observability";
+import { ConditionEvaluator } from "./conditions";
+import type { ConditionConfig } from "./conditions/types";
+import { getReadySteps } from "./dependency-resolver";
 import type {
   ActionEvent,
   WorkflowActor,
   WorkflowInstanceStepWithTemplate,
   WorkflowRuntimeContext,
 } from "./types";
+
+// TODO: Remove once Prisma generates ConditionType enum
+type ConditionType = "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
+
+// Extended type with conditional fields (until Prisma regenerates types)
+type WorkflowInstanceStepWithConditions = WorkflowInstanceStepWithTemplate & {
+  conditionType?: ConditionType | null;
+  conditionConfig?: Prisma.JsonValue | null;
+  nextStepOnTrue?: number | null;
+  nextStepOnFalse?: number | null;
+};
 
 type JsonValue = Prisma.JsonValue;
 type JsonObject = Prisma.JsonObject;
@@ -481,4 +495,185 @@ export async function applyEventToWorkflowStep({
   
   await persistStepUpdate(tx, step, data, nextState, contextUpdates, now);
   return nextState;
+}
+
+/**
+ * Determine which steps should be activated next based on conditional logic.
+ * 
+ * This function:
+ * 1. Finds the next PENDING step(s) in order
+ * 2. Evaluates any conditions on those steps
+ * 3. Activates steps that meet their conditions (IF_TRUE) or skips them
+ * 4. Handles unconditional steps (ALWAYS or no condition)
+ * 5. Returns the number of steps activated
+ * 
+ * @param tx - Prisma client or transaction
+ * @param instance - Workflow instance (with contextData)
+ * @param completedStep - The step that just completed (provides context for evaluation)
+ * @returns Number of steps activated
+ */
+export async function determineNextSteps({
+  tx,
+  instance,
+  completedStep,
+  now = new Date(),
+}: {
+  tx: PrismaClient | Prisma.TransactionClient;
+  instance: WorkflowInstance;
+  completedStep?: WorkflowInstanceStepWithTemplate;
+  now?: Date;
+}): Promise<number> {
+  const span = createWorkflowSpan("workflow.determineNextSteps", {
+    instanceId: instance.id,
+    completedStepId: completedStep?.id ?? "none",
+  });
+
+  try {
+    // Get all steps for this instance, ordered
+    const steps = await tx.workflowInstanceStep.findMany({
+      where: { instanceId: instance.id },
+      orderBy: { order: "asc" },
+      include: {
+        templateStep: true,
+        instance: true,
+      },
+    });
+
+    let activatedCount = 0;
+    const stepModels = steps.map(toStepWithTemplate) as WorkflowInstanceStepWithConditions[];
+
+    // Build evaluation context (for conditional logic evaluation)
+    const evalContext: WorkflowRuntimeContext = {
+      tx,
+      instance,
+      step: completedStep ?? stepModels[0],
+      actor: undefined,
+      config: {},
+      data: {},
+      now,
+      context: isJsonObject(instance.contextData ?? null)
+        ? (instance.contextData as Record<string, unknown>)
+        : {},
+      updateContext: () => {
+        // No-op for evaluation context
+      },
+    };
+
+    // ⭐ NEW: Use dependency resolver to find steps that are ready
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const readySteps = getReadySteps(stepModels as any);
+
+    // Activate each ready step (check conditions and update state)
+    for (const step of readySteps) {
+      // Only activate if currently PENDING
+      if (step.actionState !== ActionState.PENDING) {
+        continue;
+      }
+
+      // Check if this step has a condition
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const conditionType: ConditionType = (step as any).conditionType ?? "ALWAYS";
+
+      if (conditionType === "ALWAYS" || !conditionType) {
+        // No condition - activate immediately
+        await tx.workflowInstanceStep.update({
+          where: { id: step.id },
+          data: {
+            actionState: ActionState.READY,
+            updatedAt: now,
+          },
+        });
+        activatedCount++;
+
+        // Record metrics
+        WorkflowMetrics.recordStepAdvanced(step.actionType);
+        WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.READY);
+
+        // Send notification
+        const { notifyStepReady } = await import("./notifications");
+        await notifyStepReady(tx, step.id);
+      } else if (conditionType === "IF_TRUE" || conditionType === "IF_FALSE") {
+        // Has a condition - evaluate it
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!(step as any).conditionConfig) {
+          console.warn(
+            `Step ${step.id} has conditionType ${conditionType} but no conditionConfig`,
+          );
+          continue;
+        }
+
+        // Evaluate the condition
+        const result = ConditionEvaluator.evaluate(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (step as any).conditionConfig as unknown as ConditionConfig,
+          evalContext,
+        );
+
+        if (!result.success) {
+          console.error(
+            `Failed to evaluate condition for step ${step.id}: ${result.error}`,
+          );
+          continue;
+        }
+
+        // Determine if this step should be activated or skipped
+        const shouldActivate =
+          (conditionType === "IF_TRUE" && result.value === true) ||
+          (conditionType === "IF_FALSE" && result.value === false);
+
+        if (shouldActivate) {
+          // Activate the step
+          await tx.workflowInstanceStep.update({
+            where: { id: step.id },
+            data: {
+              actionState: ActionState.READY,
+              updatedAt: now,
+            },
+          });
+          activatedCount++;
+
+          // Record metrics
+          WorkflowMetrics.recordStepAdvanced(step.actionType);
+          WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.READY);
+
+          // Send notification
+          const { notifyStepReady } = await import("./notifications");
+          await notifyStepReady(tx, step.id);
+        } else {
+          // Skip the step (condition not met)
+          await tx.workflowInstanceStep.update({
+            where: { id: step.id },
+            data: {
+              actionState: ActionState.SKIPPED,
+              notes: `Skipped: Condition not met (${conditionType}, evaluated to ${result.value})`,
+              updatedAt: now,
+            },
+          });
+
+          // Record metrics for skipped step
+          WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.SKIPPED);
+        }
+      }
+      // Note: SWITCH type will be implemented in future enhancement
+    }
+
+    span.end(true);
+    return activatedCount;
+  } catch (error) {
+    if (error instanceof Error) {
+      span.endWithError(error);
+    } else {
+      span.end(false);
+    }
+    throw error;
+  }
+}
+
+// Helper function to convert Prisma step to our type
+function toStepWithTemplate(
+  step: Prisma.WorkflowInstanceStepGetPayload<{
+    include: { templateStep: true; instance: true };
+  }>,
+): WorkflowInstanceStepWithTemplate {
+  return step as unknown as WorkflowInstanceStepWithTemplate;
 }

@@ -10,10 +10,9 @@ import {
   getWorkflowStepOrThrow,
   toStepWithTemplate,
   claimWorkflowStep,
-  advanceInstanceReadySteps,
   refreshInstanceStatus,
 } from "@/lib/workflows/service";
-import { completeWorkflowStep } from "@/lib/workflows/runtime";
+import { completeWorkflowStep, determineNextSteps } from "@/lib/workflows/runtime";
 import { WorkflowPermissionError } from "@/lib/workflows/errors";
 
 const payloadSchema = z.object({
@@ -60,7 +59,13 @@ export const POST = withApiHandler(
         payload: body.payload,
       });
 
-      await advanceInstanceReadySteps(tx, runtimeStep.instanceId);
+      // Determine and activate next steps based on conditions
+      await determineNextSteps({
+        tx,
+        instance: runtimeStep.instance,
+        completedStep: runtimeStep,
+      });
+      
       await refreshInstanceStatus(tx, runtimeStep.instanceId);
 
       return tx.workflowInstanceStep.findUnique({

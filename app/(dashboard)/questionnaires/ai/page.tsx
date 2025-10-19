@@ -2,10 +2,64 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, CheckCheck, ArrowLeft, MessageSquare, ListChecks, CheckCircle2 } from "lucide-react";
+import { Sparkles, Loader2, CheckCheck, ArrowLeft, MessageSquare, ListChecks, CheckCircle2, FileText, Scale, Users, Heart, Car, Home, Briefcase } from "lucide-react";
 import Link from "next/link";
 
 type QuestionType = "FREE_TEXT" | "SINGLE_CHOICE" | "MULTI_CHOICE";
+
+// Pre-generated questionnaire templates
+const QUESTIONNAIRE_TEMPLATES = [
+  {
+    icon: FileText,
+    title: "Client Intake Form",
+    description: "General client onboarding questionnaire",
+    prompt: `Client intake form: full name, email address, phone number, mailing address (street, city, state, zip), how did you hear about us (referral/online search/social media/advertisement/other), case type (family law/criminal defense/civil litigation/personal injury/real estate/business law/estate planning/other), brief description of your case or legal issue, have you consulted with or hired an attorney before (yes/no), if yes please explain, urgency level (immediate/within a week/within a month/no rush), preferred contact method (email/phone/text message), best time to contact you (morning/afternoon/evening/any time)`,
+    color: "from-blue-500 to-indigo-600"
+  },
+  {
+    icon: Heart,
+    title: "Divorce/Family Law",
+    description: "Divorce and custody questionnaire",
+    prompt: `Divorce questionnaire: full name, spouse's full name, date of marriage, marriage location (city, state, country), current marital status (separated/living together/living apart), date of separation if applicable, do you have minor children from this marriage (yes/no), if yes list children's names and birthdates, are you seeking custody (sole/joint/primary/no preference), property ownership (who owns the house/cars/other major assets), is there a prenuptial agreement (yes/no), grounds for divorce (irreconcilable differences/adultery/abandonment/other), property division preference (equal split/keep separate/negotiate), spousal support request (seeking/not seeking/unsure), are there any domestic violence issues (yes/no), attorneys already contacted (yes/no), additional concerns or questions`,
+    color: "from-pink-500 to-rose-600"
+  },
+  {
+    icon: Car,
+    title: "Personal Injury",
+    description: "Accident and injury intake form",
+    prompt: `Personal injury intake: full name, date of birth, contact phone and email, date of incident, time of incident, location of incident (street address, city, state), type of incident (car accident/slip and fall/workplace injury/medical malpractice/product liability/other), describe what happened in detail, injuries sustained, did you receive medical treatment (yes/no), if yes list hospitals or doctors visited, are you still receiving treatment (yes/no), was a police report filed (yes/no), if yes provide report number, witnesses present (yes/no), if yes list witness names and contact info, other parties involved, insurance information (your insurance company and policy number), have you contacted the other party's insurance (yes/no), lost time from work (yes/no), if yes how many days, vehicle damage if applicable, photos or evidence available (yes/no), prior injuries or medical conditions in same area (yes/no), have you spoken to other attorneys (yes/no)`,
+    color: "from-orange-500 to-red-600"
+  },
+  {
+    icon: Scale,
+    title: "Criminal Defense",
+    description: "Criminal case intake questionnaire",
+    prompt: `Criminal defense intake: full name, date of birth, contact information, date of arrest or citation, location of arrest (city, state), charges filed (if known), arresting agency (police department/sheriff/state police/federal), case number or citation number, have you been arraigned (yes/no), if yes what is your bail status (released on own recognizance/bail posted/still in custody/no bail set), court date if scheduled, assigned court location, do you have a public defender (yes/no), prior criminal history (yes/no), if yes please describe, employment status, are you a student (yes/no), military service (yes/no), describe the incident from your perspective, were there witnesses (yes/no), if yes list names and contact info, evidence or documentation you have, statements made to police (yes/no), did you sign anything (yes/no), immediate concerns or questions`,
+    color: "from-purple-500 to-violet-600"
+  },
+  {
+    icon: Home,
+    title: "Real Estate Transaction",
+    description: "Property purchase or sale questionnaire",
+    prompt: `Real estate transaction: your name, are you buying or selling, property address, property type (single family/condo/townhouse/multi-family/commercial/land), purchase price or asking price, financing method (cash/conventional mortgage/FHA/VA/other), pre-approved for financing (yes/no), if yes approval amount, down payment amount, desired closing date, property inspection completed (yes/no), inspection contingencies, appraisal contingency (yes/no), selling current home (yes/no), real estate agent involved (yes/no), if yes agent name and contact, title company preference (if any), homeowners association (yes/no), if yes HOA name and fees, known property issues or disclosures, additional terms or requests, urgency level (flexible/moderate/urgent), questions or concerns`,
+    color: "from-teal-500 to-cyan-600"
+  },
+  {
+    icon: Briefcase,
+    title: "Business Formation",
+    description: "New business setup questionnaire",
+    prompt: `Business formation: your name and contact information, proposed business name (first choice and alternates), business type (LLC/corporation/partnership/sole proprietorship), state of formation, business purpose or industry, number of owners or partners, ownership percentages, will you have employees initially (yes/no), expected number of employees, anticipated annual revenue, business location or address, home-based business (yes/no), funding source (personal savings/investors/loans/other), do you need an EIN (yes/no), special licenses or permits needed (yes/no), intellectual property to protect (trademarks/patents/copyrights/none), existing business or starting new, fiscal year preference (calendar year/other), registered agent needed (yes/no), additional services needed (operating agreement/bylaws/contracts/other), questions or special requirements`,
+    color: "from-emerald-500 to-green-600"
+  },
+  {
+    icon: Users,
+    title: "Estate Planning",
+    description: "Will and estate planning intake",
+    prompt: `Estate planning intake: full name, date of birth, marital status (single/married/divorced/widowed), spouse name if married, spouse date of birth, children names and birthdates, grandchildren (yes/no), if yes list names, total estate value estimate, primary assets (real estate/investments/business/retirement accounts/life insurance), real property locations (list states), do you have existing will (yes/no), if yes date created, do you have existing trust (yes/no), if yes type of trust, executor preference (who should manage your estate), guardian for minor children if applicable, beneficiaries and their relationship to you, specific bequests or gifts, charitable giving intentions (yes/no), healthcare directive or living will (yes/no), power of attorney designated (yes/no), if yes who, funeral or burial preferences, special instructions or concerns, family dynamics or potential disputes, questions about estate planning`,
+    color: "from-indigo-500 to-blue-600"
+  }
+];
+
 
 type QuestionDraft = {
   order: number;
@@ -150,6 +204,13 @@ export default function AIQuestionnairePage() {
     }
   }
 
+  // Handler to use a template
+  const useTemplate = (prompt: string) => {
+    setInput(prompt);
+    setError(null);
+    setDraft(null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 p-6">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -172,6 +233,38 @@ export default function AIQuestionnairePage() {
             <p className="text-slate-600 mt-2">
               Describe your questionnaire, AI will generate it automatically
             </p>
+          </div>
+        </div>
+
+        {/* Quick Templates */}
+        <div className="rounded-2xl border-2 border-white bg-white/80 backdrop-blur-sm p-6 shadow-xl">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">Quick Start Templates</h2>
+            <p className="text-sm text-slate-600">Click any template to generate a pre-configured questionnaire</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {QUESTIONNAIRE_TEMPLATES.map((template, index) => {
+              const Icon = template.icon;
+              return (
+                <button
+                  key={index}
+                  onClick={() => useTemplate(template.prompt)}
+                  disabled={generating}
+                  className="group relative flex flex-col items-start gap-3 rounded-xl border-2 border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 text-left transition-all hover:border-slate-300 hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${template.color} text-white shadow-md group-hover:shadow-lg transition-shadow`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-slate-900 text-sm mb-1">{template.title}</h3>
+                    <p className="text-xs text-slate-600 line-clamp-2">{template.description}</p>
+                  </div>
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Sparkles className="h-4 w-4 text-emerald-600" />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 

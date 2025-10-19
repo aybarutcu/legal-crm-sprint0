@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ChevronDown, ChevronUp, Mail, User as UserIcon, Tag, Building2, ExternalLink, MapPin, Phone, Globe, Briefcase } from "lucide-react";
+import { ChevronDown, ChevronUp, Mail, User as UserIcon, Tag, Building2, ExternalLink, MapPin, Phone, Globe, Briefcase, Edit } from "lucide-react";
 import { InviteClientButton } from "@/components/contact/InviteClientButton";
 
 type RoleUnion = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT" | undefined;
@@ -48,15 +48,29 @@ interface ClientInfoCardProps {
   email: string | null;
   phone?: string | null;
   currentUserRole?: RoleUnion;
+  initialExpanded?: boolean;
+  onEditClick?: () => void;
 }
 
-export function ClientInfoCard({ contactId, clientName, email, phone, currentUserRole }: ClientInfoCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export function ClientInfoCard({ 
+  contactId, 
+  clientName, 
+  email, 
+  phone, 
+  currentUserRole, 
+  initialExpanded = false,
+  onEditClick 
+}: ClientInfoCardProps) {
+  const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const [loading, setLoading] = useState(false);
   const [contact, setContact] = useState<ContactDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canInvite = useMemo(() => {
+    return currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+  }, [currentUserRole]);
+
+  const canEdit = useMemo(() => {
     return currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
   }, [currentUserRole]);
 
@@ -126,7 +140,7 @@ export function ClientInfoCard({ contactId, clientName, email, phone, currentUse
   }, [isExpanded, contact, loading, error, contactId]);
 
   return (
-    <div className="rounded-xl bg-gradient-to-br from-slate-50 to-blue-50/30 border border-slate-200">
+    <div className="rounded-xl bg-white from-slate-50 to-blue-50/30 border border-slate-200">
       {/* Collapsed Header */}
       <button
         type="button"
@@ -351,14 +365,36 @@ export function ClientInfoCard({ contactId, clientName, email, phone, currentUse
                 </div>
               )}
 
-              {/* View Full Profile Link */}
-              <a
-                href={`/dashboard/contacts/${contactId}`}
-                className="flex items-center justify-center gap-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-blue-400 transition-colors"
-              >
-                <ExternalLink className="h-4 w-4" />
-                View Full Profile
-              </a>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-2">
+                {canEdit && (
+                  onEditClick ? (
+                    <button
+                      type="button"
+                      onClick={onEditClick}
+                      className="flex items-center justify-center gap-2 flex-1 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors"
+                    >
+                      <Edit className="h-4 w-4" />
+                      Edit Contact
+                    </button>
+                  ) : (
+                    <a
+                      href={`/dashboard/contacts/${contactId}`}
+                      className="flex items-center justify-center gap-2 flex-1 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors"
+                    >
+                      <Edit className="h-4 w-4" />
+                      Edit Contact
+                    </a>
+                  )
+                )}
+                <a
+                  href={`/dashboard/contacts/${contactId}`}
+                  className={`flex items-center justify-center gap-2 ${canEdit ? 'flex-1' : 'w-full'} rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors`}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Profile
+                </a>
+              </div>
             </div>
           ) : null}
         </div>

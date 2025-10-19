@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Scale, Building, User, Plus } from "lucide-react";
 import { MATTER_TYPES } from "@/lib/validation/matter";
+import { CONTACT_TYPES, CONTACT_STATUS } from "@/lib/validation/contact";
 import type { ContactOption, MatterDetail, MatterParty } from "@/components/matters/types";
 import { WorkflowDialog } from "./workflow-dialog";
 import type { DocumentListItem } from "@/components/documents/types";
@@ -23,6 +24,7 @@ import { QuickActionsMenu } from "./QuickActionsMenu";
 import { formatDateWithRelative } from "@/lib/date-utils";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { ClientInfoCard } from "./ClientInfoCard";
+import { EditContactDialog } from "@/components/contact/edit-contact-dialog";
 
 type ActionType =
   | "APPROVAL_LAWYER"
@@ -178,10 +180,60 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     court: matter.court ?? "",
   });
 
+  // State for contact edit dialog
+  const [editContactDialogOpen, setEditContactDialogOpen] = useState(false);
+  const [editContactData, setEditContactData] = useState<{
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    company: string | null;
+    type: (typeof CONTACT_TYPES)[number];
+    status: (typeof CONTACT_STATUS)[number];
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+    country: string | null;
+    preferredLanguage: string | null;
+    source: string | null;
+    tags: string[];
+  } | null>(null);
+
   const isWorkflowRemovable = useMemo(
     () => currentUserRole === "ADMIN" || currentUserRole === "LAWYER",
     [currentUserRole],
   );
+
+  // Function to fetch full contact data for editing
+  const handleEditContactClick = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/contacts/${matter.client.id}`);
+      if (response.ok) {
+        const contact = await response.json();
+        setEditContactData({
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          phone: contact.phone,
+          company: contact.company,
+          type: contact.type,
+          status: contact.status,
+          address: contact.address,
+          city: contact.city,
+          state: contact.state,
+          zip: contact.zip,
+          country: contact.country,
+          preferredLanguage: contact.preferredLanguage,
+          source: contact.source,
+          tags: Array.isArray(contact.tags) ? contact.tags : [],
+        });
+        setEditContactDialogOpen(true);
+      }
+    } catch (error) {
+      console.error("Failed to fetch contact data:", error);
+    }
+  }, [matter.client.id]);
 
   useEffect(() => {
     void loadWorkflowInstances();
@@ -695,6 +747,11 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
                       email={matter.client.email}
                       phone={matter.client.phone}
                       currentUserRole={currentUserRole}
+                      onEditClick={
+                        currentUserRole === "ADMIN" || currentUserRole === "LAWYER"
+                          ? handleEditContactClick
+                          : undefined
+                      }
                     />
                   </div>
 
@@ -1066,6 +1123,20 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
           <Plus className="h-6 w-6" />
         </button>
       </div>
+
+      {/* Edit Contact Dialog */}
+      {(currentUserRole === "ADMIN" || currentUserRole === "LAWYER") && editContactData && (
+        <EditContactDialog
+          contactId={matter.client.id}
+          initialData={editContactData}
+          open={editContactDialogOpen}
+          onClose={() => {
+            setEditContactDialogOpen(false);
+            setEditContactData(null);
+          }}
+          onUpdated={() => router.refresh()}
+        />
+      )}
     </div>
   );
 }

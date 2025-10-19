@@ -94,107 +94,181 @@ export function ContactsPageClient({
     setToast(`${contact.firstName} ${contact.lastName} başarıyla eklendi.`);
   };
 
+  // Calculate stats
+  const stats = useMemo(() => {
+    const activeFilters = [
+      filterState.q,
+      filterState.type,
+      filterState.status,
+      filterState.ownerId,
+    ].filter(Boolean).length;
+
+    return {
+      total: pagination.total,
+      showing: contacts.length,
+      activeFilters,
+      hasFilters: activeFilters > 0,
+    };
+  }, [pagination.total, contacts.length, filterState]);
+
   return (
     <section className="space-y-6" data-testid="contacts-page-client">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Contacts</h2>
-          <p className="text-sm text-slate-500">
+      <div className="flex items-start justify-between gap-6">
+        <div className="flex-1">
+          <h2 className="text-2xl font-bold text-slate-900">Contacts</h2>
+          <p className="text-sm text-slate-600 mt-1.5">
             Lead ve müşteri kayıtlarını filtreleyip yönetin.
           </p>
         </div>
         <NewContactDialog onCreated={handleContactCreated} />
       </div>
 
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="rounded-xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Total Contacts</div>
+          <div className="text-2xl font-bold text-slate-900">{pagination.total}</div>
+          <div className="text-xs text-slate-500 mt-1">All records</div>
+        </div>
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4 shadow-sm">
+          <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Showing</div>
+          <div className="text-2xl font-bold text-blue-900">{stats.showing}</div>
+          <div className="text-xs text-blue-600 mt-1">On this page</div>
+        </div>
+        <div className="rounded-xl border-2 border-purple-200 bg-purple-50/50 p-4 shadow-sm">
+          <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">Page</div>
+          <div className="text-2xl font-bold text-purple-900">{pagination.page} / {pagination.totalPages}</div>
+          <div className="text-xs text-purple-600 mt-1">Current position</div>
+        </div>
+        <div className={`rounded-xl border-2 p-4 shadow-sm ${
+          stats.hasFilters 
+            ? 'border-amber-200 bg-amber-50/50' 
+            : 'border-emerald-200 bg-emerald-50/50'
+        }`}>
+          <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${
+            stats.hasFilters ? 'text-amber-700' : 'text-emerald-700'
+          }`}>
+            Filters
+          </div>
+          <div className={`text-2xl font-bold ${
+            stats.hasFilters ? 'text-amber-900' : 'text-emerald-900'
+          }`}>
+            {stats.activeFilters}
+          </div>
+          <div className={`text-xs mt-1 ${
+            stats.hasFilters ? 'text-amber-600' : 'text-emerald-600'
+          }`}>
+            {stats.hasFilters ? 'Active filters' : 'No filters'}
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Filter Section */}
       <form
-        className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:grid-cols-5"
+        className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-lg"
         method="get"
       >
         <input type="hidden" name="page" value="1" />
         <input type="hidden" name="pageSize" value={String(CONTACT_PAGE_SIZE)} />
-        <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
-          Ara
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
-            type="search"
-            name="q"
-            defaultValue={filterState.q}
-            placeholder="Ad, soyad veya e-posta"
-          />
-        </label>
-        <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Tip
-          <select
-            name="type"
-            defaultValue={filterState.type}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
-          >
-            <option value="">Hepsi</option>
-            {CONTACT_TYPES.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Durum
-          <select
-            name="status"
-            defaultValue={filterState.status}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
-          >
-            <option value="">Hepsi</option>
-            {CONTACT_STATUS.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-          Sahip
-          <select
-            name="ownerId"
-            defaultValue={filterState.ownerId}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
-          >
-            <option value="">Hepsi</option>
-            {owners.map((owner) => (
-              <option key={owner.id} value={owner.id}>
-                {owner.name ?? owner.email ?? owner.id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex items-end gap-3 md:col-span-2">
+        
+        <div className="grid gap-4 md:grid-cols-4">
+          <label className="flex flex-col gap-2 md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Search Contacts
+            </span>
+            <input
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+              type="search"
+              name="q"
+              defaultValue={filterState.q}
+              placeholder="Ad, soyad veya e-posta..."
+            />
+          </label>
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Contact Type
+            </span>
+            <select
+              name="type"
+              defaultValue={filterState.type}
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
+            >
+              <option value="">All Types</option>
+              {CONTACT_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Status
+            </span>
+            <select
+              name="status"
+              defaultValue={filterState.status}
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
+            >
+              <option value="">All Statuses</option>
+              {CONTACT_STATUS.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          
+          <label className="flex flex-col gap-2 md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Owner
+            </span>
+            <select
+              name="ownerId"
+              defaultValue={filterState.ownerId}
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
+            >
+              <option value="">All Owners</option>
+              {owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name ?? owner.email ?? owner.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3 mt-6 pt-6 border-t-2 border-slate-200">
           <button
             type="submit"
-            className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+            className="flex-1 md:flex-none rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-white hover:bg-accent/90 shadow-sm hover:shadow-md transition-all"
           >
-            Filtreleri Uygula
+            Apply Filters
           </button>
           <Link
             href="/contacts?page=1"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            className="rounded-lg border-2 border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
           >
-            Temizle
+            Clear All
           </Link>
         </div>
       </form>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-card">
+      {/* Contacts Table */}
+      <div className="overflow-x-auto rounded-2xl border-2 border-slate-200 bg-white shadow-lg">
         <table className="w-full table-auto text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-widest text-slate-500">
+          <thead className="border-b-2 border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 text-xs uppercase tracking-widest text-slate-600">
             <tr>
-              <th className="px-4 py-3">Ad</th>
-              <th className="px-4 py-3">Soyad</th>
-              <th className="px-4 py-3">E-posta</th>
-              <th className="px-4 py-3">Tip</th>
-              <th className="px-4 py-3">Durum</th>
-              <th className="px-4 py-3">Etiketler</th>
-              <th className="px-4 py-3">Sahip</th>
-              <th className="px-4 py-3">Oluşturma</th>
+              <th className="px-4 py-3.5 font-bold">Ad</th>
+              <th className="px-4 py-3.5 font-bold">Soyad</th>
+              <th className="px-4 py-3.5 font-bold">E-posta</th>
+              <th className="px-4 py-3.5 font-bold">Tip</th>
+              <th className="px-4 py-3.5 font-bold">Durum</th>
+              <th className="px-4 py-3.5 font-bold">Etiketler</th>
+              <th className="px-4 py-3.5 font-bold">Sahip</th>
+              <th className="px-4 py-3.5 font-bold">Oluşturma</th>
             </tr>
           </thead>
           <tbody>
@@ -202,51 +276,61 @@ export function ContactsPageClient({
               <tr
                 key={contact.id}
                 data-testid={`contact-row-${contact.id}`}
-                className="border-b border-slate-100 last:border-none hover:bg-slate-50"
+                className="border-b border-slate-100 last:border-none hover:bg-accent/5 transition-colors"
               >
-                <td className="px-4 py-3 font-medium text-slate-900">
-                  <Link href={`/contacts/${contact.id}`} className="hover:underline">
+                <td className="px-4 py-3.5 font-semibold text-slate-900">
+                  <Link href={`/contacts/${contact.id}`} className="hover:text-accent hover:underline transition-colors">
                     {contact.firstName}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-700">{contact.lastName}</td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3.5 text-slate-700">{contact.lastName}</td>
+                <td className="px-4 py-3.5 text-slate-600">
                   {contact.email ?? "—"}
                 </td>
-                <td className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-                  {contact.type}
+                <td className="px-4 py-3.5">
+                  <span className="inline-flex items-center rounded-md bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700 border border-blue-200">
+                    {contact.type}
+                  </span>
                 </td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                <td className="px-4 py-3.5">
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 border border-slate-200">
                     {contact.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3.5">
                   {contact.tags.length ? (
-                    contact.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="mr-2 inline-flex items-center rounded-full bg-accent/10 px-2 py-1 text-xs text-accent"
-                      >
-                        #{tag}
-                      </span>
-                    ))
+                    <div className="flex flex-wrap gap-1">
+                      {contact.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent border border-accent/20"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3.5 text-slate-600">
                   {contact.owner?.name ?? contact.owner?.email ?? "—"}
                 </td>
-                <td className="px-4 py-3 text-slate-500">
+                <td className="px-4 py-3.5 text-slate-500">
                   {new Date(contact.createdAt).toLocaleDateString("tr-TR")}
                 </td>
               </tr>
             ))}
             {contacts.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
-                  Kayıt bulunamadı.
+                <td colSpan={8} className="px-4 py-12 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="text-4xl">📭</div>
+                    <div>
+                      <div className="text-base font-semibold text-slate-900">No contacts found</div>
+                      <div className="text-sm text-slate-600 mt-1">Try adjusting your search or filter criteria</div>
+                    </div>
+                  </div>
                 </td>
               </tr>
             ) : null}
@@ -254,32 +338,35 @@ export function ContactsPageClient({
         </table>
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-card">
-        <div>
-          Sayfa {pagination.page} / {pagination.totalPages} · Toplam {pagination.total} kayıt
+      {/* Pagination */}
+      <div className="flex items-center justify-between rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-lg">
+        <div className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">Page {pagination.page}</span> of {pagination.totalPages} 
+          <span className="text-slate-400 mx-2">•</span>
+          <span className="font-semibold text-slate-900">{pagination.total}</span> total contacts
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <Link
             aria-disabled={!pagination.hasPrev}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+            className="rounded-lg border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-white aria-disabled:hover:border-slate-200 transition-all shadow-sm"
             href={
               !pagination.hasPrev
                 ? "#"
                 : buildQueryString(filters, { page: pagination.page - 1 })
             }
           >
-            Önceki
+            ← Previous
           </Link>
           <Link
             aria-disabled={!pagination.hasNext}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+            className="rounded-lg border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-white aria-disabled:hover:border-slate-200 transition-all shadow-sm"
             href={
               !pagination.hasNext
                 ? "#"
                 : buildQueryString(filters, { page: pagination.page + 1 })
             }
           >
-            Sonraki
+            Next →
           </Link>
         </div>
       </div>

@@ -1,252 +1,366 @@
 # Legal CRM - AI Coding Agent Instructions
 
 ## Project Overview
-This is a legal case management system built with Next.js 15 (App Router), TypeScript, Prisma ORM, and PostgreSQL. It manages contacts, matters (cases), documents, workflows, and a client portal for law firms.
+Legal case management system for law firms. Built with Next.js 15 (App Router), TypeScript, Prisma, PostgreSQL. Manages contacts, matters (cases), documents, workflows, tasks, calendar events, and a client portal.
 
-## Architecture Essentials
+**Stack**: Next.js 15 · TypeScript · Prisma · PostgreSQL · NextAuth · MinIO/S3 · Redis · TailwindCSS · shadcn/ui
 
-### Route Structure (Next.js App Router)
-- `app/(dashboard)/*` - Internal staff views (lawyers, paralegals, admin)
-- `app/(portal)/portal/*` - Client self-service portal (separate auth context)
-- `app/portal/*` - Portal authentication pages (login, activate, password reset)
-- `app/api/*` - REST API routes (use `withApiHandler` wrapper)
+## Critical Architecture Patterns
 
-### API Route Pattern (CRITICAL)
-All API routes MUST use the centralized error handler:
+### 1. API Route Handler (MANDATORY)
+**Every API route MUST use `withApiHandler`** from `lib/api-handler.ts`:
+
 ```typescript
 import { withApiHandler } from "@/lib/api-handler";
 
-export const GET = withApiHandler(async (req, { session, params }) => {
-  // session: authenticated user (if requireAuth: true)
-  // params: awaited route params (e.g., { id: string })
-  // Return NextResponse.json() or throw errors (auto-handled)
-}, { requireAuth: true, rateLimit: { limit: 100, windowMs: 60000 } });
+export const GET = withApiHandler<{ id: string }>(
+  async (req, { session, params }) => {
+    const { id } = await params; // Next.js 15 requires await
+    // session available if requireAuth: true
+    // Just throw errors - auto-caught and mapped
+    return NextResponse.json({ data });
+  },
+  { requireAuth: true, rateLimit: { limit: 100, windowMs: 60000 } }
+);
 ```
 
-**Why**: Provides automatic error handling, Prisma error mapping, rate limiting, auth checks, and request logging.
+**Why**: Auto error handling, Prisma error mapping (P2002→409, P2025→404), rate limiting, auth checks, request logging, performance tracking.
 
-### Client Component Pattern
-ALL interactive components MUST declare `"use client"` at the top. Server components fetch data and pass to client components:
+### 2. Server/Client Component Split (Next.js 15 App Router)
+Server components (default) fetch data, client components handle interactivity.
+
 ```tsx
-// app/(dashboard)/matters/[id]/page.tsx (Server Component)
-export default async function MatterPage({ params }: { params: { id: string } }) {
-  const matter = await fetchMatterData((await params).id);
-  return <MatterDetailClient matter={matter} />; // Pass to client component
+// app/(dashboard)/contacts/[id]/page.tsx - SERVER COMPONENT
+export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; // Next.js 15 pattern
+  const session = await getAuthSession();
+  const contact = await prisma.contact.findUnique({ where: { id }, include: { ... } });
+  
+  return <ContactDetailClient contact={contact} currentUser={session.user} />;
 }
 ```
 
-## Database & Prisma
+```tsx
+// _components/contact-detail-client.tsx - CLIENT COMPONENT
+"use client"; // REQUIRED for useState, useEffect, onClick, etc.
 
-### Always Use Transaction for Multi-Step Operations
-```typescript
-await prisma.$transaction(async (tx) => {
-  const matter = await tx.matter.create({ data: { ... } });
-  await tx.auditLog.create({ data: { ... } });
-});
-```
-
-### Schema Knowledge
-- **User.role**: ADMIN | LAWYER | PARALEGAL | CLIENT (NO DEFAULT - always explicit)
-- **Contact.type**: LEAD | CLIENT | OPPOSING | WITNESS | EXPERT | OTHER
-- **Matter** has many-to-many with **Contact** via **MatterParty** (role: PLAINTIFF, DEFENDANT, etc.)
-- **MatterTeamMember** links Users to Matters with role-based access
-- **WorkflowInstance** has ordered **WorkflowInstanceStep[]** with `actionType` determining handler
-
-## Workflow System (Complex - Read Carefully)
-
-### Handler Registry Pattern
-The workflow engine uses a **pluggable handler registry** (`lib/workflows/registry.ts`):
-- Each `ActionType` enum value has a corresponding `IActionHandler` implementation
-- Handlers are registered at app startup in `lib/workflows/handlers/index.ts`
-- New workflow actions require: 1) Add ActionType enum, 2) Create handler, 3) Register in index
-
-### Current Action Types
-```typescript
-enum ActionType {
-  APPROVAL_LAWYER       // Internal approval by lawyer
-  SIGNATURE_CLIENT      // Client e-signature request
-  REQUEST_DOC_CLIENT    // Document request from client
-  PAYMENT_CLIENT        // Payment collection from client
-  CHECKLIST             // Multi-item task checklist
-  WRITE_TEXT            // Rich text input step
-  POPULATE_QUESTIONNAIRE // Dynamic questionnaire generation
+export function ContactDetailClient({ contact, currentUser }) {
+  const [editing, setEditing] = useState(false);
+  // All interactive logic here
 }
 ```
 
-### Step States & Transitions
+**Never** use Prisma in client components - fetch in server component/API, pass via props.
+
+### 3. Workflow System - Pluggable Handler Registry
+Complex engine for multi-step processes (onboarding, approvals, document collection).
+
+**Core Concepts**:
+- `WorkflowTemplate` - Reusable process blueprint with ordered steps
+- `WorkflowInstance` - Specific execution attached to Contact/Matter
+- `WorkflowInstanceStep` - Individual step with `actionState` (PENDING → READY → IN_PROGRESS → COMPLETED)
+- `IActionHandler` - Implements behavior for each `ActionType`
+
+**Handler Registry** (`lib/workflows/registry.ts`):
 ```typescript
-enum ActionState {
-  PENDING      // Not yet ready (blocked by prior steps)
-  READY        // Can be started
-  IN_PROGRESS  // Being worked on
-  COMPLETED    // Successfully finished
-  FAILED       // Error occurred
-  SKIPPED      // Manually skipped (if not required)
+class ActionRegistry {
+  register(handler: IActionHandler): void;
+  get(type: ActionType): IActionHandler;
 }
 ```
 
-**Critical**: Only steps with `actionState: READY` can be started. Update state via `/api/workflows/instances/[id]/steps/[stepId]/start` and `/complete` endpoints.
+Handlers registered in `lib/workflows/handlers/index.ts`:
+```typescript
+export function registerDefaultWorkflowHandlers(): void {
+  actionRegistry.override(new ApprovalActionHandler());
+  actionRegistry.override(new SignatureActionHandler());
+  actionRegistry.override(new RequestDocActionHandler());
+  actionRegistry.override(new PaymentActionHandler());
+  actionRegistry.override(new TaskActionHandler());
+  actionRegistry.override(new ChecklistActionHandler());
+  actionRegistry.override(new WriteTextActionHandler());
+  actionRegistry.override(new PopulateQuestionnaireActionHandler());
+}
+```
 
-## Authorization & Security
+**Available Action Types** (8 total):
+- `APPROVAL_LAWYER` - Internal approval by lawyer
+- `SIGNATURE_CLIENT` - Client e-signature request
+- `REQUEST_DOC_CLIENT` - Document request from client
+- `PAYMENT_CLIENT` - Payment request from client
+- `TASK` - Task assignment
+- `CHECKLIST` - Multi-item checklist
+- `WRITE_TEXT` - Text input/writing task
+- `POPULATE_QUESTIONNAIRE` - Dynamic questionnaire generation
 
-### Role-Based Access Control (RBAC)
-Use `lib/rbac.ts` for role checks in API routes:
+**Creating New Workflow Action**:
+1. Add to `ActionType` enum in `prisma/schema.prisma`
+2. Create handler class implementing `IActionHandler<TConfig, TData>`
+3. Implement: `validateConfig()`, `canStart()`, `start()`, `complete()`, `fail()`, `getNextStateOnEvent()`
+4. Register in `lib/workflows/handlers/index.ts`
+5. Add to `actionTypeSchema` in `lib/validation/workflow.ts` (prevents 422 errors)
+
+Example handler structure:
+```typescript
+export class CustomActionHandler implements IActionHandler<CustomConfig, CustomData> {
+  readonly type = ActionType.CUSTOM_ACTION;
+  
+  validateConfig(config: CustomConfig): void {
+    customConfigSchema.parse(config); // Zod validation
+  }
+  
+  canStart(ctx: WorkflowRuntimeContext): boolean {
+    return ctx.actor?.role === Role.LAWYER; // Permission check
+  }
+  
+  async start(ctx: WorkflowRuntimeContext): Promise<ActionState> {
+    // Initialize step data, send notifications, etc.
+    return ActionState.IN_PROGRESS;
+  }
+  
+  async complete(ctx: WorkflowRuntimeContext, payload: unknown): Promise<ActionState> {
+    // Validate payload, update ctx.data, update ctx.context
+    ctx.updateContext({ customField: "value" }); // Persists to instance
+    return ActionState.COMPLETED;
+  }
+}
+```
+
+**Workflow Context Persistence**: Use `ctx.updateContext()` to store data accessible to subsequent steps (e.g., questionnaire responses, approval decisions).
+
+**Workflow Lifecycle**:
+- `DRAFT` → Workflow created but not started
+- `ACTIVE` → Running, steps can be executed
+- `PAUSED` → Temporarily stopped (manual)
+- `COMPLETED` → All required steps finished
+- `CANCELLED` → Stopped before completion
+
+**Step State Transitions**:
+- `PENDING` → Not yet ready (blocked by prior steps)
+- `READY` → Can be started
+- `IN_PROGRESS` → Being worked on
+- `COMPLETED` → Successfully finished
+- `FAILED` → Error occurred
+- `SKIPPED` → Manually skipped (if not required)
+
+**Critical**: Only steps with `actionState: READY` can be started. Use `/api/workflows/instances/[id]/steps/[stepId]/start` and `/complete` endpoints.
+
+### 4. Role-Based Access Control (RBAC)
+Four roles: `ADMIN | LAWYER | PARALEGAL | CLIENT` (no default in schema).
+
+**Middleware** (`middleware.ts`):
+- Redirects CLIENTs to `/portal`
+- Protects `/dashboard/admin/*` for ADMIN only
+- Add to `routeRolePolicies` array for new protected routes
+
+**API-level checks** (`lib/rbac.ts`):
 ```typescript
 import { assertRole } from "@/lib/rbac";
 
-// In API handler
-assertRole({ userRole: session?.user?.role, allowedRoles: [Role.ADMIN, Role.LAWYER] });
-// Throws if not allowed (auto-caught by withApiHandler)
+assertRole({ userRole: session.user.role, allowedRoles: [Role.ADMIN, Role.LAWYER] });
+// Throws "forbidden" error if fails (auto-caught by withApiHandler)
 ```
 
-### Route Protection (Middleware)
-`middleware.ts` enforces dashboard access:
-- CLIENTs are redirected to `/portal`
-- `/dashboard/admin/*` requires ADMIN role
-- Extend `routeRolePolicies` array for new protected routes
-
-## Development Workflows
-
-### Local Setup (From Clean State)
-```bash
-npm install
-docker compose up -d              # Postgres, MinIO (S3), Redis, MailHog
-npx prisma migrate dev --name init
-npm run db:seed                   # Creates demo users & data
-npm run dev
-```
-
-### Quick Database Reset
-```bash
-./scripts/dev-reset.sh            # Drops, recreates, migrates, seeds
-```
-
-### Testing Commands
-```bash
-npm run test          # Vitest unit tests (tests/unit/, tests/api/)
-npm run e2e           # Playwright E2E tests (tests/e2e/)
-npm run lint          # ESLint with TypeScript
-npm run format        # Prettier
-```
-
-## Key Conventions
-
-### UI Component Patterns
-
-#### Workflow Timeline (NEW)
-The workflow UI uses a horizontal scrollable timeline for better visualization:
-- `WorkflowTimeline` - Horizontal scrollable workflow steps with visual indicators
-- `WorkflowStepDetail` - Expanded detail view for selected step
-- Click any step in timeline to view/edit details below
-- Auto-scrolls to selected step and current step on load
-- Role-based buttons (Add Workflow, Remove Workflow, Add Step - ADMIN/LAWYER only)
-
-```tsx
-<WorkflowTimeline
-  workflows={workflows}
-  selectedStepId={selectedStepId}
-  currentUserRole={currentUserRole}
-  onStepClick={(workflowId, stepId) => { /* handle selection */ }}
-  onAddWorkflow={() => { /* open workflow dialog */ }}
-  onRemoveWorkflow={(id) => { /* remove workflow */ }}
-  onAddStep={(workflowId) => { /* add step to workflow */ }}
-/>
-```
-
-### Validation with Zod
-All API inputs validated via `lib/validation/*.ts` schemas:
+**Authorization helper** (`lib/authorization.ts`):
 ```typescript
-import { matterCreateSchema } from "@/lib/validation/matter";
+import { assertCanModifyResource } from "@/lib/authorization";
 
-const body = await req.json();
-const validated = matterCreateSchema.parse(body); // Throws ZodError if invalid
-```
-**Note**: `withApiHandler` auto-catches ZodError and returns 400 with details.
-
-### Environment Variables (Required)
-```bash
-DATABASE_URL=postgresql://...
-NEXTAUTH_SECRET=<random-string>
-NEXTAUTH_URL=http://localhost:3000
-
-# S3 Storage (MinIO for local)
-S3_BUCKET=legal-crm-documents
-S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin
-S3_ENDPOINT=http://localhost:9000
-S3_FORCE_PATH_STYLE=true
-
-# Email (MailHog for local - see http://localhost:8025)
-SMTP_HOST=localhost
-SMTP_PORT=1025
-SMTP_FROM=noreply@legalcrm.local
+await assertCanModifyResource(session.user, matter.ownerId, matter.teamMembers);
+// Checks ownership or team membership
 ```
 
-### File Upload Flow
-1. Client requests signed URL: `POST /api/uploads` → returns `{ url, key }`
-2. Client uploads directly to S3 using signed URL (no data through server)
-3. Client creates document record: `POST /api/documents` with `{ storageKey: key, ... }`
+## Database Patterns
 
-**Why**: Offloads upload bandwidth from Next.js server to S3 directly.
-
-## Documentation References
-
-- **Full System Docs**: `docs/MASTER-SYSTEM-DOCUMENTATION.md` (1083 lines - architecture, API, schema)
-- **Sprint Roadmap**: `docs/SPRINT-ROADMAP.md` (completed features, backlog)
-- **Seed Data**: `docs/SEED-DATA.md` (default users, passwords for testing)
-- **ADRs**: `docs/adr/*.md` (architectural decision records)
-- **OpenAPI Spec**: `docs/openapi.yaml` or `/api/openapi` endpoint
-
-## Common Pitfalls & Solutions
-
-### ❌ Don't: Create API routes without `withApiHandler`
-**Why**: Lose automatic error handling, rate limiting, auth, logging.
-
-### ❌ Don't: Forget `"use client"` on interactive components
-**Why**: Next.js will error on `useState`, `useEffect`, event handlers in server components.
-
-### ❌ Don't: Use Prisma client in client components
-**Why**: Prisma runs in Node.js only. Fetch data in server components/API routes, pass to client via props.
-
-### ✅ Do: Use `await params` in API routes (Next.js 15+)
+### Soft Deletes (Standard Pattern)
+Most models have `deletedAt` and `deletedBy`. **Never hard delete** - use soft delete:
 ```typescript
-export const GET = withApiHandler<{ id: string }>(async (req, { params }) => {
-  const { id } = await params; // Required in Next.js 15
-});
-```
-
-### ✅ Do: Soft delete instead of hard delete
-Most models have `deletedAt` and `deletedBy` fields. Use:
-```typescript
-await prisma.document.update({
+await prisma.matter.update({
   where: { id },
   data: { deletedAt: new Date(), deletedBy: session.user.id }
 });
+
+// Exclude in queries
+const matters = await prisma.matter.findMany({ where: { deletedAt: null } });
 ```
 
-### ✅ Do: Create audit logs for important actions
+### Transaction for Multi-Step Operations
+```typescript
+await prisma.$transaction(async (tx) => {
+  const matter = await tx.matter.create({ data: matterData });
+  await tx.auditLog.create({ data: { action: "MATTER_CREATED", entityId: matter.id } });
+  await tx.task.createMany({ data: initialTasks });
+});
+```
+
+### Audit Logging (Required for Important Actions)
 ```typescript
 import { createAuditLog } from "@/lib/audit";
 
 await createAuditLog({
-  action: "MATTER_CREATED",
+  action: "CONTACT_UPDATED",
   actorId: session.user.id,
-  entityType: "Matter",
-  entityId: matter.id,
-  metadata: { title: matter.title }
+  entityType: "Contact",
+  entityId: contact.id,
+  metadata: { changes: { field: "oldValue → newValue" } }
 });
 ```
 
-## Current State (Sprint 0 Complete)
-All core features implemented and documented. Focus areas for new work:
-- UI/UX improvements (see `docs/SPRINT-ROADMAP.md`)
-- Questionnaire conditional logic
-- Advanced workflow features
-- Performance optimization (see `lib/metrics.ts` for instrumentation)
+### Key Schema Relationships
+- **Contact ↔ Matter**: Many-to-many via `MatterParty` (role: PLAINTIFF, DEFENDANT, etc.)
+- **Contact.type**: LEAD → CLIENT conversion via `lib/contact-to-client.ts`
+- **User ↔ Contact**: One-to-one (for client portal access via `userId` field)
+- **User ↔ Matter**: One-to-many (ownership via `ownerId`) and many-to-many (team via `MatterTeamMember`)
+- **WorkflowInstance**: Attached to Contact or Matter, has ordered `WorkflowInstanceStep[]`
+- **Document → Matter/Contact**: Belongs to one via `matterId` or `contactId`
+- **Document versioning**: Parent-child via `parentDocumentId`
 
-## Questions to Ask Before Starting
-1. **Is this an API route?** Use `withApiHandler`
-2. **Does it need user interaction?** Add `"use client"`
-3. **Creating new workflow action?** Implement `IActionHandler`, register in handlers/index.ts
-4. **Modifying database?** Check if model has soft delete fields
-5. **New route with role restrictions?** Update `middleware.ts` policies
+## Key Development Workflows
+
+### Local Environment Setup
+```bash
+npm install
+docker compose up -d  # Postgres:5432, MinIO:9000/9001, Redis:6379, MailHog:1025/8025
+cp .env.example .env
+npx prisma migrate dev --name init
+npm run db:seed       # Creates 4 users, 7 contacts, 6 matters, workflow templates
+npm run dev           # http://localhost:3000
+```
+
+**Seed Users** (all password: `password123`):
+- `admin@legalcrm.local` (ADMIN)
+- `lawyer@legalcrm.local` (LAWYER)
+- `paralegal@legalcrm.local` (PARALEGAL)
+
+**MailHog UI**: http://localhost:8025 (catch all emails)
+
+### Quick Database Reset
+```bash
+./scripts/dev-reset.sh  # Drops DB, recreates, migrates, seeds
+```
+
+### Testing
+```bash
+npm run test     # Vitest (tests/unit/, tests/api/)
+npm run e2e      # Playwright (tests/e2e/)
+npm run lint     # ESLint
+npm run format   # Prettier
+```
+
+### Generate OpenAPI Schema
+```bash
+node scripts/gen-openapi.js  # Updates public/openapi.json
+```
+
+## Project-Specific Conventions
+
+### File Upload Flow (Direct S3)
+1. Client: `POST /api/uploads` → `{ url, key }` (signed URL)
+2. Client: PUT to signed URL (direct to MinIO/S3, no Next.js proxy)
+3. Client: `POST /api/documents` with `{ storageKey: key, filename, matterId, ... }`
+
+**Why**: Offloads bandwidth from Next.js server. See `lib/storage.ts`.
+
+**Download Flow**: Request document → server checks permissions → generates presigned GET URL (15 min expiry) → client downloads from S3.
+
+### Client Invitation & Portal Access
+**Invitation Flow**:
+1. Lawyer invites client: `POST /api/clients/invite` (creates User + Contact, sends email)
+2. Client receives email with activation link
+3. Client sets password: `POST /api/clients/activate` with token
+4. Client can login at `/portal/login`
+
+**Critical**: User.role has NO DEFAULT - must be explicitly set during creation. This prevents accidental LAWYER user creation during client activation.
+
+### Zod Validation Pattern
+All API inputs validated via `lib/validation/*.ts`:
+```typescript
+import { matterCreateSchema } from "@/lib/validation/matter";
+
+const body = await req.json();
+const validated = matterCreateSchema.parse(body); // Throws ZodError
+// withApiHandler auto-catches ZodError → 400 with error details
+```
+
+### Calendar Integration
+- Google Calendar sync via OAuth (`lib/google/calendar.ts`)
+- ICS feed generation for external calendar apps (`lib/events/ics.ts`)
+- Reminder service runs every 60s (`scripts/send-reminders.ts`)
+- Settings at `/dashboard/settings/calendar`
+
+### Environment Variables (Critical)
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/legalcrm
+NEXTAUTH_SECRET=<random-32-char-string>
+NEXTAUTH_URL=http://localhost:3000
+
+S3_ENDPOINT=http://localhost:9000
+S3_BUCKET=legalcrm
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_FORCE_PATH_STYLE=true
+
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_FROM=noreply@legalcrm.local
+
+ICS_SIGNING_SECRET=<random-string>
+CLIENT_INVITE_SECRET=<random-string>
+```
+
+See `.env.example` for full list.
+
+## Common Pitfalls & Solutions
+
+❌ **Don't**: Create API routes without `withApiHandler`  
+✅ **Do**: Always wrap with `withApiHandler` for error handling, auth, rate limiting
+
+❌ **Don't**: Forget `"use client"` on interactive components  
+✅ **Do**: Add to any component using `useState`, `useEffect`, event handlers
+
+❌ **Don't**: Use Prisma in client components  
+✅ **Do**: Fetch in server components or API routes, pass data via props
+
+❌ **Don't**: Hard delete records  
+✅ **Do**: Soft delete with `deletedAt`/`deletedBy` fields
+
+❌ **Don't**: Forget to `await params` in Next.js 15  
+✅ **Do**: `const { id } = await params;` in API routes and page components
+
+❌ **Don't**: Skip audit logs for important actions  
+✅ **Do**: Call `createAuditLog()` for CRUD on matters, contacts, documents
+
+❌ **Don't**: Create users with default role or auto-create in auth  
+✅ **Do**: Explicitly set role during user creation via controlled endpoints (ADMIN, LAWYER, PARALEGAL, CLIENT)
+
+## Known Issues & Historical Fixes
+
+### Fixed: Client Invitation Auth Bug (Oct 16, 2025)
+**Problem**: Clients logging in after activation created duplicate LAWYER users.  
+**Root Cause**: Auth credentials provider auto-created users with default `role: LAWYER`.  
+**Fix**: Removed auto-user creation from `lib/auth.ts` and `@default(LAWYER)` from schema. Users must be explicitly created before login.
+
+### Fixed: WRITE_TEXT Validation Errors (Oct 16, 2025)
+**Problem**: 422 errors when saving templates/instances with WRITE_TEXT steps.  
+**Root Cause**: `actionTypeSchema` in `lib/validation/workflow.ts` missing WRITE_TEXT enum value.  
+**Fix**: Added WRITE_TEXT to actionTypeSchema and all inline enums in workflow APIs.
+
+## Documentation Map
+
+- **Master Docs**: `docs/MASTER-SYSTEM-DOCUMENTATION.md` (1000+ lines, complete system reference)
+- **Sprint Roadmap**: `docs/SPRINT-ROADMAP.md` (completed features, backlog)
+- **Seed Data**: `docs/SEED-DATA.md` (test users, contacts, matters)
+- **Workflow Backlog**: `docs/features/workflow/WORKFLOW-BACKLOG.md` (enhancement roadmap)
+- **Workflow Docs**: `docs/features/workflow/*.md` (implementation guides, context usage)
+- **ADRs**: `docs/adr/*.md` (architectural decisions)
+- **Runbooks**: `docs/runbooks/*.md` (operational guides)
+- **OpenAPI**: `/api/openapi` or `public/openapi.json`
+
+## Pre-Flight Checklist for Changes
+
+1. **API route?** → Use `withApiHandler`, validate with Zod schemas
+2. **Interactive UI?** → Add `"use client"` directive
+3. **New workflow action?** → Implement `IActionHandler`, register in `handlers/index.ts`
+4. **Database change?** → Check for soft delete fields, use transactions for multi-step
+5. **New protected route?** → Update `middleware.ts` policies
+6. **Important action?** → Add audit log
+7. **New environment variable?** → Update `.env.example`

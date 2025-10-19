@@ -29,7 +29,7 @@ export default function MarketingPage() {
             Müşteri Portalı
           </Link>
           <Link
-            href="/api/openapi"
+            href="/api-docs"
             className="rounded-lg border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white"
           >
             API Dokümantasyonu

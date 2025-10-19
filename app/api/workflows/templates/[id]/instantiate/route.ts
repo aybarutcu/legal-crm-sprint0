@@ -6,16 +6,19 @@ import { prisma } from "@/lib/prisma";
 import { workflowInstantiateSchema } from "@/lib/validation/workflow";
 import { buildMatterAccessFilter } from "@/lib/tasks/service";
 import { WorkflowMetrics } from "@/lib/workflows/observability";
+import { validateWorkflowDependencies, getReadySteps } from "@/lib/workflows/dependency-resolver";
 
-type Params = { params: { id: string } };
-
-export const POST = withApiHandler(
-  async (req: NextRequest, { session, params }: Params) => {
+export const POST = withApiHandler<{ id: string }>(
+  async (req: NextRequest, { session, params }) => {
     const user = session!.user!;
+    const resolvedParams = await params;
+    if (!resolvedParams) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
     const payload = workflowInstantiateSchema.parse(await req.json());
 
     const template = await prisma.workflowTemplate.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: {
         steps: {
           orderBy: { order: "asc" },
@@ -58,7 +61,24 @@ export const POST = withApiHandler(
         computedOrder: step.order ?? index,
       }));
 
-    const minOrder = Math.min(...sortedSteps.map((step) => step.computedOrder));
+    // Validate dependencies before creating instance
+    const templateStepsForValidation = sortedSteps.map((step) => ({
+      id: `temp-${step.id}`,
+      order: step.computedOrder,
+      dependsOn: step.dependsOn ?? [],
+      dependencyLogic: step.dependencyLogic ?? "ALL",
+      actionState: ActionState.PENDING,
+    }));
+
+    // Type assertion: validation only needs id, order, dependsOn, dependencyLogic, actionState
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const validation = validateWorkflowDependencies(templateStepsForValidation as any);
+    if (!validation.valid) {
+      return NextResponse.json(
+        { error: `Invalid workflow dependencies: ${validation.errors.join(", ")}` },
+        { status: 400 },
+      );
+    }
 
     const instance = await prisma.workflowInstance.create({
       data: {
@@ -75,10 +95,9 @@ export const POST = withApiHandler(
             actionType: step.actionType,
             roleScope: step.roleScope,
             required: step.required,
-            actionState:
-              step.computedOrder === minOrder
-                ? ActionState.READY
-                : ActionState.PENDING,
+            // Note: dependsOn will be set after instance creation (need step IDs)
+            // All steps start as PENDING - will be updated to READY based on dependencies
+            actionState: ActionState.PENDING,
             actionData: {
               config: step.actionConfig ?? {},
               history: [],
@@ -95,19 +114,88 @@ export const POST = withApiHandler(
       },
     });
 
+    // After creation, map template dependencies (orders) to instance dependencies (step IDs)
+    // and determine which steps are READY
+    const orderToStepIdMap = new Map<number, string>();
+    instance.steps.forEach((step) => {
+      orderToStepIdMap.set(step.order, step.id);
+    });
+
+    // Update steps with dependency information
+    await prisma.$transaction(
+      sortedSteps.map((templateStep, index) => {
+        const instanceStep = instance.steps[index];
+        const dependsOnOrders = templateStep.dependsOn ?? [];
+        const dependsOnStepIds = dependsOnOrders
+          .map((order) => orderToStepIdMap.get(order))
+          .filter((id): id is string => id !== undefined);
+
+        return prisma.workflowInstanceStep.update({
+          where: { id: instanceStep.id },
+          data: {
+            dependsOn: dependsOnStepIds,
+            dependencyLogic: templateStep.dependencyLogic ?? "ALL",
+          },
+        });
+      })
+    );
+
+    // Reload instance with updated dependency information
+    const instanceWithDeps = await prisma.workflowInstance.findUnique({
+      where: { id: instance.id },
+      include: {
+        template: { select: { id: true, name: true, version: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        steps: {
+          orderBy: { order: "asc" },
+        },
+      },
+    });
+
+    if (!instanceWithDeps) {
+      return NextResponse.json({ error: "Instance not found after creation" }, { status: 500 });
+    }
+
+    // Determine which steps are READY based on dependencies
+    const readySteps = getReadySteps(instanceWithDeps.steps);
+
+    // Update READY steps in database
+    if (readySteps.length > 0) {
+      await prisma.$transaction(
+        readySteps.map((step) =>
+          prisma.workflowInstanceStep.update({
+            where: { id: step.id },
+            data: { actionState: ActionState.READY },
+          })
+        )
+      );
+    }
+
     // Record instance creation metric
     WorkflowMetrics.recordInstanceCreated(template.id);
 
-    // Send notification for the first READY step
+    // Send notifications for all READY steps
     const { notifyStepReady } = await import("@/lib/workflows/notifications");
-    const firstReadyStep = instance.steps.find((s) => s.actionState === ActionState.READY);
-    if (firstReadyStep) {
-      await notifyStepReady(prisma, firstReadyStep.id).catch((error) => {
+    for (const readyStep of readySteps) {
+      await notifyStepReady(prisma, readyStep.id).catch((error) => {
         console.error("[Workflow Instantiate] Notification failed:", error);
         // Don't fail the request if notification fails
       });
     }
 
-    return NextResponse.json(instance, { status: 201 });
+    // Reload final instance with READY steps
+    const finalInstance = await prisma.workflowInstance.findUnique({
+      where: { id: instance.id },
+      include: {
+        template: { select: { id: true, name: true, version: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        steps: {
+          orderBy: { order: "asc" },
+        },
+      },
+    });
+
+    return NextResponse.json(finalInstance, { status: 201 });
   },
+  { requireAuth: true }
 );

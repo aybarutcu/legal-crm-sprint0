@@ -469,6 +469,17 @@ model WorkflowTemplateStep {
   actionConfig Json
   roleScope    RoleScope
   required     Boolean    @default(true)
+  
+  // Conditional execution
+  conditionType    ConditionType? @default(ALWAYS)
+  conditionConfig  Json?
+  nextStepOnTrue   Int?  // Order of step to execute if condition is true
+  nextStepOnFalse  Int?  // Order of step to execute if condition is false
+  
+  // Flexible dependencies (P0.2)
+  dependsOn        Int[]  @default([])  // Array of step orders this step depends on
+  dependencyLogic  DependencyLogic @default(ALL)
+  
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -518,6 +529,17 @@ model WorkflowInstanceStep {
   notes          String?
   startedAt      DateTime?
   completedAt    DateTime?
+  
+  // Conditional execution
+  conditionType    ConditionType? @default(ALWAYS)
+  conditionConfig  Json?
+  nextStepOnTrue   Int?  // Order of step to execute if condition is true
+  nextStepOnFalse  Int?  // Order of step to execute if condition is false
+  
+  // Flexible dependencies (P0.2)
+  dependsOn        String[]  @default([])  // Array of step IDs this step depends on
+  dependencyLogic  DependencyLogic @default(ALL)
+  
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -557,6 +579,19 @@ enum ActionState {
   COMPLETED
   FAILED
   SKIPPED
+}
+
+enum ConditionType {
+  ALWAYS              // Default - always execute (no condition)
+  IF_TRUE             // Execute only if condition is true
+  IF_FALSE            // Execute only if condition is false
+  SWITCH              // Multiple conditions (future enhancement)
+}
+
+enum DependencyLogic {
+  ALL     // All dependencies must complete (AND logic)
+  ANY     // At least one dependency must complete (OR logic)
+  CUSTOM  // Custom expression (future enhancement)
 }
 
 enum WorkflowInstanceStatus {

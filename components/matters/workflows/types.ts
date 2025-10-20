@@ -30,6 +30,7 @@ export type WorkflowInstanceStep = {
   assignedToId: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  dependsOn?: string[];
 };
 
 export type WorkflowInstance = {

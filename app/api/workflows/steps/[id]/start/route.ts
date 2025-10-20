@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { assertMatterAccess } from "@/lib/authorization";
+import { recordAuditLog } from "@/lib/audit";
 import "@/lib/workflows";
 import {
   ensureActorCanPerform,
@@ -49,6 +50,21 @@ export const POST = withApiHandler(
         instance: runtimeStep.instance,
         step: runtimeStep,
         actor,
+      });
+
+      // Record audit log for step start
+      await recordAuditLog({
+        actorId: user.id,
+        action: "workflow.step.start",
+        entityType: "workflow",
+        entityId: runtimeStep.instanceId,
+        metadata: {
+          matterId: runtimeStep.instance.matterId,
+          stepId: runtimeStep.id,
+          stepTitle: runtimeStep.title,
+          stepOrder: runtimeStep.order,
+          actionType: runtimeStep.actionType,
+        },
       });
 
       return tx.workflowInstanceStep.findUnique({

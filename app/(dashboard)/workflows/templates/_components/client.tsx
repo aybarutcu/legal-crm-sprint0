@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TemplateGroup } from "@/components/workflows/TemplateGroup";
 import { ActionConfigForm } from "@/components/workflows/config-forms";
@@ -8,6 +9,8 @@ import { ConditionBuilder } from "@/components/workflows/conditions";
 import { DependencySelector } from "@/components/workflows/DependencySelector";
 import { DependencyLogicSelector } from "@/components/workflows/DependencyLogicSelector";
 import { DependencyGraphWithValidation } from "@/components/workflows/DependencyGraphWithValidation";
+import { WorkflowCanvas } from "@/components/workflows/WorkflowCanvas";
+import type { WorkflowStep as CanvasWorkflowStep } from "@/components/workflows/WorkflowCanvas";
 import type { WorkflowStepData } from "@/components/workflows/DependencyGraph";
 import type { ConditionConfig, ConditionType } from "@/components/workflows/conditions/types";
 
@@ -78,6 +81,9 @@ type WorkflowStep = {
   // Dependency fields (P0.2)
   dependsOn?: number[];
   dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
+  // Canvas position fields (P0.3)
+  positionX?: number;
+  positionY?: number;
 };
 
 type WorkflowTemplate = {
@@ -129,6 +135,7 @@ function normaliseSteps(steps: WorkflowStep[]): WorkflowStep[] {
 }
 
 export function WorkflowTemplatesClient() {
+  const router = useRouter();
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [draft, setDraft] = useState<WorkflowTemplateDraft | null>(null);
@@ -142,7 +149,7 @@ export function WorkflowTemplatesClient() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft">("all");
   const [sortBy, setSortBy] = useState<"name" | "updated" | "steps">("name");
-  const [viewMode, setViewMode] = useState<"form" | "graph">("form");
+  const [viewMode, setViewMode] = useState<"form" | "canvas" | "graph">("form");
   const [highlightedStep, setHighlightedStep] = useState<number | null>(null);
 
   useEffect(() => {
@@ -219,6 +226,7 @@ export function WorkflowTemplatesClient() {
         );
       }
       const data = (await response.json()) as WorkflowTemplate[];
+      
       setTemplates(
         data.map((template) => ({
           ...template,
@@ -230,6 +238,8 @@ export function WorkflowTemplatesClient() {
                 ...step,
                 actionConfig: step.actionConfig ?? {},
                 actionConfigInput: JSON.stringify(step.actionConfig ?? {}, null, 2),
+                positionX: step.positionX,
+                positionY: step.positionY,
               })),
           ),
         })),
@@ -263,23 +273,9 @@ export function WorkflowTemplatesClient() {
   }
 
   function startNewVersion(template: WorkflowTemplate) {
-    setMode("create");
-    setDraft({
-      name: template.name,
-      description: template.description ?? "",
-      steps: normaliseSteps(
-        template.steps.map((step) => {
-          const config = JSON.parse(JSON.stringify(step.actionConfig ?? {})) as Record<string, unknown>;
-          return {
-            ...step,
-            id: undefined,
-            actionConfig: config,
-            actionConfigInput: JSON.stringify(config, null, 2),
-          };
-        }),
-      ),
-    });
-    setError(null);
+    // Navigate to new template page with template data as state
+    // The page will handle creating a new version
+    router.push(`/workflows/templates/new?sourceId=${template.id}`);
   }
 
   function openEditEditor(template: WorkflowTemplate) {
@@ -401,6 +397,8 @@ export function WorkflowTemplatesClient() {
       nextStepOnFalse?: number | null;
       dependsOn?: number[];
       dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
+      positionX?: number;
+      positionY?: number;
     }>;
 
     try {
@@ -426,6 +424,9 @@ export function WorkflowTemplatesClient() {
           // Dependency fields (P0.2)
           dependsOn: step.dependsOn,
           dependencyLogic: step.dependencyLogic,
+          // Canvas position fields (P0.3)
+          positionX: step.positionX,
+          positionY: step.positionY,
         };
       });
     } catch {
@@ -526,14 +527,13 @@ export function WorkflowTemplatesClient() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={openCreateEditor}
+          <Link
+            href="/workflows/templates/new"
             className="rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-white hover:bg-accent/90 shadow-sm hover:shadow-md transition-all flex items-center gap-2"
           >
             <span className="text-lg">+</span>
             New Template
-          </button>
+          </Link>
           <Link
             href="/workflows/ai"
             className="rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:from-purple-700 hover:to-blue-700 shadow-sm hover:shadow-md transition-all flex items-center gap-2"
@@ -781,7 +781,18 @@ export function WorkflowTemplatesClient() {
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  📝 Form View
+                  📝 Form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("canvas")}
+                  className={`px-4 py-2 text-sm font-semibold rounded transition-all ${
+                    viewMode === "canvas"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  🎨 Canvas
                 </button>
                 <button
                   type="button"
@@ -792,9 +803,63 @@ export function WorkflowTemplatesClient() {
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  🔀 Graph View
+                  � Graph
                 </button>
               </div>
+
+              {/* Canvas View */}
+              {viewMode === "canvas" && (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+                    <p className="font-semibold mb-2">🎨 Visual Workflow Builder</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Click action types in the palette to add steps</li>
+                      <li>Click and drag from the green dot to create dependencies</li>
+                      <li>Click a node to edit its properties</li>
+                      <li>Delete connections by selecting an edge and pressing Delete</li>
+                    </ul>
+                  </div>
+                  <WorkflowCanvas
+                    steps={draft.steps.map((step, idx) => ({
+                      id: step.id,
+                      order: step.order ?? idx,
+                      title: step.title || `Step ${idx + 1}`,
+                      actionType: step.actionType as CanvasWorkflowStep["actionType"],
+                      roleScope: step.roleScope as CanvasWorkflowStep["roleScope"],
+                      required: step.required ?? true,
+                      actionConfig: step.actionConfig,
+                      dependsOn: step.dependsOn,
+                      dependencyLogic: step.dependencyLogic,
+                      conditionType: step.conditionType,
+                      conditionConfig: step.conditionConfig,
+                      positionX: step.positionX,
+                      positionY: step.positionY,
+                    } as CanvasWorkflowStep))}
+                    onChange={(updatedSteps) => {
+                      setDraft({
+                        ...draft,
+                        steps: normaliseSteps(updatedSteps.map(canvasStep => ({
+                          ...canvasStep,
+                          required: canvasStep.required ?? true,
+                          actionConfig: (Array.isArray(canvasStep.actionConfig) ? {} : canvasStep.actionConfig) ?? {},
+                          actionConfigInput: JSON.stringify(canvasStep.actionConfig ?? {}, null, 2),
+                          positionX: canvasStep.positionX,
+                          positionY: canvasStep.positionY,
+                        }))),
+                      });
+                    }}
+                  />
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("form")}
+                      className="rounded-lg border-2 border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-all shadow-sm"
+                    >
+                      ← Back to Form View
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Graph View */}
               {viewMode === "graph" && (

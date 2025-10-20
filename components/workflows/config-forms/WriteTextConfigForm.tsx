@@ -43,7 +43,7 @@ export function WriteTextConfigForm({ initialConfig, onChange }: WriteTextConfig
         required,
       });
     }
-  }, [title, description, placeholder, minLength, maxLength, required, onChange]);
+  }, [title, description, placeholder, minLength, maxLength, required]); // Removed onChange from deps
 
   return (
     <div className="space-y-4">

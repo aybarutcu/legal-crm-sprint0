@@ -61,11 +61,20 @@ export const POST = withApiHandler<{ id: string }>(
         computedOrder: step.order ?? index,
       }));
 
+    // Create a mapping from order number to temp step ID
+    const orderToIdMap = new Map<number, string>();
+    sortedSteps.forEach((step) => {
+      orderToIdMap.set(step.computedOrder, `temp-${step.id}`);
+    });
+
     // Validate dependencies before creating instance
+    // Convert dependsOn from orders to step IDs for validation
     const templateStepsForValidation = sortedSteps.map((step) => ({
       id: `temp-${step.id}`,
       order: step.computedOrder,
-      dependsOn: step.dependsOn ?? [],
+      dependsOn: (step.dependsOn ?? [])
+        .map((depOrder) => orderToIdMap.get(depOrder))
+        .filter((id): id is string => id !== undefined),
       dependencyLogic: step.dependencyLogic ?? "ALL",
       actionState: ActionState.PENDING,
     }));

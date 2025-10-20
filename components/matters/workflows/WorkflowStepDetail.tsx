@@ -430,8 +430,71 @@ function ReadyStateView({
       )}
 
       {isPending && (
-        <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-6 text-center">
-          <p className="text-sm text-slate-600">This step is waiting for previous steps to complete.</p>
+        <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Clock className="h-5 w-5 text-slate-500 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-slate-700 mb-1">Waiting for Dependencies</p>
+              <p className="text-xs text-slate-600">This step cannot start until all required dependencies are completed.</p>
+            </div>
+          </div>
+          
+          {step.dependsOn && step.dependsOn.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-slate-600 mb-2">
+                Required steps ({step.dependsOn.length}):
+              </div>
+              <div className="space-y-2">
+                {step.dependsOn.map(depId => {
+                  const depStep = workflow.steps.find(s => s.id === depId);
+                  if (!depStep) return null;
+                  
+                  const isDepCompleted = depStep.actionState === 'COMPLETED';
+                  const isDepInProgress = depStep.actionState === 'IN_PROGRESS';
+                  
+                  return (
+                    <div
+                      key={depId}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 ${
+                        isDepCompleted
+                          ? 'bg-green-50 border-green-200'
+                          : isDepInProgress
+                          ? 'bg-blue-50 border-blue-200'
+                          : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="flex-shrink-0">
+                        {isDepCompleted ? (
+                          <CheckCircle2 className="h-5 w-5 text-green-600" />
+                        ) : isDepInProgress ? (
+                          <Clock className="h-5 w-5 text-blue-600" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-slate-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-slate-900 truncate">
+                          {depStep.title}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          {depStep.actionType.replace(/_/g, ' ')} • {depStep.roleScope}
+                        </div>
+                      </div>
+                      <div className={`text-xs font-semibold px-2 py-1 rounded ${
+                        isDepCompleted
+                          ? 'bg-green-100 text-green-700'
+                          : isDepInProgress
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {isDepCompleted ? 'Done' : isDepInProgress ? 'In Progress' : 'Pending'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

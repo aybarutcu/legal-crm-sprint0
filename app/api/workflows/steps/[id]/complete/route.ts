@@ -4,6 +4,7 @@ import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { assertMatterAccess } from "@/lib/authorization";
+import { recordAuditLog } from "@/lib/audit";
 import "@/lib/workflows";
 import {
   ensureActorCanPerform,
@@ -67,6 +68,21 @@ export const POST = withApiHandler(
       });
       
       await refreshInstanceStatus(tx, runtimeStep.instanceId);
+
+      // Record audit log for step completion
+      await recordAuditLog({
+        actorId: user.id,
+        action: "workflow.step.complete",
+        entityType: "workflow",
+        entityId: runtimeStep.instanceId,
+        metadata: {
+          matterId: runtimeStep.instance.matterId,
+          stepId: runtimeStep.id,
+          stepTitle: runtimeStep.title,
+          stepOrder: runtimeStep.order,
+          actionType: runtimeStep.actionType,
+        },
+      });
 
       return tx.workflowInstanceStep.findUnique({
         where: { id: step.id },

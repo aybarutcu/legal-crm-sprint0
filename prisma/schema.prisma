@@ -480,6 +480,10 @@ model WorkflowTemplateStep {
   dependsOn        Int[]  @default([])  // Array of step orders this step depends on
   dependencyLogic  DependencyLogic @default(ALL)
   
+  // Canvas position (P0.3 - for visual workflow builder)
+  positionX    Float?  @default(0)  // X coordinate on canvas
+  positionY    Float?  @default(100)  // Y coordinate on canvas
+  
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 

@@ -91,6 +91,9 @@ const workflowStepSchema = z
         { message: "dependsOn cannot contain duplicate step orders" }
       ),
     dependencyLogic: dependencyLogicSchema.optional(),
+    // Canvas position fields (P0.3)
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
   })
   .refine(
     (data) => {
@@ -112,7 +115,7 @@ const workflowStepSchema = z
 export const workflowTemplateCreateSchema = z
   .object({
     name: z.string().trim().min(2, "Workflow name must be at least 2 characters"),
-    description: z.string().trim().optional(),
+    description: z.string().trim().optional().nullable().default(""),
     steps: z.array(workflowStepSchema).min(1, "Workflow must have at least one step"),
   })
   .refine(

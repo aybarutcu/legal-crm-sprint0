@@ -34,7 +34,9 @@ export const GET = withApiHandler(
 export const PATCH = withApiHandler(
   async (req: NextRequest, { session, params }: Params) => {
     await requireAdmin(session);
-    const payload = workflowTemplateUpdateSchema.parse(await req.json());
+
+    const body = await req.json();
+    const payload = workflowTemplateUpdateSchema.parse(body);
 
     const template = await prisma.workflowTemplate.findUnique({
       where: { id: params.id },
@@ -78,6 +80,9 @@ export const PATCH = withApiHandler(
           // Dependency fields (P0.2)
           dependsOn: step.dependsOn ?? [],
           dependencyLogic: step.dependencyLogic ?? "ALL",
+          // Canvas position fields (P0.3)
+          positionX: step.positionX ?? index * 300 + 50,
+          positionY: step.positionY ?? 100,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         })) as any,
       };

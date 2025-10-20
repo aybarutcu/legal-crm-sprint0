@@ -18,6 +18,7 @@ import {
   MatterStatusUpdateSection,
 } from "@/components/matters/sections";
 import { MatterTeamSection } from "@/components/matters/MatterTeamSection";
+import { MatterActivitySection } from "@/components/matters/MatterActivitySection";
 import { MatterStatusBadge } from "./MatterStatusBadge";
 import { MetadataCard } from "./MetadataCard";
 import { QuickActionsMenu } from "./QuickActionsMenu";
@@ -171,7 +172,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
   // State for tabs and editing
-  const [activeTab, setActiveTab] = useState<"overview" | "team" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "team" | "activity" | "settings">("overview");
   const [isEditingMatter, setIsEditingMatter] = useState(false);
   const [matterEditForm, setMatterEditForm] = useState({
     title: matter.title,
@@ -692,6 +693,16 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("activity")}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "activity"
+                ? "border-accent text-accent"
+                : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+          >
+            Activity
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("settings")}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "settings"
                 ? "border-accent text-accent"
@@ -936,6 +947,13 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
             currentUserRole={currentUserRole}
             matterOwnerId={matter.owner?.id}
           />
+        </div>
+      )}
+
+      {/* Activity Tab */}
+      {activeTab === "activity" && (
+        <div className="space-y-6">
+          <MatterActivitySection matterId={matter.id} />
         </div>
       )}
 

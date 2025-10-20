@@ -20,6 +20,7 @@ export const GET = withApiHandler(async (_req: NextRequest) => {
       },
     },
   });
+  
   return NextResponse.json(templates);
 });
 
@@ -39,6 +40,9 @@ function mapStepInput(step: WorkflowStepInput, index: number) {
     // Dependency fields (P0.2)
     dependsOn: step.dependsOn ?? [],
     dependencyLogic: step.dependencyLogic ?? "ALL",
+    // Canvas position fields (P0.3)
+    positionX: step.positionX ?? index * 300 + 50,
+    positionY: step.positionY ?? 100,
   };
 }
 
@@ -46,6 +50,12 @@ export const POST = withApiHandler(
   async (req: NextRequest, { session }) => {
     await requireAdmin(session);
     const payload = workflowTemplateCreateSchema.parse(await req.json());
+
+    console.log('🔍 [API POST] Received payload steps:', payload.steps.map(s => ({
+      title: s.title,
+      positionX: s.positionX,
+      positionY: s.positionY,
+    })));
 
     const latestVersion = await prisma.workflowTemplate.aggregate({
       where: { name: payload.name },
@@ -62,9 +72,15 @@ export const POST = withApiHandler(
     };
 
     if (payload.steps && payload.steps.length > 0) {
+      const mappedSteps = payload.steps.map(mapStepInput);
+      console.log('📝 [API POST] Mapped steps to DB:', mappedSteps.map(s => ({
+        title: s.title,
+        positionX: s.positionX,
+        positionY: s.positionY,
+      })));
       data.steps = {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        create: payload.steps.map(mapStepInput) as any,
+        create: mappedSteps as any,
       };
     }
 
@@ -76,6 +92,9 @@ export const POST = withApiHandler(
         },
       },
     });
+
+    // Debug: Log returned template positions
+    // console.log('✅ [API POST] Created template:', template.steps);
 
     return NextResponse.json(template, { status: 201 });
   },

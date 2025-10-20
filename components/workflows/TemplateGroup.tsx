@@ -10,7 +10,6 @@ type TemplateGroupProps = {
   versions: WorkflowTemplate[];
   startNewVersion: (template: WorkflowTemplate) => void;
   publishTemplate: (id: string) => void;
-  openEditEditor: (template: WorkflowTemplate) => void;
   deleteTemplate: (id: string) => void;
   isDeleting: string | null;
   publishingId: string | null;
@@ -21,7 +20,6 @@ export function TemplateGroup({
   versions, 
   startNewVersion, 
   publishTemplate, 
-  openEditEditor, 
   deleteTemplate, 
   isDeleting, 
   publishingId 
@@ -113,7 +111,6 @@ export function TemplateGroup({
                 template={activeVersion}
                 startNewVersion={startNewVersion}
                 publishTemplate={publishTemplate}
-                openEditEditor={openEditEditor}
                 deleteTemplate={deleteTemplate}
                 isDeleting={isDeleting}
                 publishingId={publishingId}
@@ -140,7 +137,6 @@ export function TemplateGroup({
                       template={template}
                       startNewVersion={startNewVersion}
                       publishTemplate={publishTemplate}
-                      openEditEditor={openEditEditor}
                       deleteTemplate={deleteTemplate}
                       isDeleting={isDeleting}
                       publishingId={publishingId}

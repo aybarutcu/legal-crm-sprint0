@@ -77,7 +77,7 @@ export function PopulateQuestionnaireConfigForm({
         dueInDays: dueInDays && dueInDays > 0 ? dueInDays : undefined,
       });
     }
-  }, [selectedId, title, description, dueInDays, onChange]);
+  }, [selectedId, title, description, dueInDays]); // Removed onChange from deps
 
   const handleSelectionChange = (questionnaireId: string) => {
     setSelectedId(questionnaireId);

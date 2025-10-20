@@ -28,7 +28,7 @@ export function TaskConfigForm({ initialConfig, onChange }: TaskConfigFormProps)
       requiresEvidence,
       estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
     });
-  }, [description, requiresEvidence, estimatedMinutes, onChange]);
+  }, [description, requiresEvidence, estimatedMinutes]); // Removed onChange from deps
 
   return (
     <div className="space-y-4">

@@ -139,7 +139,7 @@ async function sendStepReadyNotification(
   const actionTypeLabels: Record<string, string> = {
     APPROVAL_LAWYER: "Avukat Onayı",
     SIGNATURE_CLIENT: "Müvekkil İmzası",
-    REQUEST_DOC_CLIENT: "Doküman Talebi",
+    REQUEST_DOC: "Doküman Talebi",
     PAYMENT_CLIENT: "Ödeme",
     CHECKLIST: "Kontrol Listesi",
   };

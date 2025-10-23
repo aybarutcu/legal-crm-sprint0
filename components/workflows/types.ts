@@ -11,6 +11,12 @@ export type WorkflowStep = {
   conditionConfig?: Record<string, unknown> | null;
   nextStepOnTrue?: number | null;
   nextStepOnFalse?: number | null;
+  // Dependency fields (P0.2)
+  dependsOn?: number[];
+  dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
+  // Canvas position fields (P0.3)
+  positionX?: number;
+  positionY?: number;
 };
 
 export type WorkflowTemplate = {

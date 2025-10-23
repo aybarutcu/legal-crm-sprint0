@@ -6,7 +6,7 @@ import { CheckCircle2, Circle, XCircle, MinusCircle, Clock, AlertCircle } from "
 type ActionType =
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
+  | "REQUEST_DOC"
   | "PAYMENT_CLIENT"
   | "CHECKLIST"
   | "WRITE_TEXT"
@@ -203,7 +203,7 @@ function getActionTypeLabel(type: ActionType): string {
       return "Lawyer Approval";
     case "SIGNATURE_CLIENT":
       return "Client Signature";
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return "Document Request";
     case "PAYMENT_CLIENT":
       return "Payment";
@@ -325,6 +325,27 @@ export function WorkflowTimeline({
                           + Add Step
                         </button>
                       )}
+                      {/* Edit Workflow Button - before Remove */}
+                      <a
+                        href={`/workflows/instances/${workflow.id}/edit`}
+                        className="rounded-lg border-2 border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
+                        title="Edit entire workflow"
+                      >
+                        <svg
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                        Edit Workflow
+                      </a>
                       {onRemoveWorkflow && (
                         <button
                           type="button"

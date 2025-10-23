@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WorkflowTemplateEditor } from "@/components/workflows/WorkflowTemplateEditor";
 import type { WorkflowTemplateDraft } from "@/components/workflows/WorkflowTemplateEditor";
@@ -58,41 +57,9 @@ export default async function EditWorkflowTemplatePage({ params }: PageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header with max-width container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-2 lg:px-4 py-8 pb-4">
-        {/* Breadcrumb */}
-        <nav className="mb-6">
-          <ol className="flex items-center space-x-2 text-sm">
-            <li>
-              <Link
-                href="/workflows/templates"
-                className="text-blue-600 hover:text-blue-800 font-medium"
-              >
-                Workflow Templates
-              </Link>
-            </li>
-            <li className="text-gray-400">/</li>
-            <li className="text-gray-600 font-semibold">{template.name}</li>
-            <li className="text-gray-400">/</li>
-            <li className="text-gray-600 font-semibold">Edit</li>
-          </ol>
-        </nav>
-
-        {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Edit Workflow Template</h1>
-          <p className="mt-2 text-gray-600">
-            Modify template: <span className="font-semibold">{template.name}</span>{" "}
-            (Version {template.version})
-          </p>
-        </div>
-      </div>
-
-      {/* Editor - full width */}
-      <div className="px-4 sm:px-6 lg:px-8 pb-8">
-        <WorkflowTemplateEditor mode="edit" initialDraft={draft} />
-      </div>
+    <div className="bg-gray-50">
+      {/* Editor - full width with own header */}
+      <WorkflowTemplateEditor mode="edit" initialDraft={draft} />
     </div>
   );
 }

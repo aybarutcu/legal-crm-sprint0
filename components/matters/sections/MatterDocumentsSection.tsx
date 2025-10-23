@@ -7,7 +7,8 @@
  * Features:
  * - List of documents with icons and metadata
  * - "Upload" button for adding new documents
- * - "View" button to open document details
+ * - Clickable document list items to open preview drawer
+ * - Highlight documents attached to selected workflow step
  * - File size formatting and uploader information
  * - Loading and empty states
  * - Responsive grid layout
@@ -23,6 +24,7 @@ export function MatterDocumentsSection({
   loading,
   onUploadClick,
   onViewDocument,
+  highlightedDocumentIds = [],
 }: MatterDocumentsSectionProps) {
   return (
     <div className="lg:col-span-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
@@ -41,33 +43,43 @@ export function MatterDocumentsSection({
         {loading ? (
           <li className="text-slate-500 text-xs">Loading...</li>
         ) : documents.length ? (
-          documents.map((doc) => (
-            <li
-              key={doc.id}
-              className="flex items-start gap-2 rounded-lg bg-slate-50 p-2 hover:bg-slate-100 transition-colors"
-            >
-              <DocumentTypeIcon mimeType={doc.mime} />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-slate-900 truncate text-xs">
-                  {doc.filename}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">
-                  <div>{formatFileSize(doc.size)}</div>
-                  <div className="truncate">
-                    {doc.uploader.name || doc.uploader.email}
-                  </div>
-                  <div>{dateFormatter.format(new Date(doc.createdAt))}</div>
-                </div>
-              </div>
-              <button
-                type="button"
+          documents.map((doc) => {
+            const isHighlighted = highlightedDocumentIds.includes(doc.id);
+            return (
+              <li
+                key={doc.id}
                 onClick={() => onViewDocument(doc)}
-                className="rounded border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 flex-shrink-0"
+                className={`flex items-start gap-2 rounded-lg p-2 transition-all cursor-pointer ${
+                  isHighlighted
+                    ? "bg-blue-50 border-2 border-blue-300 ring-2 ring-blue-100 hover:bg-blue-100"
+                    : "bg-slate-50 hover:bg-slate-100"
+                }`}
               >
-                View
-              </button>
-            </li>
-          ))
+                <DocumentTypeIcon mimeType={doc.mime} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-slate-900 truncate text-xs">
+                    {/* Show tag name (requested document name) if available and linked to workflow */}
+                    {doc.workflowStepId && doc.tags && doc.tags.length > 0 
+                      ? doc.tags[0] 
+                      : doc.filename}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    <div>{formatFileSize(doc.size)}</div>
+                    {/* Show actual filename as secondary info if tag is displayed */}
+                    {doc.workflowStepId && doc.tags && doc.tags.length > 0 && (
+                      <div className="truncate text-[10px] italic">
+                        {doc.filename}
+                      </div>
+                    )}
+                    <div className="truncate">
+                      {doc.uploader.name || doc.uploader.email}
+                    </div>
+                    <div>{dateFormatter.format(new Date(doc.createdAt))}</div>
+                  </div>
+                </div>
+              </li>
+            );
+          })
         ) : (
           <li className="text-slate-400 text-xs">No documents yet.</li>
         )}

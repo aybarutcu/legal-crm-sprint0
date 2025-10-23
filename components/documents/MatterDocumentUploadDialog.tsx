@@ -10,6 +10,8 @@ type MatterDocumentUploadDialogProps = {
   isOpen: boolean;
   onClose: () => void;
   matterId: string;
+  workflowStepId?: string | null;
+  tags?: string[];
   onUploadComplete?: () => void;
 };
 
@@ -31,6 +33,8 @@ export function MatterDocumentUploadDialog({
   isOpen,
   onClose,
   matterId,
+  workflowStepId,
+  tags,
   onUploadComplete,
 }: MatterDocumentUploadDialogProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -167,6 +171,8 @@ export function MatterDocumentUploadDialog({
           storageKey: uploadData.storageKey,
           version: uploadData.version,
           matterId,
+          workflowStepId: workflowStepId || undefined,
+          tags: tags || undefined,
         }),
       });
 

@@ -6,13 +6,18 @@ import { TaskQuery, TaskStatusValue } from "@/lib/tasks/types";
 /**
  * GET /api/tasks/unified
  * 
- * Fetches workflow steps assigned to the current user based on:
- * 1. User's role in matter teams (MatterTeamMember)
- * 2. Workflow step's roleScope matching user's role
- * 3. Optional filters (search, matter, status, priority, dates)
+ * Fetches tasks assigned to the current user from TWO sources:
  * 
- * This replaces the legacy unified view (Tasks + Workflow Steps).
- * Now only shows workflow steps assigned via matter team roles.
+ * 1. STANDALONE TASKS (Task model):
+ *    - Tasks directly assigned to user
+ *    - Tasks in matters where user is owner or team member
+ * 
+ * 2. WORKFLOW STEPS (WorkflowInstanceStep model):
+ *    - Steps matching user's role in matter teams
+ *    - Steps from contacts owned by user
+ *    - Steps directly assigned/claimed by user
+ * 
+ * Both are combined, sorted, and paginated together.
  */
 export const GET = withApiHandler(async (req, { session }) => {
   const userId = session?.user?.id;
@@ -41,12 +46,11 @@ export const GET = withApiHandler(async (req, { session }) => {
     dueTo: url.searchParams.get("dueTo") ? new Date(url.searchParams.get("dueTo")!) : undefined,
   };
 
-  // Find all matters where the user is a team member
+  // Find all matters where the user is a team member or owner
   const matterTeamMemberships = await prisma.matterTeamMember.findMany({
     where: { userId },
     select: { matterId: true, role: true },
   });
-
   const matterIds = matterTeamMemberships.map(m => m.matterId);
 
   // Find all contacts owned by the user
@@ -54,46 +58,132 @@ export const GET = withApiHandler(async (req, { session }) => {
     where: { ownerId: userId },
     select: { id: true },
   });
-
   const contactIds = ownedContacts.map(c => c.id);
 
-  // Build where clause for workflow steps
-  // User can see steps that either:
-  // 1. Match their role scope in matters they're a team member of, OR
-  // 2. Are from contacts they own (for LEAD workflows), OR
-  // 3. Are directly assigned to them (claimed tasks)
-  const where: Record<string, unknown> = {
-    OR: [
-      // Steps from matter teams matching role scope
-      ...(matterIds.length > 0 ? [{
-        instance: {
-          matterId: { in: matterIds },
-        },
-        roleScope: { in: userRole === "ADMIN" 
-          ? ["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"] 
-          : [userRole] 
-        },
-      }] : []),
-      // Steps from contacts owned by user (LEAD workflows)
-      ...(contactIds.length > 0 ? [{
-        instance: {
-          contactId: { in: contactIds },
-        },
-      }] : []),
-      // Steps directly assigned to user (claimed tasks)
-      {
-        assignedToId: userId,
-      },
-    ],
-  };
+  // ===================================================================
+  // PART 1: Fetch STANDALONE TASKS (Task model)
+  // ===================================================================
+  
+  let taskWhere: Record<string, unknown>;
 
-  // Apply filters
+  if (userRole === "ADMIN") {
+    // ADMIN sees ALL tasks (no filtering)
+    taskWhere = {};
+  } else {
+    // Non-admin users see tasks they're involved with
+    taskWhere = {
+      OR: [
+        // Tasks assigned to user
+        { assigneeId: userId },
+        // Tasks in matters owned by user
+        { matter: { ownerId: userId } },
+        // Tasks in matters where user is team member
+        ...(matterIds.length > 0 ? [{ matterId: { in: matterIds } }] : []),
+      ],
+    };
+  }
+
   if (query.q) {
-    where.title = { contains: query.q, mode: "insensitive" };
+    taskWhere.AND = [
+      ...(taskWhere.AND as [] || []),
+      {
+        OR: [
+          { title: { contains: query.q, mode: "insensitive" } },
+          { description: { contains: query.q, mode: "insensitive" } },
+        ],
+      },
+    ];
   }
 
   if (query.matterId) {
-    where.instance = { ...where.instance as Record<string, unknown>, matterId: query.matterId };
+    taskWhere.matterId = query.matterId;
+  }
+
+  if (query.assigneeId) {
+    taskWhere.assigneeId = query.assigneeId;
+  }
+
+  if (query.status) {
+    taskWhere.status = query.status;
+  }
+
+  if (query.priority) {
+    taskWhere.priority = query.priority;
+  }
+
+  if (query.dueFrom || query.dueTo) {
+    const dueAt: Record<string, unknown> = {};
+    if (query.dueFrom) dueAt.gte = query.dueFrom;
+    if (query.dueTo) dueAt.lte = query.dueTo;
+    taskWhere.dueAt = dueAt;
+  }
+
+  const standaloneTasks = await prisma.task.findMany({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    where: taskWhere as any,
+    include: {
+      assignee: { select: { id: true, name: true, email: true } },
+      matter: { select: { id: true, title: true } },
+    },
+    orderBy: [
+      { dueAt: "asc" },
+      { createdAt: "desc" },
+    ],
+  });
+
+  // ===================================================================
+  // PART 2: Fetch WORKFLOW STEPS (WorkflowInstanceStep model)
+  // ===================================================================
+
+  let stepWhere: Record<string, unknown>;
+
+  if (userRole === "ADMIN") {
+    // ADMIN sees ALL workflow steps (no filtering by role or assignment)
+    stepWhere = {};
+  } else {
+    // Non-admin users see steps based on role, assignment, or contact ownership
+    stepWhere = {
+      OR: [
+        // Steps from matter teams matching role scope
+        ...(matterIds.length > 0 ? [{
+          instance: {
+            matterId: { in: matterIds },
+          },
+          roleScope: { in: [userRole] },
+        }] : []),
+        // Steps from contacts owned by user (LEAD workflows)
+        ...(contactIds.length > 0 ? [{
+          instance: {
+            contactId: { in: contactIds },
+          },
+        }] : []),
+        // Steps directly assigned to user (claimed tasks)
+        {
+          assignedToId: userId,
+        },
+      ],
+    };
+  }
+
+  // Add filters that apply to the OR conditions above
+  const stepFilters: Record<string, unknown>[] = [];
+
+  if (query.q) {
+    stepFilters.push({
+      title: { contains: query.q, mode: "insensitive" }
+    });
+  }
+
+  if (query.matterId) {
+    stepFilters.push({
+      instance: { matterId: query.matterId }
+    });
+  }
+
+  if (query.assigneeId) {
+    stepFilters.push({
+      assignedToId: query.assigneeId
+    });
   }
 
   // Filter by action state (map from task status)
@@ -104,50 +194,75 @@ export const GET = withApiHandler(async (req, { session }) => {
       "DONE": ["COMPLETED"],
       "CANCELED": ["SKIPPED", "FAILED"],
     };
-    where.actionState = { in: stateMap[query.status] };
+    stepFilters.push({
+      actionState: { in: stateMap[query.status] }
+    });
   }
 
-  // Filter by priority
   if (query.priority) {
-    where.priority = query.priority;
+    stepFilters.push({
+      priority: query.priority
+    });
   }
 
-  // Filter by due date
   if (query.dueFrom || query.dueTo) {
     const dueDate: Record<string, unknown> = {};
     if (query.dueFrom) dueDate.gte = query.dueFrom;
     if (query.dueTo) dueDate.lte = query.dueTo;
-    where.dueDate = dueDate;
+    stepFilters.push({
+      dueDate: dueDate
+    });
   }
 
-  // Execute query
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [total, items] = (await prisma.$transaction([
-    prisma.workflowInstanceStep.count({ where }),
-    prisma.workflowInstanceStep.findMany({
-      where,
-      orderBy: [
-        { dueDate: "asc" },
-        { createdAt: "asc" },
-      ],
-      include: {
-        assignedTo: { select: { id: true, name: true, email: true } },
-        instance: {
-          include: {
-            matter: { select: { id: true, title: true } },
-            // @ts-expect-error - contact relation exists but Prisma types need refresh
-            contact: { select: { id: true, firstName: true, lastName: true, type: true } },
-            template: { select: { id: true, name: true } },
-          },
+  // Combine base OR conditions with AND filters
+  if (stepFilters.length > 0) {
+    stepWhere.AND = stepFilters;
+  }
+
+  const workflowSteps = await prisma.workflowInstanceStep.findMany({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    where: stepWhere as any,
+    include: {
+      assignedTo: { select: { id: true, name: true, email: true } },
+      instance: {
+        include: {
+          matter: { select: { id: true, title: true } },
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore - contact relation exists
+          contact: { select: { id: true, firstName: true, lastName: true, type: true } },
+          template: { select: { id: true, name: true } },
         },
       },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-  ])) as [number, any[]];
+    },
+    orderBy: [
+      { dueDate: "asc" },
+      { createdAt: "asc" },
+    ],
+  });
 
-  // Transform workflow steps to match task interface
-  const transformedItems = items.map((item) => {
+  // ===================================================================
+  // PART 3: Transform and combine both sources
+  // ===================================================================
+
+  // Transform standalone tasks
+  const transformedTasks = standaloneTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description || "",
+    dueAt: task.dueAt?.toISOString() || null,
+    priority: task.priority || "MEDIUM",
+    status: task.status,
+    assignee: task.assignee,
+    matter: task.matter,
+    contact: null,
+    _count: { checklists: 0, links: 0 },
+    itemType: 'TASK' as const,
+    createdAt: task.createdAt,
+  }));
+
+  // Transform workflow steps
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const transformedSteps = workflowSteps.map((item: any) => {
     // Map actionState to task status
     let status: TaskStatusValue = "OPEN";
     if (["READY", "PENDING"].includes(item.actionState)) status = "OPEN";
@@ -167,11 +282,12 @@ export const GET = withApiHandler(async (req, { session }) => {
     return {
       id: item.id,
       title: item.title,
-      description: item.notes || `${item.actionType} action in workflow`,
-      dueAt: item.dueDate?.toISOString() || item.createdAt.toISOString(),
+      description: item.notes || null,
+      dueAt: item.dueDate?.toISOString() || null,
       priority: item.priority || "MEDIUM",
       status,
-      assignee: item.assignedTo,
+      assignee: item.assignedTo, // Map assignedTo to assignee for consistency
+      assigneeId: item.assignedToId, // Include assigneeId for list view
       matter: item.instance.matter,
       contact: item.instance.contact,
       _count: { checklists: 0, links: 0 },
@@ -182,11 +298,30 @@ export const GET = withApiHandler(async (req, { session }) => {
       workflowName: item.instance.template?.name || "Ad-hoc Workflow",
       contextTitle,
       instanceId: item.instance.id,
+      createdAt: item.createdAt,
     };
   });
 
+  // Combine and sort
+  const allItems = [...transformedTasks, ...transformedSteps].sort((a, b) => {
+    // Sort by due date (nulls last), then by created date desc
+    const aDate = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+    const bDate = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+    
+    if (aDate !== bDate) {
+      return aDate - bDate;
+    }
+    
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  // Paginate
+  const total = allItems.length;
+  const skip = (page - 1) * pageSize;
+  const paginatedItems = allItems.slice(skip, skip + pageSize);
+
   return NextResponse.json({
-    items: transformedItems,
+    items: paginatedItems,
     page: query.page,
     pageSize: query.pageSize,
     total,

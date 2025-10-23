@@ -37,7 +37,7 @@ export function defaultConfigFor(actionType: ActionType): Record<string, unknown
       return { approverRole: "LAWYER", message: "" };
     case "SIGNATURE_CLIENT":
       return { documentId: null, provider: "mock" };
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return { requestText: "", documentNames: [] };
     case "PAYMENT_CLIENT":
       return { amount: 0, currency: "USD", provider: "mock" };

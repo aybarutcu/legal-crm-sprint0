@@ -1,6 +1,7 @@
 "use client";
 
-import { Dispatch, SetStateAction, useState } from "react";
+import { Dispatch, SetStateAction, useState, useEffect } from "react";
+import Link from "next/link";
 import { 
   X, 
   CheckCircle2, 
@@ -11,10 +12,6 @@ import {
   ChevronDown,
   ChevronRight,
   Play,
-  Edit3,
-  ArrowUp,
-  ArrowDown,
-  Trash2,
   UserCheck,
   XCircle,
   ArrowRight
@@ -28,12 +25,15 @@ import {
   PaymentExecution,
   WriteTextExecution,
   PopulateQuestionnaireExecution,
+  TaskExecution,
 } from "@/components/workflows/execution";
 import {
   QuestionnaireResponseViewer,
   WriteTextViewer,
   DocumentViewer,
   ChecklistViewer,
+  RequestDocViewer,
+  TaskViewer,
 } from "@/components/workflows/output";
 import type { WorkflowInstance, WorkflowInstanceStep } from "./types";
 
@@ -50,6 +50,8 @@ interface WorkflowStepDetailProps {
   onRunStepAction: (stepId: string, action: string, payload?: unknown) => Promise<void>;
   onMoveStep: (instanceId: string, stepId: string, direction: -1 | 1) => Promise<void>;
   onDeleteStep: (instanceId: string, stepId: string) => Promise<void>;
+  onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
+  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
   // Execution UI state
   checklistStates: Record<string, Set<string>>;
   approvalComments: Record<string, string>;
@@ -72,6 +74,8 @@ export function WorkflowStepDetail({
   onRunStepAction,
   onMoveStep,
   onDeleteStep,
+  onUpdateStepMetadata,
+  onAddDocumentForStep,
   checklistStates,
   approvalComments,
   documentFiles,
@@ -79,7 +83,6 @@ export function WorkflowStepDetail({
   onSetApprovalComments,
   onSetDocumentFiles,
 }: WorkflowStepDetailProps) {
-  const [managementExpanded, setManagementExpanded] = useState(false);
 
   if (!step || !workflow) {
     return (
@@ -137,18 +140,43 @@ export function WorkflowStepDetail({
     <div className="rounded-2xl border border-slate-200 bg-white shadow-card overflow-hidden" data-testid="workflow-step-detail">
       {/* Header with close button */}
       <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
-        <div>
+        <div className="flex-1">
           <h3 className="text-lg font-semibold text-slate-900" data-testid="step-title">{step.title}</h3>
           <p className="text-sm text-slate-500" data-testid="action-type">{workflow.template.name} · Step {step.order + 1} of {workflow.steps.length}</p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-          aria-label="Close details"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Edit Workflow Button - Only for ADMIN/LAWYER */}
+          {(currentUserRole === "ADMIN" || currentUserRole === "LAWYER") && (
+            <Link
+              href={`/workflows/instances/${workflow.id}/edit`}
+              className="rounded-lg border-2 border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
+              title="Edit entire workflow"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
+              </svg>
+              Edit Workflow
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            aria-label="Close details"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {/* Step Body - State-specific rendering */}
@@ -167,12 +195,12 @@ export function WorkflowStepDetail({
             stepIndex={stepIndex}
             actionLoading={actionLoading}
             currentUserRole={currentUserRole}
-            managementExpanded={managementExpanded}
-            onToggleManagement={() => setManagementExpanded(!managementExpanded)}
+            matterId={matterId}
             onRunStepAction={onRunStepAction}
             onOpenEditStep={onOpenEditStep}
             onMoveStep={onMoveStep}
             onDeleteStep={onDeleteStep}
+            onUpdateStepMetadata={onUpdateStepMetadata}
           />
         )}
 
@@ -190,6 +218,7 @@ export function WorkflowStepDetail({
             onSetApprovalComments={onSetApprovalComments}
             onSetDocumentFiles={onSetDocumentFiles}
             onRunStepAction={onRunStepAction}
+            onAddDocumentForStep={onAddDocumentForStep}
           />
         )}
 
@@ -199,6 +228,7 @@ export function WorkflowStepDetail({
             step={step}
             workflow={workflow}
             nextStep={nextStep}
+            matterId={matterId}
             calculateDuration={calculateDuration}
           />
         )}
@@ -359,27 +389,27 @@ interface ReadyStateViewProps {
   stepIndex: number;
   actionLoading: string | null;
   currentUserRole: string;
-  managementExpanded: boolean;
-  onToggleManagement: () => void;
+  matterId: string;
   onRunStepAction: (stepId: string, action: string, payload?: unknown) => Promise<void>;
   onOpenEditStep: (instanceId: string, step: WorkflowInstanceStep) => void;
   onMoveStep: (instanceId: string, stepId: string, direction: -1 | 1) => Promise<void>;
   onDeleteStep: (instanceId: string, stepId: string) => Promise<void>;
+  onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
 }
 
 function ReadyStateView({
   step,
   workflow,
-  stepIndex,
   actionLoading,
   currentUserRole,
-  managementExpanded,
-  onToggleManagement,
+  matterId: _matterId,
   onRunStepAction,
-  onOpenEditStep,
-  onMoveStep,
-  onDeleteStep,
+  onUpdateStepMetadata,
 }: ReadyStateViewProps) {
+  const [metadataExpanded, setMetadataExpanded] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; name: string | null; email: string | null }>>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  
   const isReady = step.actionState === "READY";
   const isPending = step.actionState === "PENDING";
   const isBlocked = step.actionState === "BLOCKED";
@@ -387,6 +417,46 @@ function ReadyStateView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const actionData = step.actionData as any;
   const config = actionData?.config;
+  
+  const canEditMetadata = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+  
+  // Fetch users when metadata section is expanded
+  useEffect(() => {
+    if (metadataExpanded && availableUsers.length === 0 && !loadingUsers) {
+      setLoadingUsers(true);
+      fetch(`/api/users`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setAvailableUsers(data);
+          }
+        })
+        .catch(err => {
+          console.error("Failed to load users:", err);
+        })
+        .finally(() => {
+          setLoadingUsers(false);
+        });
+    }
+  }, [metadataExpanded, availableUsers.length, loadingUsers]);
+  
+  const handleMetadataUpdate = async (field: 'dueDate' | 'assignedToId' | 'priority', value: string | null) => {
+    if (!onUpdateStepMetadata) return;
+    
+    try {
+      let processedValue = value;
+      
+      // Convert date string (YYYY-MM-DD) to ISO datetime string
+      if (field === 'dueDate' && value) {
+        const date = new Date(value);
+        processedValue = date.toISOString();
+      }
+      
+      await onUpdateStepMetadata(workflow.id, step.id, { [field]: processedValue });
+    } catch (error) {
+      console.error(`Failed to update ${field}:`, error);
+    }
+  };
 
   return (
     <div className="mt-6 space-y-6">
@@ -428,6 +498,101 @@ function ReadyStateView({
           )}
         </div>
       )}
+
+      {/* Step Metadata Info - Always visible */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Due Date */}
+        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-3">
+          <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Due Date</div>
+          {step.dueDate ? (
+            <>
+              <div className="text-sm font-bold text-blue-900">
+                {new Date(step.dueDate).toLocaleDateString("tr-TR", { 
+                  day: "numeric", 
+                  month: "short", 
+                  year: "numeric" 
+                })}
+              </div>
+              <div className="text-xs text-blue-600 mt-1">
+                {(() => {
+                  const dueDate = new Date(step.dueDate);
+                  const now = new Date();
+                  const diffMs = dueDate.getTime() - now.getTime();
+                  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                  if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+                  if (diffDays === 0) return "Due today";
+                  if (diffDays === 1) return "Due tomorrow";
+                  return `${diffDays} days remaining`;
+                })()}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-bold text-slate-400">Not set</div>
+              <div className="text-xs text-slate-400 mt-1">No deadline</div>
+            </>
+          )}
+        </div>
+
+        {/* Assigned To */}
+        <div className="rounded-lg border-2 border-purple-200 bg-purple-50/50 p-3">
+          <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">Assigned To</div>
+          {step.assignedTo ? (
+            <>
+              <div className="text-sm font-bold text-purple-900">
+                {step.assignedTo.name || "Unknown"}
+              </div>
+              {step.assignedTo.email && (
+                <div className="text-xs text-purple-600 mt-1 truncate">
+                  {step.assignedTo.email}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-bold text-slate-400">Unassigned</div>
+              <div className="text-xs text-slate-400 mt-1">Role: {step.roleScope}</div>
+            </>
+          )}
+        </div>
+
+        {/* Priority */}
+        <div className={`rounded-lg border-2 p-3 ${
+          step.priority === "HIGH" 
+            ? "border-red-200 bg-red-50/50" 
+            : step.priority === "LOW"
+            ? "border-slate-200 bg-slate-50/50"
+            : "border-amber-200 bg-amber-50/50"
+        }`}>
+          <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${
+            step.priority === "HIGH" 
+              ? "text-red-700" 
+              : step.priority === "LOW"
+              ? "text-slate-700"
+              : "text-amber-700"
+          }`}>
+            Priority
+          </div>
+          <div className={`text-sm font-bold ${
+            step.priority === "HIGH" 
+              ? "text-red-900" 
+              : step.priority === "LOW"
+              ? "text-slate-900"
+              : "text-amber-900"
+          }`}>
+            {step.priority || "MEDIUM"}
+          </div>
+          <div className={`text-xs mt-1 ${
+            step.priority === "HIGH" 
+              ? "text-red-600" 
+              : step.priority === "LOW"
+              ? "text-slate-600"
+              : "text-amber-600"
+          }`}>
+            {step.priority === "HIGH" ? "Urgent" : step.priority === "LOW" ? "Normal" : "Important"}
+          </div>
+        </div>
+      </div>
 
       {isPending && (
         <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-6">
@@ -504,81 +669,92 @@ function ReadyStateView({
         </div>
       )}
 
-      {/* Management Section - Collapsible */}
-      <div className="border-t border-slate-200 pt-4">
-        <button
-          type="button"
-          onClick={onToggleManagement}
-          className="flex items-center justify-between w-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          <span>Management Options</span>
-          {managementExpanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-        </button>
-        
-        {managementExpanded && (
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => onOpenEditStep(workflow.id, step)}
-              className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-            >
-              <Edit3 className="h-4 w-4" />
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => onMoveStep(workflow.id, step.id, -1)}
-              disabled={stepIndex === 0 || actionLoading === `${step.id}:move`}
-              className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ArrowUp className="h-4 w-4" />
-              Move Up
-            </button>
-            <button
-              type="button"
-              onClick={() => onMoveStep(workflow.id, step.id, 1)}
-              disabled={stepIndex === workflow.steps.length - 1 || actionLoading === `${step.id}:move`}
-              className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ArrowDown className="h-4 w-4" />
-              Move Down
-            </button>
-            {currentUserRole === "ADMIN" && !step.required && (
-              <button
-                type="button"
-                onClick={() => {
-                  const reason = window.prompt("Reason for skipping (optional):");
-                  if (reason !== null) {
-                    void onRunStepAction(step.id, "skip", { reason: reason || undefined });
-                  }
-                }}
-                disabled={actionLoading === `${step.id}:skip`}
-                className="flex items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-700 hover:bg-yellow-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <MinusCircle className="h-4 w-4" />
-                Skip
-              </button>
+      {/* Step Metadata - Collapsible (for ADMIN/LAWYER only) */}
+      {canEditMetadata && onUpdateStepMetadata && (
+        <div className="border-t border-slate-200 pt-4">
+          <button
+            type="button"
+            onClick={() => setMetadataExpanded(!metadataExpanded)}
+            className="flex items-center justify-between w-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <span>Step Details</span>
+            {metadataExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
             )}
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Are you sure you want to delete this step?")) {
-                  void onDeleteStep(workflow.id, step.id);
-                }
-              }}
-              disabled={actionLoading === `${step.id}:delete`}
-              className="flex items-center justify-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </button>
-          </div>
-        )}
-      </div>
+          </button>
+          
+          {metadataExpanded && (
+            <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              {/* Due Date */}
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                <span>Due Date</span>
+                <input
+                  type="date"
+                  value={step.dueDate ? new Date(step.dueDate).toISOString().slice(0, 10) : ""}
+                  onChange={(e) => {
+                    const value = e.target.value || null;
+                    void handleMetadataUpdate('dueDate', value);
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
+                />
+              </label>
+
+              {/* Assigned To */}
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                <span>Assigned To</span>
+                <select
+                  value={step.assignedToId || ""}
+                  onChange={(e) => {
+                    const value = e.target.value || null;
+                    void handleMetadataUpdate('assignedToId', value);
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
+                  disabled={loadingUsers}
+                >
+                  <option value="">Unassigned (role: {step.roleScope})</option>
+                  {loadingUsers ? (
+                    <option disabled>Loading users...</option>
+                  ) : (
+                    availableUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                        {user.email ? ` (${user.email})` : ""}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+
+              {/* Priority */}
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                <span>Priority</span>
+                <select
+                  value={step.priority || "MEDIUM"}
+                  onChange={(e) => {
+                    void handleMetadataUpdate('priority', e.target.value);
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
+                >
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                </select>
+              </label>
+
+              {/* Current Assignment Info */}
+              {step.assignedTo && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700">
+                  <p className="font-semibold mb-1">Currently assigned to:</p>
+                  <p>{step.assignedTo.name || step.assignedTo.email}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -595,24 +771,25 @@ interface InProgressStateViewProps {
   onSetApprovalComments: Dispatch<SetStateAction<Record<string, string>>>;
   onSetDocumentFiles: Dispatch<SetStateAction<Record<string, File | null>>>;
   onRunStepAction: (stepId: string, action: string, payload?: unknown) => Promise<void>;
+  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
 }
 
 function InProgressStateView({
   step,
-  matterId,
+  matterId: _matterId,
   actionLoading,
   formatRelativeTime,
   checklistStates,
   approvalComments,
-  documentFiles,
+  documentFiles: _documentFiles,
   onSetChecklistStates,
   onSetApprovalComments,
-  onSetDocumentFiles,
+  onSetDocumentFiles: _onSetDocumentFiles,
   onRunStepAction,
+  onAddDocumentForStep,
 }: InProgressStateViewProps) {
   const checkedItems = checklistStates[step.id] ?? new Set<string>();
   const comment = approvalComments[step.id] ?? "";
-  const selectedFile = documentFiles[step.id] ?? null;
 
   const handleToggleChecklistItem = (item: string) => {
     onSetChecklistStates((prev) => {
@@ -629,10 +806,6 @@ function InProgressStateView({
 
   const handleCommentChange = (newComment: string) => {
     onSetApprovalComments((prev) => ({ ...prev, [step.id]: newComment }));
-  };
-
-  const handleFileChange = (file: File | null) => {
-    onSetDocumentFiles((prev) => ({ ...prev, [step.id]: file }));
   };
 
   const isLoading = actionLoading === `${step.id}:complete`;
@@ -680,15 +853,11 @@ function InProgressStateView({
             isLoading={isLoading}
           />
         );
-      case "REQUEST_DOC_CLIENT":
+      case "REQUEST_DOC":
         return (
           <DocumentRequestExecution
             step={step}
-            selectedFile={selectedFile}
-            onFileChange={handleFileChange}
-            onComplete={(documentId) => {
-              void onRunStepAction(step.id, "complete", { payload: { documentId } });
-            }}
+            onAddDocument={onAddDocumentForStep ? (documentName) => onAddDocumentForStep(step.id, documentName) : undefined}
             isLoading={isLoading}
           />
         );
@@ -716,7 +885,17 @@ function InProgressStateView({
         return (
           <PopulateQuestionnaireExecution
             step={step}
-            matterId={matterId}
+            matterId={_matterId}
+            onComplete={(payload) => {
+              void onRunStepAction(step.id, "complete", { payload });
+            }}
+            isLoading={isLoading}
+          />
+        );
+      case "TASK":
+        return (
+          <TaskExecution
+            step={step}
             onComplete={(payload) => {
               void onRunStepAction(step.id, "complete", { payload });
             }}
@@ -762,6 +941,7 @@ interface CompletedStateViewProps {
   step: WorkflowInstanceStep;
   workflow: WorkflowInstance;
   nextStep: WorkflowInstanceStep | undefined;
+  matterId: string;
   calculateDuration: () => string | null;
 }
 
@@ -769,6 +949,7 @@ function CompletedStateView({
   step,
   workflow: _workflow,
   nextStep,
+  matterId: _matterId,
   calculateDuration,
 }: CompletedStateViewProps) {
   const renderOutputUI = () => {
@@ -797,7 +978,17 @@ function CompletedStateView({
         }
         return null;
 
-      case "REQUEST_DOC_CLIENT":
+      case "REQUEST_DOC":
+        // Use new multi-document viewer
+        if (actionData.data && actionData.config) {
+          return (
+            <RequestDocViewer
+              config={actionData.config}
+              data={actionData.data}
+            />
+          );
+        }
+        // Fallback for old single-document format
         if (actionData.documentId) {
           return <DocumentViewer documentIds={[actionData.documentId]} />;
         }
@@ -822,6 +1013,15 @@ function CompletedStateView({
           );
         }
         return null;
+
+      case "TASK":
+        // TASK stores notes directly in actionData, not nested in data
+        return (
+          <TaskViewer
+            config={actionData.config || {}}
+            data={{ notes: actionData.notes }}
+          />
+        );
 
       default:
         return null;

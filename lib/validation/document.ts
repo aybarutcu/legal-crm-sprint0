@@ -36,6 +36,7 @@ export const documentCreateSchema = z
     version: z.number().int().positive().optional(),
     matterId: z.string().min(1).optional(),
     contactId: z.string().min(1).optional(),
+    workflowStepId: z.string().min(1).optional(),
     tags: z.array(z.string().min(1)).optional(),
   });
 

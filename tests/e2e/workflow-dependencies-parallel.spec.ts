@@ -172,12 +172,6 @@ async function verifyDependencyGraph(page: Page) {
     // Verify no cycle warning
     const cycleWarning = page.locator('text=/cycle|circular/i');
     await expect(cycleWarning).not.toBeVisible();
-    
-    // Switch back to Form view
-    const formViewButton = page.locator('button:has-text("Form")').first();
-    if (await formViewButton.isVisible()) {
-      await formViewButton.click();
-    }
   }
 }
 

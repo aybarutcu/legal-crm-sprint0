@@ -5,7 +5,7 @@ const cuidSchema = z.string().trim().min(1);
 export const actionTypeSchema = z.enum([
   "APPROVAL_LAWYER",
   "SIGNATURE_CLIENT",
-  "REQUEST_DOC_CLIENT",
+  "REQUEST_DOC",
   "PAYMENT_CLIENT",
   "TASK",
   "CHECKLIST",

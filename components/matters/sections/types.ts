@@ -34,6 +34,8 @@ export type MatterDocumentsSectionProps = {
   onUploadClick: () => void;
   /** Callback when "View" button is clicked for a document */
   onViewDocument: (document: DocumentListItem) => void;
+  /** Optional list of document IDs to highlight (e.g., attached to selected workflow step) */
+  highlightedDocumentIds?: string[];
 };
 
 /**

@@ -72,7 +72,7 @@ export const GET = withApiHandler<{ id: string }>(
       return NextResponse.json({
         id: workflowStep.id,
         title: workflowStep.title,
-        description: workflowStep.notes || `${workflowStep.actionType} action in workflow`,
+        description: workflowStep.notes || null,
         dueAt: workflowStep.dueDate?.toISOString() || null,
         priority: workflowStep.priority || "MEDIUM",
         status,

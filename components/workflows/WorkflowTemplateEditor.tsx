@@ -4,6 +4,8 @@ import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { WorkflowCanvas } from "@/components/workflows/WorkflowCanvas";
 import type { WorkflowStep as CanvasWorkflowStep } from "@/components/workflows/WorkflowCanvas";
+import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 export type WorkflowStep = {
   id?: string;
@@ -71,6 +73,7 @@ export function WorkflowTemplateEditor({ initialDraft, mode, onCancel }: Workflo
   const [draft, setDraft] = useState<WorkflowTemplateDraft>(initialDraft || emptyDraft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showBuilderHelp, setShowBuilderHelp] = useState(false);
 
   // Memoize canvas steps to prevent infinite re-renders
   const canvasSteps = useMemo(() => 
@@ -186,96 +189,151 @@ export function WorkflowTemplateEditor({ initialDraft, mode, onCancel }: Workflo
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gray-50">
+      {/* Sticky Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/workflows/templates"
+                className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span className="font-medium">Back</span>
+              </Link>
+              <div className="h-6 w-px bg-gray-300" />
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {mode === "edit" ? "Edit" : "Create"} Workflow Template
+                </h1>
+                <p className="text-sm text-gray-600 mt-1">
+                  {mode === "edit" ? `Template: ${draft.name || "Untitled"}` : "Build a new workflow template"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={saving}
+                className="px-5 py-2.5 text-gray-700 bg-white border-2 border-gray-300 font-semibold rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveTemplate}
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? "Saving..." : mode === "edit" ? "Update Template" : "Create Template"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Error Banner */}
       {error && (
-        <div className="rounded-lg bg-red-50 border-2 border-red-200 p-4">
-          <p className="text-sm font-semibold text-red-800">{error}</p>
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="rounded-lg bg-red-50 border-2 border-red-200 p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">{error}</p>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Template Info */}
-      <div className="space-y-4 bg-white rounded-lg border-2 border-gray-200 p-6 shadow-sm">
-        <h3 className="text-lg font-bold text-gray-900 border-b pb-3">Template Information</h3>
-        
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Template Name *
-          </label>
-          <input
-            type="text"
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="e.g., Client Onboarding Process"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Description
-          </label>
-          <textarea
-            value={draft.description}
-            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-            rows={3}
-            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-            placeholder="Describe what this workflow template does..."
-          />
-        </div>
-
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="space-y-4 bg-white rounded-lg border-2 border-gray-200 p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-gray-900 border-b pb-3">Template Information</h3>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Template Name *
+            </label>
             <input
-              type="checkbox"
-              checked={draft.isActive ?? false}
-              onChange={(e) => setDraft({ ...draft, isActive: e.target.checked })}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              type="text"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g., Client Onboarding Process"
             />
-            <span className="text-sm font-medium text-gray-700">Active (ready to use)</span>
-          </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={draft.description}
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              placeholder="Describe what this workflow template does..."
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.isActive ?? false}
+                onChange={(e) => setDraft({ ...draft, isActive: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Active (ready to use)</span>
+            </label>
+          </div>
         </div>
       </div>
 
-      {/* Canvas View */}
-      <div className="space-y-4">
-        <div className="bg-white rounded-lg border-2 border-gray-200 shadow-sm overflow-hidden">
-          <WorkflowCanvas
-            steps={canvasSteps}
-            onChange={handleCanvasChange}
-          />
-        </div>
-        
-        {/* Instructions - Moved to bottom */}
-        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-          <p className="font-semibold mb-2">🎨 Visual Workflow Builder</p>
-          <ul className="space-y-1 ml-4 list-disc">
-            <li>Click action types in the palette to add steps</li>
-            <li>Click and drag from the green dot to create dependencies</li>
-            <li><strong>Click a node to edit its properties and configuration</strong></li>
-            <li>Delete connections by selecting an edge and pressing Delete</li>
-          </ul>
-        </div>
-      </div>
+      {/* Canvas Editor */}
+      <div className="max-w-7xl mx-auto px-6 pb-6">
+        <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">Visual Workflow Builder</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Use the canvas below to design your workflow template
+            </p>
+          </div>
+          
+          <div className="bg-blue-50 border-b-2 border-blue-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowBuilderHelp(!showBuilderHelp)}
+              className="w-full p-4 flex items-center justify-between text-left hover:bg-blue-100 transition-colors"
+            >
+              <p className="font-semibold text-sm text-blue-800">🎨 Visual Workflow Builder Tips</p>
+              {showBuilderHelp ? (
+                <ChevronDown className="h-4 w-4 text-blue-800" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-blue-800" />
+              )}
+            </button>
+            {showBuilderHelp && (
+              <div className="px-4 pb-4">
+                <ul className="text-sm text-blue-800 space-y-1 ml-4 list-disc">
+                  <li>Click action types in the palette to add steps</li>
+                  <li>Click and drag from the green dot to create dependencies</li>
+                  <li><strong>Click a node to edit its properties and configuration</strong></li>
+                  <li>Delete connections by selecting an edge and pressing Delete</li>
+                </ul>
+              </div>
+            )}
+          </div>
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-between gap-4 pt-6 border-t-2 border-gray-200">
-        <button
-          type="button"
-          onClick={handleCancel}
-          disabled={saving}
-          className="px-6 py-3 text-gray-700 bg-white border-2 border-gray-300 font-semibold rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={saveTemplate}
-          disabled={saving}
-          className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? "Saving..." : mode === "edit" ? "Update Template" : "Create Template"}
-        </button>
+          <div className="h-[600px]">
+            <WorkflowCanvas
+              steps={canvasSteps}
+              onChange={handleCanvasChange}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

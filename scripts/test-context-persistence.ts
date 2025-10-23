@@ -215,7 +215,7 @@ function getPayloadForStep(actionType: string): unknown {
       return {
         signedAt: new Date().toISOString(),
       };
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return {
         documentId: "test-doc-123",
       };

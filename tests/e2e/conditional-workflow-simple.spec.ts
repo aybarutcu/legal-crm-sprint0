@@ -90,7 +90,7 @@ test.describe("Conditional Workflow - Simple E2E", () => {
             {
               order: 2,
               title: "Corporate Only",
-              actionType: "REQUEST_DOC_CLIENT",
+              actionType: "REQUEST_DOC",
               roleScope: "CLIENT",
               required: false,
               conditionType: "IF_TRUE",
@@ -244,7 +244,7 @@ test.describe("Conditional Workflow - Simple E2E", () => {
             {
               order: 1,
               title: "Document Collection",
-              actionType: "REQUEST_DOC_CLIENT",
+              actionType: "REQUEST_DOC",
               roleScope: "CLIENT",
               required: true,
               conditionType: "ALWAYS",

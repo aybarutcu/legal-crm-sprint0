@@ -4,34 +4,9 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { ActionConfigDisplay } from "./ActionConfigDisplay";
 import { ConditionDisplay, ConditionBadge } from "./conditions";
-import type { ConditionConfig, ConditionType } from "./conditions/types";
+import type { WorkflowTemplate, WorkflowStep } from "./types";
+import type { ConditionConfig } from "./conditions/types";
 import { ChevronDown, ChevronRight, CheckCircle, FileText, Edit2, Trash2, GitBranch, Play, Clock, User } from "lucide-react";
-
-type WorkflowStep = {
-  id?: string;
-  title: string;
-  actionType: string;
-  roleScope: string;
-  required: boolean;
-  actionConfig: Record<string, unknown>;
-  order: number;
-  conditionType?: ConditionType;
-  conditionConfig?: ConditionConfig | null;
-  nextStepOnTrue?: number | null;
-  nextStepOnFalse?: number | null;
-  dependsOn?: number[];
-};
-
-type WorkflowTemplate = {
-  id: string;
-  name: string;
-  description: string | null;
-  version: number;
-  isActive: boolean;
-  steps: WorkflowStep[];
-  createdAt: string;
-  updatedAt: string;
-};
 
 type TemplateCardProps = {
   template: WorkflowTemplate;
@@ -48,7 +23,7 @@ const ACTION_ICONS = {
   CHECKLIST: FileText,
   APPROVAL_LAWYER: User,
   SIGNATURE_CLIENT: Edit2,
-  REQUEST_DOC_CLIENT: FileText,
+  REQUEST_DOC: FileText,
   PAYMENT_CLIENT: CheckCircle,
   WRITE_TEXT: Edit2,
   POPULATE_QUESTIONNAIRE: FileText,
@@ -309,7 +284,7 @@ export function TemplateCard({
                               <div className="mb-3">
                                 <ConditionDisplay
                                   conditionType={step.conditionType}
-                                  conditionConfig={step.conditionConfig as ConditionConfig}
+                                  conditionConfig={step.conditionConfig as unknown as ConditionConfig}
                                   compact
                                 />
                               </div>

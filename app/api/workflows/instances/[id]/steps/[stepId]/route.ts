@@ -19,6 +19,9 @@ const updateSchema = z.object({
   required: z.boolean().optional(),
   actionConfig: z.union([z.record(z.any()), z.array(z.any())]).optional(),
   insertAfterStepId: z.string().nullable().optional(),
+  dueDate: z.string().datetime().nullable().optional(),
+  assignedToId: z.string().nullable().optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
 });
 
 type Params = { params: { id: string; stepId: string } };
@@ -93,6 +96,15 @@ export const PATCH = withApiHandler(
           roleScope: payload.roleScope ?? step.roleScope,
           required: payload.required ?? step.required,
           order: targetOrder,
+          dueDate: payload.dueDate !== undefined 
+            ? (payload.dueDate ? new Date(payload.dueDate) : null)
+            : step.dueDate,
+          assignedToId: payload.assignedToId !== undefined 
+            ? payload.assignedToId 
+            : step.assignedToId,
+          priority: payload.priority !== undefined
+            ? payload.priority
+            : step.priority,
           actionData:
             payload.actionConfig !== undefined
               ? {
@@ -103,6 +115,13 @@ export const PATCH = withApiHandler(
         },
         include: {
           templateStep: true,
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
       });
 

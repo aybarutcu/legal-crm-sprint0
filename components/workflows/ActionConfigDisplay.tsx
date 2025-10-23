@@ -15,7 +15,7 @@ type ActionConfigDisplayProps = {
  * - CHECKLIST: Shows list of items with checkmarks
  * - APPROVAL_LAWYER: Shows approver role and message
  * - SIGNATURE_CLIENT: Shows provider and document ID
- * - REQUEST_DOC_CLIENT: Shows request text and document names
+ * - REQUEST_DOC: Shows request text and document names
  * - PAYMENT_CLIENT: Shows amount, currency, and provider
  * - WRITE_TEXT: Shows title, description, and length requirements
  * - POPULATE_QUESTIONNAIRE: Shows questionnaire title and description
@@ -145,7 +145,7 @@ export function ActionConfigDisplay({
       );
     }
     
-    case "REQUEST_DOC_CLIENT": {
+    case "REQUEST_DOC": {
       const requestText = config.requestText as string;
       const documentNames = (config.documentNames as string[]) || [];
       

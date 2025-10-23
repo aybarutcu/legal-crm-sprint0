@@ -14,7 +14,7 @@ type ActionType =
   | "CHECKLIST"
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
+  | "REQUEST_DOC"
   | "PAYMENT_CLIENT"
   | "WRITE_TEXT"
   | "POPULATE_QUESTIONNAIRE";
@@ -59,7 +59,7 @@ export function ActionConfigForm({ actionType, config, onChange }: ActionConfigF
         />
       );
 
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return (
         <DocumentRequestConfigForm
           initialConfig={config as { requestText?: string; acceptedFileTypes?: string[] }}

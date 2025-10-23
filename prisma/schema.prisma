@@ -230,6 +230,7 @@ model Document {
   id               String     @id @default(cuid())
   matterId         String?
   contactId        String?
+  workflowStepId   String?
   uploaderId       String
   filename         String
   mime             String
@@ -245,20 +246,24 @@ model Document {
   deletedAt        DateTime?
   deletedBy        String?
 
-  matter         Matter?    @relation(fields: [matterId], references: [id])
-  contact        Contact?   @relation("DocumentContact", fields: [contactId], references: [id])
-  uploader       User       @relation("DocumentUploader", fields: [uploaderId], references: [id])
-  parentDocument Document?  @relation("DocumentVersions", fields: [parentDocumentId], references: [id])
-  versions       Document[] @relation("DocumentVersions")
+  matter         Matter?                @relation(fields: [matterId], references: [id])
+  contact        Contact?               @relation("DocumentContact", fields: [contactId], references: [id])
+  workflowStep   WorkflowInstanceStep?  @relation("DocumentWorkflowStep", fields: [workflowStepId], references: [id], onDelete: SetNull)
+  uploader       User                   @relation("DocumentUploader", fields: [uploaderId], references: [id])
+  parentDocument Document?              @relation("DocumentVersions", fields: [parentDocumentId], references: [id])
+  versions       Document[]             @relation("DocumentVersions")
   taskLinks      TaskLink[]
   approvals      Approval[]
 
   @@index([matterId, filename])
   @@index([contactId])
+  @@index([workflowStepId])
   @@index([matterId, hash])
   @@index([parentDocumentId])
   @@index([createdAt])
 }
+
+
 
 model Message {
   id          String    @id @default(cuid())
@@ -550,6 +555,7 @@ model WorkflowInstanceStep {
   instance     WorkflowInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   templateStep WorkflowTemplateStep? @relation(fields: [templateStepId], references: [id], onDelete: SetNull)
   assignedTo   User?                 @relation("UserAssignedWorkflowSteps", fields: [assignedToId], references: [id], onDelete: SetNull)
+  documents    Document[]            @relation("DocumentWorkflowStep")
 
   @@unique([instanceId, order])
   @@index([instanceId, actionState])
@@ -560,7 +566,7 @@ model WorkflowInstanceStep {
 enum ActionType {
   APPROVAL_LAWYER
   SIGNATURE_CLIENT
-  REQUEST_DOC_CLIENT
+  REQUEST_DOC
   PAYMENT_CLIENT
   TASK
   CHECKLIST

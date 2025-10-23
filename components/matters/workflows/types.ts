@@ -11,10 +11,11 @@ export type ActionType =
   | "CHECKLIST"
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
+  | "REQUEST_DOC"
   | "PAYMENT_CLIENT"
   | "WRITE_TEXT"
-  | "POPULATE_QUESTIONNAIRE";
+  | "POPULATE_QUESTIONNAIRE"
+  | "TASK";
 
 export type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 
@@ -28,6 +29,10 @@ export type WorkflowInstanceStep = {
   actionState: ActionState;
   actionData: Record<string, unknown> | null;
   assignedToId: string | null;
+  assignedTo?: { id: string; name: string | null; email: string | null } | null;
+  dueDate: string | null;
+  priority: "LOW" | "MEDIUM" | "HIGH" | null;
+  notes: string | null;
   startedAt: string | null;
   completedAt: string | null;
   dependsOn?: string[];

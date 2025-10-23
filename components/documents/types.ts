@@ -9,6 +9,7 @@ export type DocumentListItem = {
   hash: string | null;
   createdAt: string;
   signedAt: string | null;
+  workflowStepId: string | null;
   matter: {
     id: string;
     title: string;

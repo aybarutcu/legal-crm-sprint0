@@ -226,6 +226,46 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
 
   return (
     <section className="space-y-6" data-testid="tasks-container">
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="rounded-xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Total Tasks</div>
+          <div className="text-2xl font-bold text-slate-900">{meta?.total ?? 0}</div>
+          <div className="text-xs text-slate-500 mt-1">All records</div>
+        </div>
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4 shadow-sm">
+          <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Showing</div>
+          <div className="text-2xl font-bold text-blue-900">{tasks?.length ?? 0}</div>
+          <div className="text-xs text-blue-600 mt-1">On this page</div>
+        </div>
+        <div className="rounded-xl border-2 border-purple-200 bg-purple-50/50 p-4 shadow-sm">
+          <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">Page</div>
+          <div className="text-2xl font-bold text-purple-900">{meta?.page ?? 1} / {meta ? Math.max(1, Math.ceil(meta.total / meta.pageSize)) : 1}</div>
+          <div className="text-xs text-purple-600 mt-1">Current position</div>
+        </div>
+        <div className={`rounded-xl border-2 p-4 shadow-sm ${
+          Object.values(activeFilters).some(v => v && v !== "ALL") 
+            ? 'border-amber-200 bg-amber-50/50' 
+            : 'border-emerald-200 bg-emerald-50/50'
+        }`}>
+          <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${
+            Object.values(activeFilters).some(v => v && v !== "ALL") ? 'text-amber-700' : 'text-emerald-700'
+          }`}>
+            Filters
+          </div>
+          <div className={`text-2xl font-bold ${
+            Object.values(activeFilters).some(v => v && v !== "ALL") ? 'text-amber-900' : 'text-emerald-900'
+          }`}>
+            {Object.values(activeFilters).filter(v => v && v !== "ALL").length}
+          </div>
+          <div className={`text-xs mt-1 ${
+            Object.values(activeFilters).some(v => v && v !== "ALL") ? 'text-amber-600' : 'text-emerald-600'
+          }`}>
+            {Object.values(activeFilters).some(v => v && v !== "ALL") ? 'Active filters' : 'No filters'}
+          </div>
+        </div>
+      </div>
+
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           {(["all", "mine", "overdue", "upcoming"] as const).map((tab) => (
@@ -283,45 +323,51 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
         </div>
       </header>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
-        <form
-          className="grid gap-3 md:grid-cols-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const formData = new window.FormData(event.currentTarget);
-            updateFilters({
-              q: (formData.get("q") as string) || undefined,
-              matterId: (formData.get("matterId") as string) || undefined,
-              assigneeId: (formData.get("assigneeId") as string) || undefined,
-              status:
-                ((formData.get("status") as TaskFilterState["status"]) || "ALL") ??
-                "ALL",
-              priority:
-                ((formData.get("priority") as TaskFilterState["priority"]) || "ALL") ??
-                "ALL",
-              dueFrom: (formData.get("dueFrom") as string) || undefined,
-              dueTo: (formData.get("dueTo") as string) || undefined,
-            });
-          }}
-        >
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500 md:col-span-2">
-            Search
+      {/* Search and Filter Section */}
+      <form
+        className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-lg"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const formData = new window.FormData(event.currentTarget);
+          updateFilters({
+            q: (formData.get("q") as string) || undefined,
+            matterId: (formData.get("matterId") as string) || undefined,
+            assigneeId: (formData.get("assigneeId") as string) || undefined,
+            status:
+              ((formData.get("status") as TaskFilterState["status"]) || "ALL") ??
+              "ALL",
+            priority:
+              ((formData.get("priority") as TaskFilterState["priority"]) || "ALL") ??
+              "ALL",
+            dueFrom: (formData.get("dueFrom") as string) || undefined,
+            dueTo: (formData.get("dueTo") as string) || undefined,
+          });
+        }}
+      >
+        <div className="grid gap-4 md:grid-cols-6">
+          <label className="flex flex-col gap-2 md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Search Tasks
+            </span>
             <input
               name="q"
               defaultValue={activeFilters.q ?? ""}
-              placeholder="Title or description"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              placeholder="Title or description..."
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
               type="search"
             />
           </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Matter
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Matter
+            </span>
             <select
               name="matterId"
               defaultValue={activeFilters.matterId ?? ""}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
             >
-              <option value="">All</option>
+              <option value="">All Matters</option>
               {matters.map((matter) => (
                 <option key={matter.id} value={matter.id}>
                   {matter.title}
@@ -329,14 +375,17 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Assignee
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Assignee
+            </span>
             <select
               name="assigneeId"
               defaultValue={activeFilters.assigneeId ?? ""}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
             >
-              <option value="">All</option>
+              <option value="">All Assignees</option>
               {assignees.map((assignee) => (
                 <option key={assignee.id} value={assignee.id}>
                   {assignee.name}
@@ -344,14 +393,17 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Status
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Status
+            </span>
             <select
               name="status"
               defaultValue={activeFilters.status ?? "ALL"}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
             >
-              <option value="ALL">All</option>
+              <option value="ALL">All Statuses</option>
               {TASK_STATUSES.map((status) => (
                 <option key={status} value={status}>
                   {status.replace("_", " ")}
@@ -359,14 +411,17 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Priority
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Priority
+            </span>
             <select
               name="priority"
               defaultValue={activeFilters.priority ?? "ALL"}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all bg-white"
             >
-              <option value="ALL">All</option>
+              <option value="ALL">All Priorities</option>
               {TASK_PRIORITIES.map((priority) => (
                 <option key={priority} value={priority}>
                   {priority}
@@ -374,42 +429,48 @@ export function TasksClient({ currentUserId }: TasksClientProps) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Due from
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Due From
+            </span>
             <input
               type="date"
               name="dueFrom"
               defaultValue={activeFilters.dueFrom ?? ""}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
             />
           </label>
-          <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Due to
+          
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Due To
+            </span>
             <input
               type="date"
               name="dueTo"
               defaultValue={activeFilters.dueTo ?? ""}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-accent focus:outline-none"
+              className="rounded-lg border-2 border-slate-200 px-4 py-2.5 text-sm text-slate-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
             />
           </label>
+        </div>
 
-          <div className="flex items-end gap-3 md:col-span-2">
-            <button
-              type="submit"
-              className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
-            >
-              Apply
-            </button>
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            >
-              Reset
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex items-center gap-3 mt-6 pt-6 border-t-2 border-slate-200">
+          <button
+            type="submit"
+            className="flex-1 md:flex-none rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-white hover:bg-accent/90 shadow-sm hover:shadow-md transition-all"
+          >
+            Apply Filters
+          </button>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded-lg border-2 border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all"
+          >
+            Reset Filters
+          </button>
+        </div>
+      </form>
 
       {toast ? (
         <div

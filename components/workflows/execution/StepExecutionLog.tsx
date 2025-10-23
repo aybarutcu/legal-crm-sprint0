@@ -42,7 +42,7 @@ export function StepExecutionLog({ step }: StepExecutionLogProps) {
             : `✗ Reddedildi${actionData.payload.comment ? `: "${actionData.payload.comment}"` : ""}`;
         }
         break;
-      case "REQUEST_DOC_CLIENT":
+      case "REQUEST_DOC":
         if (actionData?.payload?.uploadedFileId) {
           details = `Belge yüklendi: ${actionData.payload.originalFilename || actionData.payload.uploadedFileId}`;
         }

@@ -6,7 +6,7 @@ import { ActionConfigDisplay } from "@/components/workflows/ActionConfigDisplay"
 type ActionType =
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
+  | "REQUEST_DOC"
   | "PAYMENT_CLIENT"
   | "CHECKLIST"
   | "WRITE_TEXT"

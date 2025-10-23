@@ -103,7 +103,7 @@ export function StepPropertyPanel({
               <option value="CHECKLIST">Checklist</option>
               <option value="APPROVAL_LAWYER">Approval (Lawyer)</option>
               <option value="SIGNATURE_CLIENT">Signature (Client)</option>
-              <option value="REQUEST_DOC_CLIENT">Request Document</option>
+              <option value="REQUEST_DOC">Request Document</option>
               <option value="PAYMENT_CLIENT">Payment</option>
               <option value="WRITE_TEXT">Write Text</option>
               <option value="POPULATE_QUESTIONNAIRE">Questionnaire</option>

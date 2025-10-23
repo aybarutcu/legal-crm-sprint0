@@ -4,7 +4,7 @@ import { TaskActionHandler } from "./task";
 import { ChecklistActionHandler } from "./checklist";
 import { PaymentActionHandler } from "./payment-client";
 import { PopulateQuestionnaireActionHandler } from "./populate-questionnaire";
-import { RequestDocActionHandler } from "./request-doc-client";
+import { RequestDocActionHandler } from "./request-doc";
 import { SignatureActionHandler } from "./signature-client";
 import { WriteTextActionHandler } from "./write-text";
 
@@ -21,7 +21,7 @@ export function registerDefaultWorkflowHandlers(): void {
 
 export { ApprovalActionHandler } from "./approval-lawyer";
 export { SignatureActionHandler } from "./signature-client";
-export { RequestDocActionHandler } from "./request-doc-client";
+export { RequestDocActionHandler } from "./request-doc";
 export { PaymentActionHandler } from "./payment-client";
 export { TaskActionHandler } from "./task";
 export { ChecklistActionHandler } from "./checklist";

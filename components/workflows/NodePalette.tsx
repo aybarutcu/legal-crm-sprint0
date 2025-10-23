@@ -41,7 +41,7 @@ const ACTION_TYPES: ActionTypeInfo[] = [
     color: "bg-indigo-50 hover:bg-indigo-100 border-indigo-300",
   },
   {
-    type: "REQUEST_DOC_CLIENT",
+    type: "REQUEST_DOC",
     icon: "📄",
     label: "Request Document",
     description: "Request document from client",

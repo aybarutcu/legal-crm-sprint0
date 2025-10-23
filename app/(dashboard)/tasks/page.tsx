@@ -8,8 +8,8 @@ export default async function TasksPage() {
   return (
     <>
       <PageHeader 
-        title="My Workflow Tasks" 
-        description="Workflow steps assigned to you based on your role in matter teams." 
+        title="Tasks" 
+        description="Standalone tasks and workflow steps assigned to you." 
       />
       <TasksClient currentUserId={session?.user?.id} />
     </>

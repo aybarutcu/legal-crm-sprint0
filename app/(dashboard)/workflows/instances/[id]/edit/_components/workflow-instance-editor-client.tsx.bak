@@ -1,0 +1,501 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Save,
+  Plus,
+  Trash2,
+  Edit3,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Circle,
+} from "lucide-react";
+import type { ActionType, RoleScope, ActionState, TaskPriority } from "@prisma/client";
+
+type User = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+};
+
+type WorkflowStep = {
+  id: string;
+  order: number;
+  title: string;
+  actionType: ActionType;
+  roleScope: RoleScope;
+  required: boolean;
+  actionState: ActionState;
+  actionData: unknown;
+  assignedToId: string | null;
+  assignedTo: { id: string; name: string | null; email: string | null } | null;
+  dueDate: string | null;
+  priority: TaskPriority | null;
+  notes: string | null;
+  dependsOn: string[];
+  dependencyLogic: string;
+  conditionType: string | null;
+  conditionConfig: unknown;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type WorkflowInstance = {
+  id: string;
+  templateId: string;
+  matterId: string | null;
+  contactId: string | null;
+  templateVersion: number;
+  status: string;
+  contextData: unknown;
+  createdAt: string;
+  updatedAt: string;
+  template: {
+    id: string;
+    name: string;
+    description: string | null;
+  };
+  matter: {
+    id: string;
+    title: string;
+  } | null;
+  contact: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    type: string;
+  } | null;
+  steps: WorkflowStep[];
+  createdBy: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
+};
+
+type Props = {
+  instance: WorkflowInstance;
+  users: User[];
+  contextTitle: string;
+  contextType: "matter" | "contact";
+};
+
+export function WorkflowInstanceEditorClient({
+  instance: initialInstance,
+  users,
+  contextTitle,
+  contextType,
+}: Props) {
+  const router = useRouter();
+  const [instance, setInstance] = useState(initialInstance);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const selectedStep = instance.steps.find((s) => s.id === selectedStepId);
+
+  const getBackUrl = () => {
+    if (contextType === "matter" && instance.matterId) {
+      return `/matters/${instance.matterId}`;
+    }
+    if (contextType === "contact" && instance.contactId) {
+      return `/contacts/${instance.contactId}`;
+    }
+    return "/dashboard";
+  };
+
+  const canEditStep = (step: WorkflowStep) => {
+    // Cannot edit completed steps (preserve history)
+    if (step.actionState === "COMPLETED") return false;
+    // Cannot edit steps currently in progress
+    if (step.actionState === "IN_PROGRESS") return false;
+    return true;
+  };
+
+  const canDeleteStep = (step: WorkflowStep) => {
+    // Can only delete PENDING or READY steps
+    return step.actionState === "PENDING" || step.actionState === "READY";
+  };
+
+  const showToast = (message: string, type: "success" | "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/workflows/instances/${instance.id}/edit`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          steps: instance.steps.map((step) => ({
+            id: step.id,
+            order: step.order,
+            title: step.title,
+            actionType: step.actionType,
+            roleScope: step.roleScope,
+            required: step.required,
+            actionData: step.actionData,
+            assignedToId: step.assignedToId,
+            dueDate: step.dueDate,
+            priority: step.priority,
+            notes: step.notes,
+            dependsOn: step.dependsOn,
+            dependencyLogic: step.dependencyLogic,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save changes");
+      }
+
+      showToast("Workflow updated successfully", "success");
+      
+      // Redirect back after a short delay
+      setTimeout(() => {
+        router.push(getBackUrl());
+        router.refresh();
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to save workflow:", error);
+      showToast(
+        error instanceof Error ? error.message : "Failed to save changes",
+        "error"
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const getStateIcon = (state: ActionState) => {
+    switch (state) {
+      case "COMPLETED":
+        return <CheckCircle2 className="h-4 w-4 text-emerald-600" />;
+      case "IN_PROGRESS":
+        return <Clock className="h-4 w-4 text-blue-600" />;
+      case "READY":
+        return <Circle className="h-4 w-4 text-blue-500 fill-current" />;
+      case "PENDING":
+        return <Circle className="h-4 w-4 text-slate-400" />;
+      case "FAILED":
+        return <AlertCircle className="h-4 w-4 text-red-600" />;
+      case "SKIPPED":
+        return <Circle className="h-4 w-4 text-yellow-600" />;
+      default:
+        return <Circle className="h-4 w-4 text-slate-400" />;
+    }
+  };
+
+  const getStateColor = (state: ActionState) => {
+    switch (state) {
+      case "COMPLETED":
+        return "border-emerald-200 bg-emerald-50";
+      case "IN_PROGRESS":
+        return "border-blue-200 bg-blue-50";
+      case "READY":
+        return "border-blue-200 bg-blue-50/50";
+      case "PENDING":
+        return "border-slate-200 bg-slate-50";
+      case "FAILED":
+        return "border-red-200 bg-red-50";
+      case "SKIPPED":
+        return "border-yellow-200 bg-yellow-50";
+      default:
+        return "border-slate-200 bg-white";
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href={getBackUrl()}
+            className="rounded-lg p-2 hover:bg-slate-100 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 text-slate-600" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Edit Workflow: {instance.template.name}
+            </h1>
+            <p className="text-sm text-slate-600 mt-1">
+              {contextTitle} · {instance.steps.length} steps · Status: {instance.status}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+        >
+          <Save className="h-4 w-4" />
+          {isSaving ? "Saving..." : "Save Changes"}
+        </button>
+      </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed top-4 right-4 z-50 rounded-lg border-2 px-4 py-3 shadow-lg ${
+            toast.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
+      {/* Warning Banner */}
+      <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900">Important Notes</p>
+            <ul className="text-xs text-amber-700 mt-2 space-y-1 list-disc list-inside">
+              <li>Completed and in-progress steps cannot be edited</li>
+              <li>You can only delete PENDING or READY steps</li>
+              <li>Changes will be saved when you click "Save Changes"</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Steps List */}
+        <div className="lg:col-span-2">
+          <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-slate-900">Workflow Steps</h2>
+              <button
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                onClick={() => {
+                  // TODO: Implement add new step
+                  showToast("Add step functionality coming soon", "error");
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Step
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {instance.steps.map((step, index) => (
+                <div
+                  key={step.id}
+                  onClick={() => setSelectedStepId(step.id)}
+                  className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    selectedStepId === step.id
+                      ? "border-blue-400 bg-blue-50/50"
+                      : getStateColor(step.actionState)
+                  } hover:border-blue-300`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-1">{getStateIcon(step.actionState)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-semibold text-slate-500">
+                          Step {index + 1}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                          {step.actionType}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-purple-200 text-purple-700">
+                          {step.roleScope}
+                        </span>
+                        {step.required && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-amber-200 text-amber-700">
+                            Required
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-medium text-slate-900 truncate">{step.title}</h3>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-600">
+                        <span>State: {step.actionState}</span>
+                        {step.assignedTo && (
+                          <span>Assigned: {step.assignedTo.name}</span>
+                        )}
+                        {step.dueDate && (
+                          <span>
+                            Due: {new Date(step.dueDate).toLocaleDateString("tr-TR")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Step Editor Panel */}
+        <div className="lg:col-span-1">
+          {selectedStep ? (
+            <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-lg sticky top-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-slate-900">Edit Step</h2>
+                {canDeleteStep(selectedStep) && (
+                  <button
+                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 transition-colors"
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to delete this step?")) {
+                        setInstance({
+                          ...instance,
+                          steps: instance.steps.filter((s) => s.id !== selectedStep.id),
+                        });
+                        setSelectedStepId(null);
+                        showToast("Step removed (save to persist)", "success");
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {!canEditStep(selectedStep) && (
+                <div className="mb-4 rounded-lg border-2 border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                  This step cannot be edited because it is {selectedStep.actionState.toLowerCase()}.
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Title */}
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-semibold text-slate-700">Title</span>
+                  <input
+                    type="text"
+                    value={selectedStep.title}
+                    onChange={(e) => {
+                      if (!canEditStep(selectedStep)) return;
+                      setInstance({
+                        ...instance,
+                        steps: instance.steps.map((s) =>
+                          s.id === selectedStep.id ? { ...s, title: e.target.value } : s
+                        ),
+                      });
+                    }}
+                    disabled={!canEditStep(selectedStep)}
+                    className="rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                </label>
+
+                {/* Assigned To */}
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-semibold text-slate-700">Assigned To</span>
+                  <select
+                    value={selectedStep.assignedToId || ""}
+                    onChange={(e) => {
+                      setInstance({
+                        ...instance,
+                        steps: instance.steps.map((s) =>
+                          s.id === selectedStep.id
+                            ? { ...s, assignedToId: e.target.value || null }
+                            : s
+                        ),
+                      });
+                    }}
+                    className="rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
+                  >
+                    <option value="">Unassigned (role: {selectedStep.roleScope})</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Due Date */}
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-semibold text-slate-700">Due Date</span>
+                  <input
+                    type="date"
+                    value={
+                      selectedStep.dueDate
+                        ? new Date(selectedStep.dueDate).toISOString().slice(0, 10)
+                        : ""
+                    }
+                    onChange={(e) => {
+                      setInstance({
+                        ...instance,
+                        steps: instance.steps.map((s) =>
+                          s.id === selectedStep.id
+                            ? { ...s, dueDate: e.target.value || null }
+                            : s
+                        ),
+                      });
+                    }}
+                    className="rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </label>
+
+                {/* Priority */}
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-semibold text-slate-700">Priority</span>
+                  <select
+                    value={selectedStep.priority || "MEDIUM"}
+                    onChange={(e) => {
+                      setInstance({
+                        ...instance,
+                        steps: instance.steps.map((s) =>
+                          s.id === selectedStep.id
+                            ? { ...s, priority: e.target.value as TaskPriority }
+                            : s
+                        ),
+                      });
+                    }}
+                    className="rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                  </select>
+                </label>
+
+                {/* Notes */}
+                <label className="flex flex-col gap-2">
+                  <span className="text-sm font-semibold text-slate-700">Notes</span>
+                  <textarea
+                    value={selectedStep.notes || ""}
+                    onChange={(e) => {
+                      setInstance({
+                        ...instance,
+                        steps: instance.steps.map((s) =>
+                          s.id === selectedStep.id ? { ...s, notes: e.target.value } : s
+                        ),
+                      });
+                    }}
+                    rows={3}
+                    className="rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none"
+                    placeholder="Add notes about this step..."
+                  />
+                </label>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-12 text-center">
+              <Edit3 className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm text-slate-500">Select a step to edit its properties</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -83,44 +83,72 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-56 flex-col gap-6 border-r border-slate-200 bg-white px-6 py-10 lg:flex">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Legal CRM
+    <div className="flex min-h-screen bg-slate-50">
+      {/* Sidebar */}
+      <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex sticky top-0 h-screen">
+        <div className="flex h-full flex-col">
+          {/* Logo/Brand */}
+          <div className="border-b border-slate-200 px-6 py-6">
+            <Link href="/dashboard" className="flex flex-col">
+              <span className="text-xs font-bold uppercase tracking-widest text-blue-600">
+                Legal CRM
+              </span>
+              <span className="mt-1 text-lg font-bold text-slate-900">
+                Yönetim Paneli
+              </span>
+            </Link>
           </div>
-          <div className="text-lg font-semibold text-slate-900">
-            Yönetim Paneli
+
+          {/* Navigation */}
+          <div className="flex-1 overflow-y-auto px-3 py-4">
+            <SidebarNav navGroups={NAV_GROUPS} userRole={session.user.role} />
+          </div>
+
+          {/* User info footer */}
+          <div className="border-t border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+                {session.user.name?.charAt(0)?.toUpperCase() || session.user.email?.charAt(0)?.toUpperCase() || "U"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {session.user.name || "User"}
+                </p>
+                <p className="truncate text-xs text-slate-500">{session.user.role}</p>
+              </div>
+            </div>
           </div>
         </div>
-        <SidebarNav navGroups={NAV_GROUPS} userRole={session.user.role} />
       </aside>
 
+      {/* Main Content Area */}
       <div className="flex flex-1 min-w-0 flex-col">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-slate-900">
-                Legal CRM Dashboard
-              </h1>
-              <p className="text-sm text-slate-500">
-                Günlük özet kartları, CRM akışları ve rol tabanlı erişim.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="hidden rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 lg:inline-flex"
-              >
-                Marketing
-              </Link>
-              <TaskNotifications />
-              <ProfileMenu user={session.user} />
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">
+                  Legal CRM Dashboard
+                </h1>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  Günlük özet kartları, CRM akışları ve rol tabanlı erişim.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/"
+                  className="hidden rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors lg:inline-flex"
+                >
+                  Marketing
+                </Link>
+                <TaskNotifications />
+                <ProfileMenu user={session.user} />
+              </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 min-w-0 bg-slate-50 px-6 py-8">{children}</main>
+        <main className="flex-1 min-w-0 bg-slate-50 px-4 py-4">{children}</main>
       </div>
     </div>
   );

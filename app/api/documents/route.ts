@@ -13,10 +13,11 @@ import { detectMimeFromBuffer, isMimeCompatible } from "@/lib/mime-sniffer";
 import { readObjectChunk, calculateObjectHash } from "@/lib/storage";
 import { getNextDocumentVersion } from "@/lib/documents/version";
 
-export const GET = withApiHandler(async (req) => {
-  const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries());
-  const { q, matterId, contactId, uploaderId, tags, page, pageSize } =
-    documentQuerySchema.parse(queryParams);
+export const GET = withApiHandler(
+  async (req) => {
+    const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries());
+    const { q, matterId, contactId, uploaderId, tags, page, pageSize } =
+      documentQuerySchema.parse(queryParams);
 
   const skip = (page - 1) * pageSize;
   const tagList = tags
@@ -27,6 +28,7 @@ export const GET = withApiHandler(async (req) => {
     : [];
 
   const where: Prisma.DocumentWhereInput = {
+    deletedAt: null, // Only show non-deleted documents
     ...(matterId ? { matterId } : {}),
     ...(contactId ? { contactId } : {}),
     ...(uploaderId ? { uploaderId } : {}),
@@ -62,22 +64,25 @@ export const GET = withApiHandler(async (req) => {
     prisma.document.count({ where }),
   ]);
 
-  return NextResponse.json({
-    data: documents.map((doc) => ({
-      ...doc,
-      createdAt: doc.createdAt.toISOString(),
-      signedAt: doc.signedAt?.toISOString() ?? null,
-    })),
-    pagination: {
-      page,
-      pageSize,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / pageSize)),
-      hasNext: skip + pageSize < total,
-      hasPrev: page > 1,
-    },
-  });
-});
+    return NextResponse.json({
+      data: documents.map((doc) => ({
+        ...doc,
+        createdAt: doc.createdAt.toISOString(),
+        signedAt: doc.signedAt?.toISOString() ?? null,
+        workflowStepId: doc.workflowStepId,
+      })),
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        hasNext: skip + pageSize < total,
+        hasPrev: page > 1,
+      },
+    });
+  },
+  { requireAuth: true }
+);
 
 export const POST = withApiHandler(async (req, { session }) => {
   const body = await req.json();
@@ -180,6 +185,7 @@ export const POST = withApiHandler(async (req, { session }) => {
       version,
       matterId: payload.matterId ?? null,
       contactId: payload.contactId ?? null,
+      workflowStepId: payload.workflowStepId ?? null,
       uploaderId: session!.user!.id,
     },
     include: {
@@ -204,6 +210,79 @@ export const POST = withApiHandler(async (req, { session }) => {
       contactId: created.contactId,
     },
   });
+
+  // If document is linked to a REQUEST_DOC workflow step, update step data
+  if (created.workflowStepId && created.tags && created.tags.length > 0) {
+    const workflowStep = await prisma.workflowInstanceStep.findUnique({
+      where: { id: created.workflowStepId },
+    });
+
+    if (workflowStep && workflowStep.actionType === "REQUEST_DOC") {
+      const actionData = workflowStep.actionData as Prisma.JsonObject;
+      const data = (actionData?.data as Prisma.JsonObject) || {};
+      const config = (actionData?.config as Prisma.JsonObject) || {};
+      const documentNames = (config.documentNames as string[]) || [];
+      let documentsStatus = (data.documentsStatus as Array<{
+        documentName: string;
+        uploaded: boolean;
+        documentId?: string;
+        uploadedAt?: string;
+      }>) || [];
+
+      // Ensure documentsStatus is initialized with all document names
+      if (documentsStatus.length === 0) {
+        documentsStatus = documentNames.map((name) => ({
+          documentName: name,
+          uploaded: false,
+        }));
+      }
+
+      // Mark the uploaded document
+      const documentName = created.tags[0]; // First tag is the document name
+      const docStatus = documentsStatus.find((d) => d.documentName === documentName);
+      if (docStatus) {
+        docStatus.uploaded = true;
+        docStatus.documentId = created.id;
+        docStatus.uploadedAt = new Date().toISOString();
+      } else {
+        // If not found, add it (shouldn't happen but defensive)
+        documentsStatus.push({
+          documentName,
+          uploaded: true,
+          documentId: created.id,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+
+      // Check if all documents are uploaded
+      const allUploaded = documentNames.every((name) => {
+        const status = documentsStatus.find((d) => d.documentName === name);
+        return status?.uploaded === true;
+      });
+
+      // Update step data
+      const updatedData = {
+        ...data,
+        documentsStatus,
+        allDocumentsUploaded: allUploaded,
+        status: allUploaded ? "COMPLETED" : "IN_PROGRESS",
+      };
+
+      const updatedActionData = {
+        ...actionData,
+        data: updatedData,
+      };
+
+      await prisma.workflowInstanceStep.update({
+        where: { id: created.workflowStepId },
+        data: {
+          actionData: updatedActionData,
+          // If all documents uploaded, mark step as COMPLETED
+          ...(allUploaded ? { actionState: "COMPLETED", completedAt: new Date() } : {}),
+        },
+      });
+    }
+  }
 
   return NextResponse.json({
     ...created,

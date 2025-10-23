@@ -36,10 +36,15 @@ export type TaskListItem = {
   matterId: string | null;
   assignee: TaskAssignee | null;
   matter: TaskMatter | null;
+  contact?: { id: string; firstName: string; lastName: string; type: string } | null;
   _count: TaskCounts;
   itemType: 'TASK' | 'WORKFLOW_STEP';
   actionType?: string;
   roleScope?: string;
+  actionState?: string;
+  workflowName?: string;
+  contextTitle?: string;
+  instanceId?: string;
 };
 
 export type TaskChecklistItem = {

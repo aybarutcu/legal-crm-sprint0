@@ -30,7 +30,7 @@ import { EditContactDialog } from "@/components/contact/edit-contact-dialog";
 type ActionType =
   | "APPROVAL_LAWYER"
   | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
+  | "REQUEST_DOC"
   | "PAYMENT_CLIENT"
   | "CHECKLIST"
   | "WRITE_TEXT"
@@ -53,7 +53,7 @@ function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
       return { approverRole: "LAWYER", message: "" };
     case "SIGNATURE_CLIENT":
       return { documentId: null, provider: "mock" };
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return { requestText: "", documentNames: [] };
     case "PAYMENT_CLIENT":
       return { amount: 0, currency: "USD", provider: "mock" };
@@ -84,8 +84,13 @@ type WorkflowInstanceStep = {
   actionState: ActionState;
   actionData: Record<string, unknown> | null;
   assignedToId: string | null;
+  assignedTo?: { id: string; name: string | null; email: string | null } | null;
+  dueDate: string | null;
+  priority: "LOW" | "MEDIUM" | "HIGH" | null;
+  notes: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  dependsOn?: string[];
 };
 
 type WorkflowInstance = {
@@ -133,6 +138,8 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [partyModalOpen, setPartyModalOpen] = useState(false);
   const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [uploadWorkflowStepId, setUploadWorkflowStepId] = useState<string | null>(null);
+  const [uploadDocumentTags, setUploadDocumentTags] = useState<string[]>([]);
   const [partyForm, setPartyForm] = useState(initialPartyForm);
   const [loading, setLoading] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
@@ -170,6 +177,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   // State for new timeline and detail view
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [attachedDocumentIds, setAttachedDocumentIds] = useState<string[]>([]);
 
   // State for tabs and editing
   const [activeTab, setActiveTab] = useState<"overview" | "team" | "activity" | "settings">("overview");
@@ -262,6 +270,21 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
       }
     }
   }, [workflows, selectedStepId]);
+
+  // Update highlighted documents when step is selected
+  useEffect(() => {
+    if (!selectedStepId) {
+      setAttachedDocumentIds([]);
+      return;
+    }
+
+    // Filter documents that are linked to the selected step
+    const stepDocumentIds = relatedDocs
+      .filter((doc) => (doc as { workflowStepId?: string }).workflowStepId === selectedStepId)
+      .map((doc) => doc.id);
+    
+    setAttachedDocumentIds(stepDocumentIds);
+  }, [selectedStepId, relatedDocs]);
 
   async function loadWorkflowInstances() {
     setWorkflowsLoading(true);
@@ -565,6 +588,13 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
+  function handleAddDocumentForStep(stepId: string, documentName: string) {
+    // Set the workflow step and document tag for upload
+    setUploadWorkflowStepId(stepId);
+    setUploadDocumentTags([documentName]);
+    setIsUploadDialogOpen(true);
+  }
+
   async function moveStep(instanceId: string, stepId: string, direction: -1 | 1) {
     const instance = workflows.find((workflow) => workflow.id === instanceId);
     if (!instance) return;
@@ -619,6 +649,29 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
       showToast("error", error instanceof Error ? error.message : "Adım silinemedi.");
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function updateStepMetadata(
+    instanceId: string, 
+    stepId: string, 
+    data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }
+  ) {
+    try {
+      const response = await fetch(`/api/workflows/instances/${instanceId}/steps/${stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error ?? "Failed to update step");
+      }
+      await loadWorkflowInstances();
+      showToast("success", "Step updated successfully.");
+    } catch (error) {
+      console.error(error);
+      showToast("error", error instanceof Error ? error.message : "Failed to update step.");
     }
   }
 
@@ -919,6 +972,8 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
                 onRunStepAction={runStepAction}
                 onMoveStep={moveStep}
                 onDeleteStep={deleteStep}
+                onUpdateStepMetadata={updateStepMetadata}
+                onAddDocumentForStep={handleAddDocumentForStep}
                 checklistStates={checklistStates}
                 approvalComments={approvalComments}
                 documentFiles={documentFiles}
@@ -934,6 +989,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
               loading={docsLoading}
               onUploadClick={() => setIsUploadDialogOpen(true)}
               onViewDocument={openDocDetail}
+              highlightedDocumentIds={attachedDocumentIds}
             />
           </div>
         </>
@@ -1075,11 +1131,20 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
 
       <MatterDocumentUploadDialog
         isOpen={isUploadDialogOpen}
-        onClose={() => setIsUploadDialogOpen(false)}
+        onClose={() => {
+          setIsUploadDialogOpen(false);
+          setUploadWorkflowStepId(null);
+          setUploadDocumentTags([]);
+        }}
         matterId={matter.id}
+        workflowStepId={uploadWorkflowStepId}
+        tags={uploadDocumentTags}
         onUploadComplete={async () => {
           await loadRelatedDocuments();
+          await loadWorkflowInstances(); // Refresh workflow to update document status
           showToast("success", "Document uploaded successfully.");
+          setUploadWorkflowStepId(null);
+          setUploadDocumentTags([]);
         }}
       />
 

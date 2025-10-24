@@ -13,6 +13,7 @@ import {
 } from "@/lib/workflows/service";
 import { startWorkflowStep } from "@/lib/workflows/runtime";
 import { WorkflowPermissionError } from "@/lib/workflows/errors";
+import { ActionState, WorkflowInstanceStatus } from "@prisma/client";
 
 type Params = { params: { id: string } };
 
@@ -44,7 +45,61 @@ export const POST = withApiHandler(
         },
       });
 
-      const runtimeStep = toStepWithTemplate(latest!);
+      let runtimeStep = toStepWithTemplate(latest!);
+
+      const now = new Date();
+
+      if (runtimeStep.instance.status === WorkflowInstanceStatus.CANCELED) {
+        await tx.workflowInstance.update({
+          where: { id: runtimeStep.instance.id },
+          data: {
+            status: WorkflowInstanceStatus.ACTIVE,
+            updatedAt: now,
+          },
+        });
+        const refreshedInstance = await tx.workflowInstance.findUnique({
+          where: { id: runtimeStep.instance.id },
+        });
+        if (refreshedInstance) {
+          runtimeStep.instance.status = refreshedInstance.status;
+        }
+      }
+
+      if (runtimeStep.actionState === ActionState.SKIPPED) {
+        const rawData = runtimeStep.actionData;
+        const data =
+          rawData && typeof rawData === "object" && !Array.isArray(rawData)
+            ? { ...(rawData as Record<string, unknown>) }
+            : {};
+
+        if (!("cancellationReason" in data)) {
+          throw new WorkflowPermissionError("Skipped steps cannot be restarted");
+        }
+
+        data.restartedAt = now.toISOString();
+
+        await tx.workflowInstanceStep.update({
+          where: { id: runtimeStep.id },
+          data: {
+            actionState: ActionState.READY,
+            startedAt: null,
+            completedAt: null,
+            updatedAt: now,
+            actionData: data,
+          },
+        });
+
+        const refreshedStep = await tx.workflowInstanceStep.findUnique({
+          where: { id: runtimeStep.id },
+          include: {
+            templateStep: true,
+            instance: true,
+          },
+        });
+
+        runtimeStep = toStepWithTemplate(refreshedStep!);
+      }
+
       await startWorkflowStep({
         tx,
         instance: runtimeStep.instance,

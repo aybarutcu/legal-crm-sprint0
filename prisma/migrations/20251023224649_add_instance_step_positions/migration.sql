@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "WorkflowInstanceStep" ADD COLUMN     "positionX" DOUBLE PRECISION DEFAULT 0,
+ADD COLUMN     "positionY" DOUBLE PRECISION DEFAULT 100;

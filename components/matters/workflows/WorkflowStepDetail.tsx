@@ -2,15 +2,13 @@
 
 import { Dispatch, SetStateAction, useState, useEffect } from "react";
 import Link from "next/link";
-import { 
-  X, 
-  CheckCircle2, 
-  Clock, 
-  Circle, 
-  AlertCircle, 
-  MinusCircle, 
-  ChevronDown,
-  ChevronRight,
+import {
+  X,
+  CheckCircle2,
+  Clock,
+  Circle,
+  AlertCircle,
+  MinusCircle,
   Play,
   UserCheck,
   XCircle,
@@ -406,7 +404,6 @@ function ReadyStateView({
   onRunStepAction,
   onUpdateStepMetadata,
 }: ReadyStateViewProps) {
-  const [metadataExpanded, setMetadataExpanded] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; name: string | null; email: string | null }>>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   
@@ -420,25 +417,31 @@ function ReadyStateView({
   
   const canEditMetadata = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
   
-  // Fetch users when metadata section is expanded
+  // Fetch assignable users when metadata editing is available
   useEffect(() => {
-    if (metadataExpanded && availableUsers.length === 0 && !loadingUsers) {
-      setLoadingUsers(true);
-      fetch(`/api/users`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            setAvailableUsers(data);
-          }
-        })
-        .catch(err => {
-          console.error("Failed to load users:", err);
-        })
-        .finally(() => {
-          setLoadingUsers(false);
-        });
+    if (!canEditMetadata || !onUpdateStepMetadata) {
+      return;
     }
-  }, [metadataExpanded, availableUsers.length, loadingUsers]);
+
+    if (availableUsers.length > 0 || loadingUsers) {
+      return;
+    }
+
+    setLoadingUsers(true);
+    fetch(`/api/users`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAvailableUsers(data);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load users:", err);
+      })
+      .finally(() => {
+        setLoadingUsers(false);
+      });
+  }, [availableUsers.length, canEditMetadata, loadingUsers, onUpdateStepMetadata]);
   
   const handleMetadataUpdate = async (field: 'dueDate' | 'assignedToId' | 'priority', value: string | null) => {
     if (!onUpdateStepMetadata) return;
@@ -472,6 +475,201 @@ function ReadyStateView({
         </div>
       )}
 
+      {/* Step Metadata Info - Editable inline */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        {/* Due Date */}
+        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+            Due Date
+          </div>
+          <div className="space-y-2">
+            {step.dueDate ? (
+              <>
+                <div className="text-sm font-bold text-blue-900">
+                  {new Date(step.dueDate).toLocaleDateString("tr-TR", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </div>
+                <div className="text-xs text-blue-600">
+                  {(() => {
+                    const dueDate = new Date(step.dueDate);
+                    const now = new Date();
+                    const diffMs = dueDate.getTime() - now.getTime();
+                    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+                    if (diffDays === 0) return "Due today";
+                    if (diffDays === 1) return "Due tomorrow";
+                    return `${diffDays} days remaining`;
+                  })()}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-bold text-slate-400">Not set</div>
+                <div className="text-xs text-slate-400">No deadline</div>
+              </>
+            )}
+
+            {canEditMetadata && onUpdateStepMetadata && (
+              <div className="border-t border-blue-100 pt-2">
+                <label className="flex flex-col gap-2 text-xs font-semibold uppercase text-blue-700">
+                  <span className="tracking-wide">Update Due Date</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={step.dueDate ? new Date(step.dueDate).toISOString().slice(0, 10) : ""}
+                      onChange={(e) => {
+                        const value = e.target.value || null;
+                        void handleMetadataUpdate("dueDate", value);
+                      }}
+                      className="flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 focus:border-blue-500 focus:outline-none"
+                    />
+                    {step.dueDate && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleMetadataUpdate("dueDate", null);
+                        }}
+                        className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Assigned To */}
+        <div className="rounded-lg border-2 border-purple-200 bg-purple-50/50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-purple-700">
+            Assigned To
+          </div>
+          <div className="space-y-2">
+            {step.assignedTo ? (
+              <>
+                <div className="text-sm font-bold text-purple-900">
+                  {step.assignedTo.name || "Unknown"}
+                </div>
+                {step.assignedTo.email && (
+                  <div className="text-xs text-purple-600 truncate">
+                    {step.assignedTo.email}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-bold text-slate-400">Unassigned</div>
+                <div className="text-xs text-slate-400">Role: {step.roleScope}</div>
+              </>
+            )}
+
+            {canEditMetadata && onUpdateStepMetadata && (
+              <div className="border-t border-purple-100 pt-2">
+                <label className="flex flex-col gap-2 text-xs font-semibold uppercase text-purple-700">
+                  <span className="tracking-wide">Update Assignee</span>
+                  <select
+                    value={step.assignedToId || ""}
+                    onChange={(e) => {
+                      const value = e.target.value || null;
+                      void handleMetadataUpdate("assignedToId", value);
+                    }}
+                    className="rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 focus:border-purple-500 focus:outline-none"
+                    disabled={loadingUsers}
+                  >
+                    <option value="">Unassigned (role: {step.roleScope})</option>
+                    {loadingUsers && <option disabled>Loading users...</option>}
+                    {!loadingUsers &&
+                      availableUsers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                          {user.email ? ` (${user.email})` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Priority */}
+        <div
+          className={`rounded-lg border-2 p-3 ${
+            step.priority === "HIGH"
+              ? "border-red-200 bg-red-50/50"
+              : step.priority === "LOW"
+              ? "border-slate-200 bg-slate-50/50"
+              : "border-amber-200 bg-amber-50/50"
+          }`}
+        >
+          <div
+            className={`text-xs font-semibold uppercase tracking-wide ${
+              step.priority === "HIGH"
+                ? "text-red-700"
+                : step.priority === "LOW"
+                ? "text-slate-700"
+                : "text-amber-700"
+            }`}
+          >
+            Priority
+          </div>
+          <div
+            className={`text-sm font-bold ${
+              step.priority === "HIGH"
+                ? "text-red-900"
+                : step.priority === "LOW"
+                ? "text-slate-900"
+                : "text-amber-900"
+            }`}
+          >
+            {step.priority || "MEDIUM"}
+          </div>
+          <div
+            className={`text-xs ${
+              step.priority === "HIGH"
+                ? "text-red-600"
+                : step.priority === "LOW"
+                ? "text-slate-600"
+                : "text-amber-600"
+            }`}
+          >
+            {step.priority === "HIGH" ? "Urgent" : step.priority === "LOW" ? "Normal" : "Important"}
+          </div>
+
+          {canEditMetadata && onUpdateStepMetadata && (
+            <div className="border-t border-amber-100 pt-2">
+              <label
+                className={`flex flex-col gap-2 text-xs font-semibold uppercase ${
+                  step.priority === "HIGH"
+                    ? "text-red-700"
+                    : step.priority === "LOW"
+                    ? "text-slate-700"
+                    : "text-amber-700"
+                }`}
+              >
+                <span className="tracking-wide">Update Priority</span>
+                <select
+                  value={step.priority || "MEDIUM"}
+                  onChange={(e) => {
+                    void handleMetadataUpdate("priority", e.target.value);
+                  }}
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Primary Actions */}
       {isReady && (
         <div className="space-y-3">
@@ -498,101 +696,6 @@ function ReadyStateView({
           )}
         </div>
       )}
-
-      {/* Step Metadata Info - Always visible */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* Due Date */}
-        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-3">
-          <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Due Date</div>
-          {step.dueDate ? (
-            <>
-              <div className="text-sm font-bold text-blue-900">
-                {new Date(step.dueDate).toLocaleDateString("tr-TR", { 
-                  day: "numeric", 
-                  month: "short", 
-                  year: "numeric" 
-                })}
-              </div>
-              <div className="text-xs text-blue-600 mt-1">
-                {(() => {
-                  const dueDate = new Date(step.dueDate);
-                  const now = new Date();
-                  const diffMs = dueDate.getTime() - now.getTime();
-                  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                  if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
-                  if (diffDays === 0) return "Due today";
-                  if (diffDays === 1) return "Due tomorrow";
-                  return `${diffDays} days remaining`;
-                })()}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-sm font-bold text-slate-400">Not set</div>
-              <div className="text-xs text-slate-400 mt-1">No deadline</div>
-            </>
-          )}
-        </div>
-
-        {/* Assigned To */}
-        <div className="rounded-lg border-2 border-purple-200 bg-purple-50/50 p-3">
-          <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">Assigned To</div>
-          {step.assignedTo ? (
-            <>
-              <div className="text-sm font-bold text-purple-900">
-                {step.assignedTo.name || "Unknown"}
-              </div>
-              {step.assignedTo.email && (
-                <div className="text-xs text-purple-600 mt-1 truncate">
-                  {step.assignedTo.email}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="text-sm font-bold text-slate-400">Unassigned</div>
-              <div className="text-xs text-slate-400 mt-1">Role: {step.roleScope}</div>
-            </>
-          )}
-        </div>
-
-        {/* Priority */}
-        <div className={`rounded-lg border-2 p-3 ${
-          step.priority === "HIGH" 
-            ? "border-red-200 bg-red-50/50" 
-            : step.priority === "LOW"
-            ? "border-slate-200 bg-slate-50/50"
-            : "border-amber-200 bg-amber-50/50"
-        }`}>
-          <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${
-            step.priority === "HIGH" 
-              ? "text-red-700" 
-              : step.priority === "LOW"
-              ? "text-slate-700"
-              : "text-amber-700"
-          }`}>
-            Priority
-          </div>
-          <div className={`text-sm font-bold ${
-            step.priority === "HIGH" 
-              ? "text-red-900" 
-              : step.priority === "LOW"
-              ? "text-slate-900"
-              : "text-amber-900"
-          }`}>
-            {step.priority || "MEDIUM"}
-          </div>
-          <div className={`text-xs mt-1 ${
-            step.priority === "HIGH" 
-              ? "text-red-600" 
-              : step.priority === "LOW"
-              ? "text-slate-600"
-              : "text-amber-600"
-          }`}>
-            {step.priority === "HIGH" ? "Urgent" : step.priority === "LOW" ? "Normal" : "Important"}
-          </div>
-        </div>
-      </div>
 
       {isPending && (
         <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-6">
@@ -666,92 +769,6 @@ function ReadyStateView({
       {isBlocked && (
         <div className="rounded-xl border-2 border-red-200 bg-red-50 p-6 text-center">
           <p className="text-sm text-red-700 font-medium">This step is blocked and cannot proceed.</p>
-        </div>
-      )}
-
-      {/* Step Metadata - Collapsible (for ADMIN/LAWYER only) */}
-      {canEditMetadata && onUpdateStepMetadata && (
-        <div className="border-t border-slate-200 pt-4">
-          <button
-            type="button"
-            onClick={() => setMetadataExpanded(!metadataExpanded)}
-            className="flex items-center justify-between w-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-          >
-            <span>Step Details</span>
-            {metadataExpanded ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </button>
-          
-          {metadataExpanded && (
-            <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              {/* Due Date */}
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                <span>Due Date</span>
-                <input
-                  type="date"
-                  value={step.dueDate ? new Date(step.dueDate).toISOString().slice(0, 10) : ""}
-                  onChange={(e) => {
-                    const value = e.target.value || null;
-                    void handleMetadataUpdate('dueDate', value);
-                  }}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
-                />
-              </label>
-
-              {/* Assigned To */}
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                <span>Assigned To</span>
-                <select
-                  value={step.assignedToId || ""}
-                  onChange={(e) => {
-                    const value = e.target.value || null;
-                    void handleMetadataUpdate('assignedToId', value);
-                  }}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
-                  disabled={loadingUsers}
-                >
-                  <option value="">Unassigned (role: {step.roleScope})</option>
-                  {loadingUsers ? (
-                    <option disabled>Loading users...</option>
-                  ) : (
-                    availableUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}
-                        {user.email ? ` (${user.email})` : ""}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </label>
-
-              {/* Priority */}
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                <span>Priority</span>
-                <select
-                  value={step.priority || "MEDIUM"}
-                  onChange={(e) => {
-                    void handleMetadataUpdate('priority', e.target.value);
-                  }}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none bg-white"
-                >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                </select>
-              </label>
-
-              {/* Current Assignment Info */}
-              {step.assignedTo && (
-                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700">
-                  <p className="font-semibold mb-1">Currently assigned to:</p>
-                  <p>{step.assignedTo.name || step.assignedTo.email}</p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 

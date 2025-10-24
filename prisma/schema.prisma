@@ -548,6 +548,10 @@ model WorkflowInstanceStep {
   // Flexible dependencies (P0.2)
   dependsOn        String[]  @default([])  // Array of step IDs this step depends on
   dependencyLogic  DependencyLogic @default(ALL)
+
+  // Canvas position for instance editor
+  positionX    Float?  @default(0)
+  positionY    Float?  @default(100)
   
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

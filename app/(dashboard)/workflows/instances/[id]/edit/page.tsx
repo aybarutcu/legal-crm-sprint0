@@ -128,6 +128,8 @@ export default async function EditWorkflowInstancePage({
       completedAt: step.completedAt?.toISOString() || null,
       createdAt: step.createdAt.toISOString(),
       updatedAt: step.updatedAt.toISOString(),
+      positionX: step.positionX ?? null,
+      positionY: step.positionY ?? null,
     })),
   };
 

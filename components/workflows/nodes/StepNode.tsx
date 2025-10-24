@@ -37,6 +37,23 @@ const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
   CLIENT: { bg: "bg-orange-50", text: "text-orange-600" },
 };
 
+type OutputHandleConfig = {
+  id: string;
+  label?: string;
+  color: string;
+};
+
+const DEFAULT_OUTPUT_HANDLES: OutputHandleConfig[] = [
+  { id: "next", color: "#10b981" },
+];
+
+const ACTION_OUTPUT_HANDLES: Partial<Record<ActionType, OutputHandleConfig[]>> = {
+  APPROVAL_LAWYER: [
+    { id: "approve", label: "Approve", color: "#10b981" },
+    { id: "reject", label: "Reject", color: "#ef4444" },
+  ],
+};
+
 interface StepNodeData {
   step: WorkflowStep;
   label: string;
@@ -52,6 +69,7 @@ export const StepNode = memo(({ data, selected }: NodeProps<StepNodeData>) => {
   const actionColor = ACTION_TYPE_COLORS[actionType];
   const roleColor = ROLE_COLORS[roleScope];
   const icon = ACTION_ICONS[actionType];
+  const outputHandles = ACTION_OUTPUT_HANDLES[actionType] ?? DEFAULT_OUTPUT_HANDLES;
 
   return (
     <div
@@ -121,18 +139,38 @@ export const StepNode = memo(({ data, selected }: NodeProps<StepNodeData>) => {
         )}
       </div>
 
-      {/* Right Handle (output) */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          width: '16px',
-          height: '16px',
-          backgroundColor: '#10b981',
-          border: '3px solid white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        }}
-      />
+      {/* Right Handle(s) (output) */}
+      {outputHandles.map((handle, index) => {
+        const positionPercent = ((index + 1) / (outputHandles.length + 1)) * 100;
+        const topPosition = `${positionPercent}%`;
+        return (
+          <React.Fragment key={handle.id}>
+            <Handle
+              id={handle.id}
+              type="source"
+              position={Position.Right}
+              style={{
+                width: "16px",
+                height: "16px",
+                backgroundColor: handle.color,
+                border: "3px solid white",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                top: topPosition,
+                right: "-8px",
+                transform: "translate(50%, -50%)",
+              }}
+            />
+            {handle.label ? (
+              <span
+                className="absolute -right-24 rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 shadow sm:-right-20"
+                style={{ top: topPosition, transform: "translateY(-50%)" }}
+              >
+                {handle.label}
+              </span>
+            ) : null}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 });

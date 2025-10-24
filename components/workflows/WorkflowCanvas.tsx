@@ -36,6 +36,8 @@ export interface WorkflowStep {
   conditionConfig?: unknown;
   positionX?: number;
   positionY?: number;
+  nextStepOnTrue?: number | null;
+  nextStepOnFalse?: number | null;
 }
 
 interface WorkflowCanvasProps {
@@ -113,7 +115,27 @@ export function WorkflowCanvas({
 
       if (sourceOrder === undefined || targetOrder === undefined) return;
 
-      // Validate connection before creating
+      const sourceHandle = connection.sourceHandle ?? "next";
+
+      if (sourceHandle === "approve" || sourceHandle === "reject") {
+        if (sourceOrder === targetOrder) {
+          console.error("Cannot create branch to the same step");
+          return;
+        }
+
+        const updatedSteps = steps.map((step) => {
+          if (step.order !== sourceOrder) return step;
+          if (sourceHandle === "approve") {
+            return { ...step, nextStepOnTrue: targetOrder };
+          }
+          return { ...step, nextStepOnFalse: targetOrder };
+        });
+
+        onChange(updatedSteps);
+        return;
+      }
+
+      // Only default handle supports dependency connections
       const validationResult = isValidConnection(
         connection,
         steps,
@@ -122,17 +144,19 @@ export function WorkflowCanvas({
       );
 
       if (!validationResult.valid) {
-        // Show error in console for now (will add toast notification later)
         console.error(`Cannot create connection: ${validationResult.error}`);
         return;
       }
 
-      // Add dependency
       const updatedSteps = steps.map((step) => {
         if (step.order === targetOrder) {
+          const existing = step.dependsOn || [];
+          if (existing.includes(sourceOrder)) {
+            return step;
+          }
           return {
             ...step,
-            dependsOn: [...(step.dependsOn || []), sourceOrder],
+            dependsOn: [...existing, sourceOrder],
           };
         }
         return step;
@@ -182,13 +206,45 @@ export function WorkflowCanvas({
     (deletedEdges: Edge[]) => {
       if (readOnly) return;
 
+      let updatedSteps = steps;
+
       deletedEdges.forEach((edge) => {
-        const sourceOrder = getStepOrderById(steps, edge.source);
-        const targetOrder = getStepOrderById(steps, edge.target);
+        const branchCase = edge.data?.branchCase as "approve" | "reject" | undefined;
+
+        if (branchCase) {
+          const sourceOrder = getStepOrderById(updatedSteps, edge.source);
+          const targetOrder = getStepOrderById(updatedSteps, edge.target);
+
+          if (sourceOrder === undefined) {
+            return;
+          }
+
+          updatedSteps = updatedSteps.map((step) => {
+            if (step.order !== sourceOrder) return step;
+            if (branchCase === "approve") {
+              if (typeof targetOrder === "number" && step.nextStepOnTrue !== targetOrder) {
+                return step;
+              }
+              return { ...step, nextStepOnTrue: null };
+            }
+            if (branchCase === "reject") {
+              if (typeof targetOrder === "number" && step.nextStepOnFalse !== targetOrder) {
+                return step;
+              }
+              return { ...step, nextStepOnFalse: null };
+            }
+            return step;
+          });
+
+          return;
+        }
+
+        const sourceOrder = getStepOrderById(updatedSteps, edge.source);
+        const targetOrder = getStepOrderById(updatedSteps, edge.target);
 
         if (sourceOrder === undefined || targetOrder === undefined) return;
 
-        const updatedSteps = steps.map((step) => {
+        updatedSteps = updatedSteps.map((step) => {
           if (step.order === targetOrder) {
             return {
               ...step,
@@ -197,9 +253,11 @@ export function WorkflowCanvas({
           }
           return step;
         });
-
-        onChange(updatedSteps);
       });
+
+      if (updatedSteps !== steps) {
+        onChange(updatedSteps);
+      }
     },
     [steps, onChange, readOnly]
   );
@@ -231,6 +289,12 @@ export function WorkflowCanvas({
       updatedSteps.forEach((step) => {
         if (step.dependsOn?.includes(stepOrder)) {
           step.dependsOn = step.dependsOn.filter((o) => o !== stepOrder);
+        }
+        if (step.nextStepOnTrue === stepOrder) {
+          step.nextStepOnTrue = null;
+        }
+        if (step.nextStepOnFalse === stepOrder) {
+          step.nextStepOnFalse = null;
         }
       });
 
@@ -330,6 +394,8 @@ export function WorkflowCanvas({
       order: steps.length,
       dependsOn: [],
       dependencyLogic: "ALL",
+      nextStepOnTrue: null,
+      nextStepOnFalse: null,
     };
 
     onChange([...steps, newStep]);
@@ -376,6 +442,7 @@ function stepsToEdges(steps: WorkflowStep[]): Edge[] {
         edges.push({
           id: `${sourceId}-${targetId}`,
           source: sourceId,
+          sourceHandle: "next",
           target: targetId,
           type: "smoothstep",
           animated: false,
@@ -384,6 +451,46 @@ function stepsToEdges(steps: WorkflowStep[]): Edge[] {
         });
       }
     });
+
+    if (typeof step.nextStepOnTrue === "number") {
+      const target = steps.find((s) => s.order === step.nextStepOnTrue);
+      if (target) {
+        const sourceId = step.id || `step-${step.order}`;
+        const targetId = target.id || `step-${target.order}`;
+        edges.push({
+          id: `${sourceId}-approve-${targetId}`,
+          source: sourceId,
+          sourceHandle: "approve",
+          target: targetId,
+          type: "smoothstep",
+          animated: false,
+          label: "Approve",
+          style: { stroke: "#10b981", strokeWidth: 2 },
+          data: { branchCase: "approve" },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+        });
+      }
+    }
+
+    if (typeof step.nextStepOnFalse === "number") {
+      const target = steps.find((s) => s.order === step.nextStepOnFalse);
+      if (target) {
+        const sourceId = step.id || `step-${step.order}`;
+        const targetId = target.id || `step-${target.order}`;
+        edges.push({
+          id: `${sourceId}-reject-${targetId}`,
+          source: sourceId,
+          sourceHandle: "reject",
+          target: targetId,
+          type: "smoothstep",
+          animated: false,
+          label: "Reject",
+          style: { stroke: "#ef4444", strokeWidth: 2 },
+          data: { branchCase: "reject" },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#ef4444" },
+        });
+      }
+    }
   });
 
   return edges;

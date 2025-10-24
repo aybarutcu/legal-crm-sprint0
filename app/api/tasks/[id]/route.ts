@@ -26,7 +26,6 @@ export const GET = withApiHandler<{ id: string }>(
         instance: {
           include: {
             matter: { select: { id: true, title: true, ownerId: true } },
-            // @ts-expect-error - contact relation exists but Prisma types need refresh
             contact: { select: { id: true, firstName: true, lastName: true, type: true, ownerId: true } },
             template: { select: { id: true, name: true } },
           },

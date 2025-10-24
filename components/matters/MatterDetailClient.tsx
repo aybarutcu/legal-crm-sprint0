@@ -91,11 +91,14 @@ type WorkflowInstanceStep = {
   startedAt: string | null;
   completedAt: string | null;
   dependsOn?: string[];
+  positionX?: number;
+  positionY?: number;
 };
 
 type WorkflowInstance = {
   id: string;
-  template: { id: string; name: string };
+  templateVersion: number;
+  template: { id: string; name: string; version?: number };
   createdBy: { id: string; name: string | null; email: string | null } | null;
   createdAt: string;
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELED";
@@ -343,17 +346,6 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     });
   }
 
-  function openEditStep(instanceId: string, step: WorkflowInstanceStep) {
-    setStepFormState({ mode: "edit", instanceId, stepId: step.id });
-    setStepFormValues({
-      title: step.title,
-      actionType: step.actionType,
-      roleScope: step.roleScope,
-      required: step.required,
-      actionConfig: JSON.stringify(step.actionData?.config ?? {}, null, 2),
-    });
-  }
-
   function closeStepForm() {
     setStepFormState(null);
   }
@@ -595,63 +587,6 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     setIsUploadDialogOpen(true);
   }
 
-  async function moveStep(instanceId: string, stepId: string, direction: -1 | 1) {
-    const instance = workflows.find((workflow) => workflow.id === instanceId);
-    if (!instance) return;
-    const ordered = instance.steps.slice().sort((a, b) => a.order - b.order);
-    const currentIndex = ordered.findIndex((step) => step.id === stepId);
-    if (currentIndex === -1) return;
-    const targetIndex = currentIndex + direction;
-    if (targetIndex < 0 || targetIndex >= ordered.length) {
-      return;
-    }
-
-    const sequence = ordered.map((step) => step.id);
-    sequence.splice(currentIndex, 1);
-    sequence.splice(targetIndex, 0, stepId);
-    const insertAfterStepId = targetIndex === 0 ? null : sequence[targetIndex - 1];
-
-    try {
-      setActionLoading(`${stepId}:move`);
-      const response = await fetch(`/api/workflows/instances/${instanceId}/steps/${stepId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ insertAfterStepId }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error ?? "Adım taşınamadı");
-      }
-      await loadWorkflowInstances();
-    } catch (error) {
-      console.error(error);
-      showToast("error", error instanceof Error ? error.message : "Adım taşınamadı.");
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function deleteStep(instanceId: string, stepId: string) {
-    if (!window.confirm("Adımı silmek istediğinize emin misiniz?")) return;
-    try {
-      setActionLoading(`${stepId}:delete`);
-      const response = await fetch(`/api/workflows/instances/${instanceId}/steps/${stepId}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error ?? "Adım silinemedi");
-      }
-      await loadWorkflowInstances();
-      showToast("success", "Adım silindi.");
-    } catch (error) {
-      console.error(error);
-      showToast("error", error instanceof Error ? error.message : "Adım silinemedi.");
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
   async function updateStepMetadata(
     instanceId: string, 
     stepId: string, 
@@ -675,23 +610,37 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
-  async function removeWorkflow(instanceId: string) {
+  async function cancelWorkflow(instanceId: string) {
     if (!isWorkflowRemovable) {
       showToast("error", "Bu işlemi yapmaya yetkiniz yok.");
       return;
     }
-    if (!window.confirm("Workflow'u kaldırmak istediğinize emin misiniz?")) return;
+    const reason = window.prompt(
+      "Workflow'u iptal etmek istediğinize emin misiniz? Lütfen iptal sebebini yazın (boş bırakırsanız varsayılan kullanılacak).",
+      "",
+    );
+    if (reason === null) return;
     try {
       setActionLoading(`${instanceId}:deleteInstance`);
       const response = await fetch(`/api/workflows/instances/${instanceId}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cancellationReason: reason.trim() || undefined,
+        }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.error ?? "Workflow kaldırılamadı");
       }
+      const result = await response.json().catch(() => null);
       await loadWorkflowInstances();
-      showToast("success", "Workflow kaldırıldı.");
+      showToast(
+        "success",
+        result?.cancelled
+          ? "Workflow iptal edildi; bekleyen adımlar iptal edildi."
+          : "Workflow kaldırıldı.",
+      );
     } catch (error) {
       console.error(error);
       showToast("error", error instanceof Error ? error.message : "Workflow kaldırılamadı.");
@@ -947,7 +896,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
               setSelectedStepId(stepId);
             }}
             onAddWorkflow={() => setWorkflowModalOpen(true)}
-            onRemoveWorkflow={removeWorkflow}
+                onCancelWorkflow={cancelWorkflow}
             onAddStep={openAddStep}
           />
           
@@ -968,10 +917,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
                   setSelectedWorkflowId(null);
                 }}
                 onSetHoveredStep={setHoveredStep}
-                onOpenEditStep={openEditStep}
                 onRunStepAction={runStepAction}
-                onMoveStep={moveStep}
-                onDeleteStep={deleteStep}
                 onUpdateStepMetadata={updateStepMetadata}
                 onAddDocumentForStep={handleAddDocumentForStep}
                 checklistStates={checklistStates}

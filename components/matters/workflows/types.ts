@@ -36,6 +36,10 @@ export type WorkflowInstanceStep = {
   startedAt: string | null;
   completedAt: string | null;
   dependsOn?: string[];
+  positionX?: number;
+  positionY?: number;
+  nextStepOnTrue?: number | null;
+  nextStepOnFalse?: number | null;
 };
 
 export type WorkflowInstance = {
@@ -46,5 +50,6 @@ export type WorkflowInstance = {
   template: {
     name: string;
   };
+  templateVersion?: number;
   steps: WorkflowInstanceStep[];
 };

@@ -33,8 +33,12 @@ type WorkflowStep = {
   dependencyLogic: string;
   conditionType: string | null;
   conditionConfig: unknown;
+  nextStepOnTrue: number | null;
+  nextStepOnFalse: number | null;
   startedAt: string | null;
   completedAt: string | null;
+  positionX: number | null;
+  positionY: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -134,9 +138,10 @@ export function WorkflowInstanceCanvasEditor({
         dependencyLogic: (step.dependencyLogic as "ALL" | "ANY" | "CUSTOM") || "ALL",
         conditionType: step.conditionType,
         conditionConfig: step.conditionConfig,
-        // No persistent positions for instances - canvas will auto-layout
-        positionX: undefined,
-        positionY: undefined,
+        positionX: typeof step.positionX === "number" ? step.positionX : undefined,
+        positionY: typeof step.positionY === "number" ? step.positionY : undefined,
+        nextStepOnTrue: typeof step.nextStepOnTrue === "number" ? step.nextStepOnTrue : null,
+        nextStepOnFalse: typeof step.nextStepOnFalse === "number" ? step.nextStepOnFalse : null,
       } as CanvasWorkflowStep)),
     [instance.steps]
   );
@@ -171,14 +176,47 @@ export function WorkflowInstanceCanvasEditor({
               dependencyLogic: (canvasStep.dependencyLogic || "ALL") as string,
               conditionType: (canvasStep.conditionType as string) || null,
               conditionConfig: canvasStep.conditionConfig || null,
-              // No position persistence for instances
+              nextStepOnTrue:
+                typeof canvasStep.nextStepOnTrue === "number"
+                  ? canvasStep.nextStepOnTrue
+                  : typeof originalStep?.nextStepOnTrue === "number"
+                    ? originalStep.nextStepOnTrue
+                    : null,
+              nextStepOnFalse:
+                typeof canvasStep.nextStepOnFalse === "number"
+                  ? canvasStep.nextStepOnFalse
+                  : typeof originalStep?.nextStepOnFalse === "number"
+                    ? originalStep.nextStepOnFalse
+                    : null,
+              positionX:
+                typeof canvasStep.positionX === "number"
+                  ? canvasStep.positionX
+                  : typeof originalStep?.positionX === "number"
+                    ? originalStep.positionX
+                    : null,
+              positionY:
+                typeof canvasStep.positionY === "number"
+                  ? canvasStep.positionY
+                  : typeof originalStep?.positionY === "number"
+                    ? originalStep.positionY
+                    : null,
             };
           })
         );
 
+        const normalizedSteps = updatedInstanceSteps.map((step) => ({
+          ...step,
+          assignedToId: step.assignedToId ?? null,
+          dueDate: step.dueDate ?? null,
+          priority: step.priority ?? null,
+          notes: step.notes ?? null,
+          nextStepOnTrue: step.nextStepOnTrue ?? null,
+          nextStepOnFalse: step.nextStepOnFalse ?? null,
+        }));
+
         return {
           ...currentInstance,
-          steps: updatedInstanceSteps,
+          steps: normalizedSteps,
         };
       });
     },
@@ -190,16 +228,28 @@ export function WorkflowInstanceCanvasEditor({
     setError(null);
 
     try {
-      const response = await fetch(`/api/workflows/instances/${instance.id}/edit`, {
+      console.log("Saving workflow instance", {
+        instanceId: instance.id,
+        steps: instance.steps.map((step) => ({
+          id: step.id,
+          order: step.order,
+          nextStepOnTrue: step.nextStepOnTrue,
+          nextStepOnFalse: step.nextStepOnFalse,
+        })),
+      });
+      
+     const response = await fetch(`/api/workflows/instances/${instance.id}/edit`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          steps: instance.steps.map((step) => ({
-            id: step.id,
-            order: step.order,
-            title: step.title,
-            actionType: step.actionType,
-            roleScope: step.roleScope,
+          steps: instance.steps
+            .filter((step) => typeof step.id === "string" && step.id.trim().length > 0)
+            .map((step) => ({
+              id: step.id,
+              order: step.order,
+              title: step.title,
+              actionType: step.actionType,
+              roleScope: step.roleScope,
             required: step.required,
             actionData: step.actionData,
             assignedToId: step.assignedToId,
@@ -208,9 +258,13 @@ export function WorkflowInstanceCanvasEditor({
             notes: step.notes,
             dependsOn: step.dependsOn,
             dependencyLogic: step.dependencyLogic,
-            conditionType: step.conditionType,
-            conditionConfig: step.conditionConfig,
-          })),
+              conditionType: step.conditionType,
+              conditionConfig: step.conditionConfig,
+              nextStepOnTrue: step.nextStepOnTrue,
+              nextStepOnFalse: step.nextStepOnFalse,
+              positionX: step.positionX,
+              positionY: step.positionY,
+            })),
         }),
       });
 

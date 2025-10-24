@@ -91,6 +91,8 @@ export function WorkflowTemplateEditor({ initialDraft, mode, onCancel }: Workflo
       conditionConfig: step.conditionConfig,
       positionX: step.positionX,
       positionY: step.positionY,
+      nextStepOnTrue: step.nextStepOnTrue ?? null,
+      nextStepOnFalse: step.nextStepOnFalse ?? null,
     } as CanvasWorkflowStep))
   , [draft.steps]);
 
@@ -115,6 +117,8 @@ export function WorkflowTemplateEditor({ initialDraft, mode, onCancel }: Workflo
           conditionConfig: (canvasStep.conditionConfig as Record<string, unknown> | null) || null,
           positionX: canvasStep.positionX,
           positionY: canvasStep.positionY,
+          nextStepOnTrue: canvasStep.nextStepOnTrue ?? null,
+          nextStepOnFalse: canvasStep.nextStepOnFalse ?? null,
         }))
       ),
     }));

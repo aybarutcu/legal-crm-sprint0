@@ -126,6 +126,10 @@ const stepUpdateSchema = z.object({
   notes: z.string().nullable(),
   dependsOn: z.array(z.string()),
   dependencyLogic: z.string(),
+  positionX: z.number().nullable().optional(),
+  positionY: z.number().nullable().optional(),
+  nextStepOnTrue: z.number().nullable().optional(),
+  nextStepOnFalse: z.number().nullable().optional(),
 });
 
 const patchBodySchema = z.object({
@@ -234,6 +238,11 @@ export const PATCH = withApiHandler(
     }
 
     // Update steps in transaction
+    console.log("Updating workflow instance", {
+      instanceId: id,
+      stepIds: steps.map((step) => step.id),
+    });
+
     await prisma.$transaction(
       steps.map((step) =>
         prisma.workflowInstanceStep.update({
@@ -251,6 +260,10 @@ export const PATCH = withApiHandler(
             notes: step.notes,
             dependsOn: step.dependsOn,
             dependencyLogic: step.dependencyLogic as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+            positionX: typeof step.positionX === "number" ? step.positionX : 0,
+            positionY: typeof step.positionY === "number" ? step.positionY : 100,
+            nextStepOnTrue: typeof step.nextStepOnTrue === "number" ? step.nextStepOnTrue : null,
+            nextStepOnFalse: typeof step.nextStepOnFalse === "number" ? step.nextStepOnFalse : null,
           },
         })
       )
@@ -260,4 +273,3 @@ export const PATCH = withApiHandler(
   },
   { requireAuth: true }
 );
-

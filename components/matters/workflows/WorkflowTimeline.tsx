@@ -40,7 +40,8 @@ export type WorkflowTimelineStep = {
 
 export type WorkflowTimelineInstance = {
   id: string;
-  template: { id: string; name: string };
+  template: { id: string; name: string; version?: number };
+  templateVersion: number;
   createdBy: { id: string; name: string | null; email: string | null } | null;
   createdAt: string;
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELED";
@@ -53,7 +54,7 @@ type WorkflowTimelineProps = {
   currentUserRole?: "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
   onStepClick: (workflowId: string, stepId: string) => void;
   onAddWorkflow?: () => void;
-  onRemoveWorkflow?: (workflowId: string) => void;
+  onCancelWorkflow?: (workflowId: string) => void;
   onAddStep?: (workflowId: string) => void;
 };
 
@@ -239,14 +240,13 @@ function getStateLabel(state: ActionState): string {
   }
 }
 
-export function WorkflowTimeline({ 
-  workflows, 
-  selectedStepId, 
+export function WorkflowTimeline({
+  workflows,
+  selectedStepId,
   currentUserRole,
   onStepClick,
   onAddWorkflow,
-  onRemoveWorkflow,
-  onAddStep,
+  onCancelWorkflow,
 }: WorkflowTimelineProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const selectedStepRef = useRef<any>(null);
@@ -301,7 +301,9 @@ export function WorkflowTimeline({
               {/* Workflow Header */}
               <div className="mb-4 flex items-center justify-between gap-4">
                 <div className="flex-1">
-                  <h4 className="font-medium text-slate-900">{workflow.template.name}</h4>
+                  <h4 className="font-medium text-slate-900">
+                    {workflow.template.name} · v{workflow.template.version ?? workflow.templateVersion}
+                  </h4>
                   <p className="text-xs text-slate-500">
                     Status: <span className="font-medium">{workflow.status}</span>
                     {workflow.createdBy && (
@@ -315,16 +317,6 @@ export function WorkflowTimeline({
                   </div>
                   {canManageWorkflows && (
                     <>
-                      {onAddStep && workflow.status === "DRAFT" && (
-                        <button
-                          type="button"
-                          onClick={() => onAddStep(workflow.id)}
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                          title="Add Step"
-                        >
-                          + Add Step
-                        </button>
-                      )}
                       {/* Edit Workflow Button - before Remove */}
                       <a
                         href={`/workflows/instances/${workflow.id}/edit`}
@@ -346,18 +338,14 @@ export function WorkflowTimeline({
                         </svg>
                         Edit Workflow
                       </a>
-                      {onRemoveWorkflow && (
+                      {onCancelWorkflow && (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm("Are you sure you want to remove this workflow?")) {
-                              onRemoveWorkflow(workflow.id);
-                            }
-                          }}
+                          onClick={() => onCancelWorkflow(workflow.id)}
                           className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-                          title="Remove Workflow"
+                          title="Cancel Workflow"
                         >
-                          Remove
+                          Cancel Workflow
                         </button>
                       )}
                     </>

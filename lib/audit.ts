@@ -22,7 +22,7 @@ export async function recordAuditLog({
         action,
         entityType,
         entityId,
-        metadata,
+        metadata: metadata as any,
       },
     });
   } catch (error) {

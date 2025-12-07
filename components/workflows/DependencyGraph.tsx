@@ -21,26 +21,26 @@ import "reactflow/dist/style.css";
 // ============================================================================
 
 export interface WorkflowStepData {
-  order: number;
+  id: string;
   title: string;
   actionType: string;
-  dependsOn?: number[];
+  dependsOn?: string[];
   dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
   required?: boolean;
 }
 
 export interface DependencyGraphProps {
   steps: WorkflowStepData[];
-  onNodeClick?: (stepOrder: number) => void;
-  highlightedStepOrders?: number[];
-  cycleEdges?: Array<{ from: number; to: number }>;
+  onNodeClick?: (stepId: string) => void;
+  highlightedStepIds?: string[];
+  cycleEdges?: Array<{ from: string; to: string }>;
   className?: string;
   height?: number;
 }
 
 interface CustomNodeData {
   label: string;
-  stepOrder: number;
+  stepId: string;
   actionType: string;
   dependencyCount: number;
   dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
@@ -56,7 +56,7 @@ interface CustomNodeData {
 function CustomStepNode({ data }: { data: CustomNodeData }) {
   const {
     label,
-    stepOrder,
+    stepId,
     actionType,
     dependencyCount,
     dependencyLogic,
@@ -85,7 +85,7 @@ function CustomStepNode({ data }: { data: CustomNodeData }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-700 text-white text-xs font-bold">
-            {stepOrder}
+            {stepId}
           </span>
           {!required && (
             <span className="text-[10px] text-slate-500 font-medium">
@@ -188,7 +188,7 @@ const getLayoutedElements = (
 export function DependencyGraph({
   steps,
   onNodeClick,
-  highlightedStepOrders = [],
+  highlightedStepIds = [],
   cycleEdges = [],
   className = "",
   height = 600,
@@ -203,7 +203,7 @@ export function DependencyGraph({
   }, [cycleEdges]);
 
   const stepsInCycles = useMemo(() => {
-    const set = new Set<number>();
+    const set = new Set<string>();
     cycleEdges.forEach((edge) => {
       set.add(edge.from);
       set.add(edge.to);
@@ -214,16 +214,16 @@ export function DependencyGraph({
   // Convert steps to React Flow nodes and edges
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node<CustomNodeData>[] = steps.map((step) => {
-      const isHighlighted = highlightedStepOrders.includes(step.order);
-      const isInCycle = stepsInCycles.has(step.order);
+      const isHighlighted = highlightedStepIds.includes(step.id);
+      const isInCycle = stepsInCycles.has(step.id);
 
       return {
-        id: `step-${step.order}`,
+        id: `step-${step.id}`,
         type: "customStep",
         position: { x: 0, y: 0 }, // Will be set by layout algorithm
         data: {
-          label: step.title || `Step ${step.order}`,
-          stepOrder: step.order,
+          label: step.title || `Step ${step.id}`,
+          stepId: step.id,
           actionType: step.actionType,
           dependencyCount: step.dependsOn?.length || 0,
           dependencyLogic: step.dependencyLogic,
@@ -237,13 +237,13 @@ export function DependencyGraph({
     const edges: Edge[] = [];
     steps.forEach((step) => {
       if (step.dependsOn && step.dependsOn.length > 0) {
-        step.dependsOn.forEach((depOrder) => {
-          const isCycleEdge = cycleEdgeSet.has(`${depOrder}-${step.order}`);
+        step.dependsOn.forEach((depId) => {
+          const isCycleEdge = cycleEdgeSet.has(`${depId}-${step.id}`);
 
           edges.push({
-            id: `e-${depOrder}-${step.order}`,
-            source: `step-${depOrder}`,
-            target: `step-${step.order}`,
+            id: `e-${depId}-${step.id}`,
+            source: `step-${depId}`,
+            target: `step-${step.id}`,
             type: isCycleEdge ? "default" : "smoothstep",
             animated: isCycleEdge,
             style: {
@@ -273,7 +273,7 @@ export function DependencyGraph({
     });
 
     return getLayoutedElements(nodes, edges);
-  }, [steps, highlightedStepOrders, cycleEdgeSet, stepsInCycles]);
+  }, [steps, highlightedStepIds, cycleEdgeSet, stepsInCycles]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -290,8 +290,8 @@ export function DependencyGraph({
 
   const onNodeClickHandler = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      const stepOrder = (node.data as CustomNodeData).stepOrder;
-      onNodeClick?.(stepOrder);
+      const stepId = (node.data as CustomNodeData).stepId;
+      onNodeClick?.(stepId);
     },
     [onNodeClick]
   );

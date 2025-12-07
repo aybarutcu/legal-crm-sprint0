@@ -336,11 +336,11 @@ const documentId = await generateEngagementLetter({
 });
 await setWorkflowContextValue(instanceId, "engagementLetterId", documentId);
 
-// Step 3: Send for signature (SIGNATURE_CLIENT)
+// Step 3: Send for signature (SIGNATURE)
 const letterId = await getWorkflowContextValue<string>(instanceId, "engagementLetterId");
 await requestSignature(letterId);
 
-// Step 4: Request payment (PAYMENT_CLIENT)
+// Step 4: Request payment (PAYMENT)
 await setWorkflowContextValue(instanceId, "retainerAmount", 5000);
 ```
 

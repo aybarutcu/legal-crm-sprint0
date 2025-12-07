@@ -275,21 +275,21 @@ POST /api/workflows/templates
     {
       "order": 1,
       "title": "Request ID Document",
-      "actionType": "REQUEST_DOC_CLIENT",
+      "actionType": "REQUEST_DOC",
       "roleScope": "CLIENT",
       "dependsOn": [0]
     },
     {
       "order": 2,
       "title": "Request Proof of Address",
-      "actionType": "REQUEST_DOC_CLIENT",
+      "actionType": "REQUEST_DOC",
       "roleScope": "CLIENT",
       "dependsOn": [0]          // Parallel with step 1
     },
     {
       "order": 3,
       "title": "Verify All Documents",
-      "actionType": "APPROVAL_LAWYER",
+      "actionType": "APPROVAL",
       "roleScope": "LAWYER",
       "dependsOn": [1, 2],      // Wait for both documents
       "dependencyLogic": "ALL"
@@ -332,14 +332,14 @@ POST /api/workflows/templates
     {
       "order": 0,
       "title": "Request Document Option 1",
-      "actionType": "REQUEST_DOC_CLIENT",
+      "actionType": "REQUEST_DOC",
       "roleScope": "CLIENT",
       "dependsOn": []
     },
     {
       "order": 1,
       "title": "Request Document Option 2",
-      "actionType": "REQUEST_DOC_CLIENT",
+      "actionType": "REQUEST_DOC",
       "roleScope": "CLIENT",
       "dependsOn": []
     },

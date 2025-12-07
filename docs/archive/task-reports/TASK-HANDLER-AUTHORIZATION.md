@@ -77,7 +77,7 @@ This function:
 
 Each action handler implements `canStart()` to validate role-specific business logic.
 
-**Example: APPROVAL_LAWYER Handler**
+**Example: APPROVAL Handler**
 
 ```typescript
 canStart(ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>): boolean {
@@ -90,7 +90,7 @@ canStart(ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>): boolean {
     return true;
   }
 
-  // For APPROVAL_LAWYER, only lawyers can approve
+  // For APPROVAL, only lawyers can approve
   if (ctx.step.roleScope === RoleScope.LAWYER && ctx.actor.role === Role.LAWYER) {
     return true;
   }
@@ -99,7 +99,7 @@ canStart(ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>): boolean {
 }
 ```
 
-**Example: SIGNATURE_CLIENT Handler**
+**Example: SIGNATURE Handler**
 
 ```typescript
 canStart(ctx: WorkflowRuntimeContext<SignatureConfig, SignatureData>): boolean {
@@ -304,10 +304,10 @@ export interface IActionHandler<TConfig = unknown, TData = unknown> {
 
 | Handler | Action Type | Allowed Roles | RoleScope | Purpose |
 |---------|-------------|---------------|-----------|---------|
-| **ApprovalActionHandler** | APPROVAL_LAWYER | ADMIN, LAWYER | LAWYER | Lawyer must approve legal decisions |
-| **SignatureActionHandler** | SIGNATURE_CLIENT | ADMIN, CLIENT | CLIENT | Client must sign documents |
-| **RequestDocActionHandler** | REQUEST_DOC_CLIENT | ADMIN, CLIENT | CLIENT | Client must upload requested documents |
-| **PaymentActionHandler** | PAYMENT_CLIENT | ADMIN, CLIENT | CLIENT | Client must complete payment |
+| **ApprovalActionHandler** | APPROVAL | ADMIN, LAWYER | LAWYER | Lawyer must approve legal decisions |
+| **SignatureActionHandler** | SIGNATURE | ADMIN, CLIENT | CLIENT | Client must sign documents |
+| **RequestDocActionHandler** | REQUEST_DOC | ADMIN, CLIENT | CLIENT | Client must upload requested documents |
+| **PaymentActionHandler** | PAYMENT | ADMIN, CLIENT | CLIENT | Client must complete payment |
 | **ChecklistActionHandler** | CHECKLIST | Any (based on roleScope) | Any | Generic checklist for any role |
 
 ### Implementation Guidelines

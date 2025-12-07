@@ -2,28 +2,33 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { assertMatterAccess } from "@/lib/authorization";
+import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
 import { refreshInstanceStatus } from "@/lib/workflows/service";
 import { determineNextSteps } from "@/lib/workflows/runtime";
 import { WorkflowNotFoundError } from "@/lib/workflows/errors";
 
-type Params = { params: { id: string } };
+type Params = { id: string };
 
-export const POST = withApiHandler(
-  async (_req: NextRequest, { params, session }: Params) => {
+export const POST = withApiHandler<Params>(
+  async (_req: NextRequest, { params, session }) => {
     const user = session!.user!;
 
     const payload = await prisma.$transaction(async (tx) => {
       const instance = await tx.workflowInstance.findUnique({
-        where: { id: params.id },
-        select: { id: true, matterId: true },
+        where: { id: params!.id },
+        select: { id: true, matterId: true, contactId: true },
       });
 
       if (!instance) {
         throw new WorkflowNotFoundError("Workflow instance not found");
       }
 
-      await assertMatterAccess(user, instance.matterId);
+      if (instance.matterId) {
+        await assertMatterAccess(user, instance.matterId);
+      }
+      if (instance.contactId) {
+        await assertContactAccess(user, instance.contactId);
+      }
 
       // Get full instance with contextData for condition evaluation
       const fullInstance = await tx.workflowInstance.findUnique({
@@ -44,7 +49,6 @@ export const POST = withApiHandler(
 
       const steps = await tx.workflowInstanceStep.findMany({
         where: { instanceId: instance.id },
-        orderBy: { order: "asc" },
       });
 
       return {

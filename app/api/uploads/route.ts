@@ -23,10 +23,14 @@ export const POST = withApiHandler(async (req) => {
     );
   }
 
+  // Version calculation based on displayName + folder location
+  // displayName is the primary identifier for versioning
   const where: Prisma.DocumentWhereInput = {
-    filename: payload.filename,
+    displayName: payload.displayName ?? payload.filename, // Use displayName if provided, fallback to filename
+    folderId: payload.folderId ?? null,
     matterId: payload.matterId ?? null,
     contactId: payload.contactId ?? null,
+    deletedAt: null, // Only consider active documents
   };
 
   const aggregate = await prisma.document.aggregate({

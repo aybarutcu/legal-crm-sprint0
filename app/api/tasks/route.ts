@@ -229,7 +229,7 @@ async function fetchLegacyTasks({
 
   const whereClause =
     conditions.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(conditions, Prisma.sql` AND `)}`
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
       : Prisma.sql``;
 
   const rows = await prisma.$queryRaw<LegacyTaskRow[]>(

@@ -35,7 +35,7 @@ export function StepExecutionLog({ step }: StepExecutionLogProps) {
           details = `${actionData.payload.checkedItems.length} madde tamamlandı`;
         }
         break;
-      case "APPROVAL_LAWYER":
+      case "APPROVAL":
         if (actionData?.payload?.approved !== undefined) {
           details = actionData.payload.approved 
             ? `✓ Onaylandı${actionData.payload.comment ? `: "${actionData.payload.comment}"` : ""}`
@@ -47,12 +47,12 @@ export function StepExecutionLog({ step }: StepExecutionLogProps) {
           details = `Belge yüklendi: ${actionData.payload.originalFilename || actionData.payload.uploadedFileId}`;
         }
         break;
-      case "SIGNATURE_CLIENT":
+      case "SIGNATURE":
         if (actionData?.payload?.signedDocumentId) {
           details = `Belge imzalandı: ${actionData.payload.signedDocumentId}`;
         }
         break;
-      case "PAYMENT_CLIENT":
+      case "PAYMENT":
         if (actionData?.payload?.transactionId) {
           details = `Ödeme tamamlandı: ${actionData.payload.amount} ${actionData.config?.currency || "TRY"}`;
         }

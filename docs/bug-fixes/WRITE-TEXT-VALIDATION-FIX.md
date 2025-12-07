@@ -5,8 +5,8 @@
 When attempting to save a workflow template with a WRITE_TEXT step, the API returned a 422 error:
 
 ```
-ZodError: Invalid enum value. Expected 'APPROVAL_LAWYER' | 'SIGNATURE_CLIENT' | 
-'REQUEST_DOC_CLIENT' | 'PAYMENT_CLIENT' | 'CHECKLIST', received 'WRITE_TEXT'
+ZodError: Invalid enum value. Expected 'APPROVAL' | 'SIGNATURE' | 
+'REQUEST_DOC' | 'PAYMENT' | 'CHECKLIST', received 'WRITE_TEXT'
 ```
 
 **Root Cause**: The Zod validation schema in `/lib/validation/workflow.ts` did not include `WRITE_TEXT` in the allowed `actionTypeSchema` enum values.
@@ -24,10 +24,10 @@ Updated validation schema and AI agent prompt to include WRITE_TEXT action type.
 **Before**:
 ```typescript
 export const actionTypeSchema = z.enum([
-  "APPROVAL_LAWYER",
-  "SIGNATURE_CLIENT",
-  "REQUEST_DOC_CLIENT",
-  "PAYMENT_CLIENT",
+  "APPROVAL",
+  "SIGNATURE",
+  "REQUEST_DOC",
+  "PAYMENT",
   "CHECKLIST",
 ]);
 ```
@@ -35,10 +35,10 @@ export const actionTypeSchema = z.enum([
 **After**:
 ```typescript
 export const actionTypeSchema = z.enum([
-  "APPROVAL_LAWYER",
-  "SIGNATURE_CLIENT",
-  "REQUEST_DOC_CLIENT",
-  "PAYMENT_CLIENT",
+  "APPROVAL",
+  "SIGNATURE",
+  "REQUEST_DOC",
+  "PAYMENT",
   "CHECKLIST",
   "WRITE_TEXT",  // ← Added
 ]);
@@ -55,12 +55,12 @@ export const actionTypeSchema = z.enum([
 
 **Before**:
 ```typescript
-actionType: "APPROVAL_LAWYER" | "SIGNATURE_CLIENT" | "REQUEST_DOC_CLIENT" | "PAYMENT_CLIENT" | "CHECKLIST";
+actionType: "APPROVAL" | "SIGNATURE" | "REQUEST_DOC" | "PAYMENT" | "CHECKLIST";
 ```
 
 **After**:
 ```typescript
-actionType: "APPROVAL_LAWYER" | "SIGNATURE_CLIENT" | "REQUEST_DOC_CLIENT" | "PAYMENT_CLIENT" | "CHECKLIST" | "WRITE_TEXT";
+actionType: "APPROVAL" | "SIGNATURE" | "REQUEST_DOC" | "PAYMENT" | "CHECKLIST" | "WRITE_TEXT";
 ```
 
 **Additional Update**: Updated AI system prompt to include WRITE_TEXT guidance:

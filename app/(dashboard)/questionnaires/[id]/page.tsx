@@ -34,9 +34,7 @@ export default async function QuestionnaireDetailPage({
           email: true,
         },
       },
-      questions: {
-        orderBy: { order: "asc" },
-      },
+      questions: true,
       _count: {
         select: {
           responses: true,
@@ -70,7 +68,7 @@ export default async function QuestionnaireDetailPage({
       required: q.required,
       placeholder: q.placeholder,
       helpText: q.helpText,
-      options: Array.isArray(q.options) ? q.options : null,
+      options: Array.isArray(q.options) ? q.options as string[] : null,
       validation: q.validation as Record<string, unknown> | null,
     })),
     _count: {

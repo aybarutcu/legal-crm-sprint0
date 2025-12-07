@@ -100,7 +100,7 @@ function moveStep(index: number, direction: -1 | 1) { ... }
 ## Files Modified
 
 ### Deleted
-- ❌ `client.tsx` legacy version (backed up as `client-legacy.tsx.bak`)
+- ❌ Legacy modal/form editor (`client-legacy.tsx`)
 
 ### Created
 - ✅ `client.tsx` (new simplified version without modal editor)

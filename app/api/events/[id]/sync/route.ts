@@ -10,9 +10,9 @@ import {
 import { enqueueEventSync } from "@/lib/events/sync";
 import { eventSyncSchema } from "@/lib/validation/event";
 
-type RouteParams = { params: { id: string } };
+type RouteParams = { id: string };
 
-export const POST = withApiHandler(
+export const POST = withApiHandler<RouteParams>(
   async (req, { params, session }) => {
     const user = session!.user!;
     const payload = eventSyncSchema.parse(
@@ -22,7 +22,7 @@ export const POST = withApiHandler(
     );
 
     const event = await prisma.event.findUnique({
-      where: { id: params.id },
+      where: { id: params!.id },
       include: eventDefaultInclude,
     });
 

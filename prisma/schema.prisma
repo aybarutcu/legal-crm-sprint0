@@ -41,6 +41,7 @@ model User {
   notes                 Note[]
   auditLogs             AuditLog[]
   workflowTemplates     WorkflowTemplate[]
+  deletedWorkflowTemplates WorkflowTemplate[]  @relation("WorkflowTemplateDeletedBy")
   workflowInstances     WorkflowInstance[]
   assignedWorkflowSteps WorkflowInstanceStep[] @relation("UserAssignedWorkflowSteps")
   invitedBy             User?                  @relation("UserInvitations", fields: [invitedById], references: [id])
@@ -52,6 +53,12 @@ model User {
   resolvedApprovals        Approval[]                  @relation("ApprovalResolver")
   createdQuestionnaires    Questionnaire[]             @relation("QuestionnaireCreator")
   questionnaireResponses   QuestionnaireResponse[]     @relation("QuestionnaireRespondent")
+  documentAccessGrants     DocumentAccess[]            @relation("DocumentAccessGrants")
+  grantedDocumentAccess    DocumentAccess[]            @relation("DocumentAccessGrantor")
+  createdFolders           DocumentFolder[]            @relation("FolderCreator")
+  folderAccessGrants       FolderAccess[]              @relation("FolderAccessUser")
+  grantedFolderAccess      FolderAccess[]              @relation("FolderAccessGrantor")
+  createdFolderTemplates   FolderTemplate[]            @relation("FolderTemplateCreator")
 }
 
 enum Role {
@@ -123,6 +130,7 @@ model Contact {
   matters       MatterContact[]
   clientMatters Matter[]            @relation("MatterClient")
   documents     Document[]          @relation("DocumentContact")
+  folders       DocumentFolder[]    @relation("FolderContact")
   user          User?               @relation("ContactUser", fields: [userId], references: [id], onDelete: SetNull)
   workflowInstances WorkflowInstance[]
 
@@ -171,6 +179,7 @@ model Matter {
   parties               MatterContact[]
   teamMembers           MatterTeamMember[]
   documents             Document[]
+  folders               DocumentFolder[]    @relation("FolderMatter")
   events                Event[]
   tasks                 Task[]
   workflowInstances     WorkflowInstance[]
@@ -226,13 +235,86 @@ model MatterTeamMember {
   @@index([userId])
 }
 
+enum DocumentAccessScope {
+  PUBLIC        // Anyone in the matter/contact can access
+  ROLE_BASED    // Restricted to specific roles
+  USER_BASED    // Restricted to specific users
+  PRIVATE       // Only uploader and admins
+}
+
+model DocumentFolder {
+  id               String     @id @default(cuid())
+  name             String
+  matterId         String?
+  contactId        String?
+  parentFolderId   String?
+  createdById      String
+  color            String?    // Optional color tag for folder
+  isMasterFolder   Boolean    @default(false) // Master folders for matters/contacts (cannot be renamed/deleted)
+  accessScope      DocumentAccessScope @default(PUBLIC)
+  accessMetadata   Json?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+  deletedBy        String?
+
+  matter         Matter?          @relation("FolderMatter", fields: [matterId], references: [id])
+  contact        Contact?         @relation("FolderContact", fields: [contactId], references: [id])
+  parentFolder   DocumentFolder?  @relation("NestedFolders", fields: [parentFolderId], references: [id], onDelete: Cascade)
+  subfolders     DocumentFolder[] @relation("NestedFolders")
+  createdBy      User             @relation("FolderCreator", fields: [createdById], references: [id])
+  documents      Document[]
+  accessGrants   FolderAccess[]
+
+  @@index([matterId])
+  @@index([contactId])
+  @@index([parentFolderId])
+  @@index([createdAt])
+  @@index([accessScope])
+  @@index([isMasterFolder])
+}
+
+model FolderAccess {
+  id         String   @id @default(cuid())
+  folderId   String
+  userId     String
+  grantedBy  String
+  grantedAt  DateTime @default(now())
+
+  folder     DocumentFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user       User           @relation("FolderAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantor    User           @relation("FolderAccessGrantor", fields: [grantedBy], references: [id])
+
+  @@unique([folderId, userId])
+  @@index([folderId])
+  @@index([userId])
+}
+
+model FolderTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  structure   Json     // Tree structure of folders
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDefault   Boolean  @default(false)
+
+  createdBy User @relation("FolderTemplateCreator", fields: [createdById], references: [id])
+
+  @@index([createdById])
+  @@index([isDefault])
+}
+
 model Document {
   id               String     @id @default(cuid())
   matterId         String?
   contactId        String?
+  folderId         String?
   workflowStepId   String?
   uploaderId       String
   filename         String
+  displayName      String?    // User-friendly name (e.g., "Government-issued ID" for workflow docs)
   mime             String
   size             Int
   version          Int        @default(1)
@@ -242,28 +324,48 @@ model Document {
   signedAt         DateTime?
   metadata         Json?
   parentDocumentId String?
+  accessScope      DocumentAccessScope @default(PUBLIC)
+  accessMetadata   Json?
   createdAt        DateTime   @default(now())
   deletedAt        DateTime?
   deletedBy        String?
 
   matter         Matter?                @relation(fields: [matterId], references: [id])
   contact        Contact?               @relation("DocumentContact", fields: [contactId], references: [id])
+  folder         DocumentFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
   workflowStep   WorkflowInstanceStep?  @relation("DocumentWorkflowStep", fields: [workflowStepId], references: [id], onDelete: SetNull)
   uploader       User                   @relation("DocumentUploader", fields: [uploaderId], references: [id])
   parentDocument Document?              @relation("DocumentVersions", fields: [parentDocumentId], references: [id])
   versions       Document[]             @relation("DocumentVersions")
   taskLinks      TaskLink[]
   approvals      Approval[]
+  accessGrants   DocumentAccess[]
 
   @@index([matterId, filename])
   @@index([contactId])
+  @@index([folderId])
   @@index([workflowStepId])
   @@index([matterId, hash])
   @@index([parentDocumentId])
   @@index([createdAt])
+  @@index([accessScope])
 }
 
-
+model DocumentAccess {
+  id         String   @id @default(cuid())
+  documentId String
+  userId     String
+  grantedBy  String
+  grantedAt  DateTime @default(now())
+  
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User     @relation("DocumentAccessGrants", fields: [userId], references: [id], onDelete: Cascade)
+  grantor    User     @relation("DocumentAccessGrantor", fields: [grantedBy], references: [id])
+  
+  @@unique([documentId, userId])
+  @@index([documentId])
+  @@index([userId])
+}
 
 model Message {
   id          String    @id @default(cuid())
@@ -457,9 +559,13 @@ model WorkflowTemplate {
   createdById   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+  deletedBy     String?
 
   createdBy User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  deletedByUser User?              @relation("WorkflowTemplateDeletedBy", fields: [deletedBy], references: [id], onDelete: SetNull)
   steps     WorkflowTemplateStep[]
+  dependencies WorkflowTemplateDependency[]
   instances WorkflowInstance[]
 
   @@unique([name, version])
@@ -468,34 +574,24 @@ model WorkflowTemplate {
 model WorkflowTemplateStep {
   id           String     @id @default(cuid())
   templateId   String
-  order        Int
   title        String
   actionType   ActionType
   actionConfig Json
+  notificationPolicies Json   @default("[]")
   roleScope    RoleScope
   required     Boolean    @default(true)
-  
-  // Conditional execution
-  conditionType    ConditionType? @default(ALWAYS)
-  conditionConfig  Json?
-  nextStepOnTrue   Int?  // Order of step to execute if condition is true
-  nextStepOnFalse  Int?  // Order of step to execute if condition is false
-  
-  // Flexible dependencies (P0.2)
-  dependsOn        Int[]  @default([])  // Array of step orders this step depends on
-  dependencyLogic  DependencyLogic @default(ALL)
-  
+
   // Canvas position (P0.3 - for visual workflow builder)
   positionX    Float?  @default(0)  // X coordinate on canvas
   positionY    Float?  @default(100)  // Y coordinate on canvas
-  
+
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   template      WorkflowTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  outgoingDeps  WorkflowTemplateDependency[] @relation("SourceDeps")
+  incomingDeps  WorkflowTemplateDependency[] @relation("TargetDeps")
   instanceSteps WorkflowInstanceStep[]
-
-  @@unique([templateId, order])
 }
 
 model WorkflowInstance {
@@ -515,6 +611,7 @@ model WorkflowInstance {
   contact   Contact?               @relation(fields: [contactId], references: [id], onDelete: Cascade)
   createdBy User                   @relation(fields: [createdById], references: [id], onDelete: Restrict)
   steps     WorkflowInstanceStep[]
+  dependencies WorkflowInstanceDependency[]
 
   @@index([matterId, status])
   @@index([contactId, status])
@@ -525,57 +622,52 @@ model WorkflowInstanceStep {
   id             String        @id @default(cuid())
   instanceId     String
   templateStepId String?
-  order          Int
   title          String
   actionType     ActionType
   roleScope      RoleScope
   required       Boolean       @default(true)
   actionState    ActionState   @default(PENDING)
   actionData     Json?
+  notificationPolicies Json   @default("[]")
+  automationLog   Json       @default("[]")
+  notificationLog Json       @default("[]")
   assignedToId   String?
   dueDate        DateTime?
   priority       TaskPriority? @default(MEDIUM)
   notes          String?
   startedAt      DateTime?
   completedAt    DateTime?
-  
-  // Conditional execution
-  conditionType    ConditionType? @default(ALWAYS)
-  conditionConfig  Json?
-  nextStepOnTrue   Int?  // Order of step to execute if condition is true
-  nextStepOnFalse  Int?  // Order of step to execute if condition is false
-  
-  // Flexible dependencies (P0.2)
-  dependsOn        String[]  @default([])  // Array of step IDs this step depends on
-  dependencyLogic  DependencyLogic @default(ALL)
 
   // Canvas position for instance editor
   positionX    Float?  @default(0)
   positionY    Float?  @default(100)
-  
+
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   instance     WorkflowInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   templateStep WorkflowTemplateStep? @relation(fields: [templateStepId], references: [id], onDelete: SetNull)
   assignedTo   User?                 @relation("UserAssignedWorkflowSteps", fields: [assignedToId], references: [id], onDelete: SetNull)
+  outgoingDeps  WorkflowInstanceDependency[] @relation("SourceDeps")
+  incomingDeps  WorkflowInstanceDependency[] @relation("TargetDeps")
   documents    Document[]            @relation("DocumentWorkflowStep")
 
-  @@unique([instanceId, order])
   @@index([instanceId, actionState])
   @@index([assignedToId])
   @@index([dueDate])
 }
 
 enum ActionType {
-  APPROVAL_LAWYER
-  SIGNATURE_CLIENT
+  APPROVAL
+  SIGNATURE
   REQUEST_DOC
-  PAYMENT_CLIENT
+  PAYMENT
   TASK
   CHECKLIST
   WRITE_TEXT
   POPULATE_QUESTIONNAIRE
+  AUTOMATION_EMAIL
+  AUTOMATION_WEBHOOK
 }
 
 enum RoleScope {
@@ -595,13 +687,6 @@ enum ActionState {
   SKIPPED
 }
 
-enum ConditionType {
-  ALWAYS              // Default - always execute (no condition)
-  IF_TRUE             // Execute only if condition is true
-  IF_FALSE            // Execute only if condition is false
-  SWITCH              // Multiple conditions (future enhancement)
-}
-
 enum DependencyLogic {
   ALL     // All dependencies must complete (AND logic)
   ANY     // At least one dependency must complete (OR logic)
@@ -614,6 +699,58 @@ enum WorkflowInstanceStatus {
   PAUSED
   COMPLETED
   CANCELED
+}
+
+// New dependency tables for edge-based model
+model WorkflowTemplateDependency {
+  id              String   @id @default(cuid())
+  templateId      String
+  sourceStepId    String   // Step that must complete first
+  targetStepId    String   // Step that depends on source
+
+  dependencyType  DependencyType @default(DEPENDS_ON)
+  dependencyLogic DependencyLogic @default(ALL)
+
+  // Future branching support
+  conditionType   ConditionType?
+  conditionConfig Json?
+
+  template        WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sourceStep      WorkflowTemplateStep @relation("SourceDeps", fields: [sourceStepId], references: [id])
+  targetStep      WorkflowTemplateStep @relation("TargetDeps", fields: [targetStepId], references: [id])
+
+  @@unique([templateId, sourceStepId, targetStepId])
+}
+
+model WorkflowInstanceDependency {
+  id              String   @id @default(cuid())
+  instanceId      String
+  sourceStepId    String   // Instance step IDs
+  targetStepId    String
+  dependencyType  DependencyType @default(DEPENDS_ON)
+  dependencyLogic DependencyLogic @default(ALL)
+  conditionType   ConditionType?
+  conditionConfig Json?
+
+  instance        WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  sourceStep      WorkflowInstanceStep @relation("SourceDeps", fields: [sourceStepId], references: [id])
+  targetStep      WorkflowInstanceStep @relation("TargetDeps", fields: [targetStepId], references: [id])
+
+  @@unique([instanceId, sourceStepId, targetStepId])
+}
+
+enum DependencyType {
+  DEPENDS_ON      // Standard dependency (current behavior)
+  TRIGGERS        // Auto-trigger (future)
+  IF_TRUE_BRANCH  // Conditional branch for true conditions (future)
+  IF_FALSE_BRANCH // Conditional branch for false conditions (future)
+}
+
+enum ConditionType {
+  ALWAYS          // Always execute (default)
+  IF_TRUE         // Execute if condition evaluates to true
+  IF_FALSE        // Execute if condition evaluates to false
+  SWITCH          // Multi-branch routing (future)
 }
 
 enum CalendarProvider {

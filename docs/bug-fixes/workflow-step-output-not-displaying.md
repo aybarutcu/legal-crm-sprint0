@@ -152,7 +152,7 @@ const renderStepOutputUI = () => {
       }
       return null;
 
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       if (actionData.documentId) {  // ✅ Correctly finds documentId
         return <DocumentViewer documentIds={[actionData.documentId]} />;
       }
@@ -181,7 +181,7 @@ const renderStepOutputUI = () => {
 1. Changed condition: `!step.actionData?.data` → `!step.actionData`
 2. Changed variable: `const data = step.actionData.data` → `const actionData = step.actionData`
 3. Updated all references: `data.responseId` → `actionData.responseId`
-4. Applied to all action types: POPULATE_QUESTIONNAIRE, WRITE_TEXT, REQUEST_DOC_CLIENT, CHECKLIST
+4. Applied to all action types: POPULATE_QUESTIONNAIRE, WRITE_TEXT, REQUEST_DOC, CHECKLIST
 
 ---
 
@@ -204,7 +204,7 @@ const renderStepOutputUI = () => {
 
 4. **Other Action Types**:
    - WRITE_TEXT: Text content displays
-   - REQUEST_DOC_CLIENT: Document preview shows
+   - REQUEST_DOC: Document preview shows
    - CHECKLIST: Completed items marked with checkmarks
 
 ---

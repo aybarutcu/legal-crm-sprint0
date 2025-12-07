@@ -5,10 +5,12 @@
  * Feature flag controlled via ENABLE_WORKFLOW_NOTIFICATIONS env variable.
  */
 
-import { Role, type WorkflowInstanceStep } from "@prisma/client";
+import { Role, type WorkflowInstanceStep, type WorkflowInstance } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { getMailer } from "@/lib/mail/transporter";
 import { WorkflowMetrics } from "./observability";
-import type { PrismaClient } from "@prisma/client";
+import type { NotificationPolicy, NotificationTrigger } from "./notification-policy";
+import type { NotificationChannel } from "./notification-policy";
 
 type PrismaClientOrTransaction = PrismaClient | Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -26,6 +28,54 @@ type NotificationContext = {
   };
 };
 
+type StepWithContext = WorkflowInstanceStep & {
+  instance: WorkflowInstance & {
+    template: { name: string } | null;
+    matter: {
+      id: string;
+      title: string;
+      ownerId: string | null;
+      owner?: { id: string; name: string | null; email: string | null } | null;
+      parties: Array<{
+        role: string;
+        contact: {
+          email: string | null;
+          firstName: string;
+          lastName: string;
+          phone?: string | null;
+        };
+      }>;
+    } | null;
+    contact: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string | null;
+      phone?: string | null;
+    } | null;
+  };
+  assignedTo?: { id: string; name: string | null; email: string | null; phone?: string | null } | null;
+};
+
+type NotificationLogEntry = {
+  at: string;
+  trigger: NotificationTrigger;
+  channel: NotificationChannel;
+  recipients: string[];
+  status: "SENT" | "FAILED" | "SKIPPED";
+  error?: string;
+};
+
+function parseNotificationPolicies(value: Prisma.JsonValue | null | undefined): NotificationPolicy[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value as NotificationPolicy[];
+  }
+  return [];
+}
+
 /**
  * Check if workflow notifications are enabled
  */
@@ -38,27 +88,15 @@ export function isNotificationEnabled(): boolean {
  */
 async function getEligibleActors(
   tx: PrismaClientOrTransaction,
-  step: WorkflowInstanceStep & {
-    instance: {
-      id: string;
-      matterId: string;
-      matter: {
-        id: string;
-        ownerId: string | null;
-        parties: Array<{
-          role: string;
-          contact: {
-            email: string | null;
-            firstName: string;
-            lastName: string;
-          };
-        }>;
-      };
-    };
-  },
+  step: StepWithContext,
 ): Promise<Array<{ email: string; name: string }>> {
   const recipients: Array<{ email: string; name: string }> = [];
   const matter = step.instance.matter;
+
+  if (!matter) {
+    console.warn(`[Workflow Notifications] No matter found for step ${step.id}, cannot determine recipients`);
+    return recipients;
+  }
 
   switch (step.roleScope) {
     case "ADMIN": {
@@ -125,6 +163,212 @@ async function getEligibleActors(
   return recipients;
 }
 
+type TemplateContext = {
+  step: {
+    id: string;
+    title: string;
+    actionType: string;
+    roleScope: string;
+  };
+  instance: {
+    id: string;
+    templateName?: string | null;
+  };
+  matter?: {
+    id: string;
+    title: string;
+    owner?: { id: string | null; name: string | null; email: string | null };
+  } | null;
+  contact?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone?: string | null;
+  } | null;
+  assignedTo?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone?: string | null;
+  } | null;
+};
+
+function buildTemplateContext(step: StepWithContext): TemplateContext {
+  return {
+    step: {
+      id: step.id,
+      title: step.title,
+      actionType: step.actionType,
+      roleScope: step.roleScope,
+    },
+    instance: {
+      id: step.instance.id,
+      templateName: step.instance.template?.name,
+    },
+    matter: step.instance.matter
+      ? {
+          id: step.instance.matter.id,
+          title: step.instance.matter.title,
+          owner: {
+            id: step.instance.matter.ownerId ?? null,
+            name: step.instance.matter.owner?.name ?? null,
+            email: step.instance.matter.owner?.email ?? null,
+          },
+        }
+      : null,
+    contact: step.instance.contact,
+    assignedTo: step.assignedTo ?? null,
+  };
+}
+
+function resolveTemplateValue(path: string, context: Record<string, unknown>): unknown {
+  return path.split(".").reduce<unknown>((acc, key) => {
+    if (acc && typeof acc === "object") {
+      return (acc as Record<string, unknown>)[key];
+    }
+    return undefined;
+  }, context);
+}
+
+function renderTemplate(template: string | undefined, context: Record<string, unknown>): string | undefined {
+  if (!template) return undefined;
+  return template.replace(/{{\s*([^}]+)\s*}}/g, (_match, token) => {
+    const value = resolveTemplateValue(token.trim(), context);
+    return value === undefined || value === null ? "" : String(value);
+  });
+}
+
+function resolveAddressList(values: string[] | undefined, context: Record<string, unknown>): string[] {
+  if (!values) return [];
+  return values
+    .map((raw) => renderTemplate(raw, context)?.trim())
+    .filter((val): val is string => Boolean(val))
+    .filter((val, idx, arr) => arr.indexOf(val) === idx);
+}
+
+function appendLogEntries(
+  existing: Prisma.JsonValue | null | undefined,
+  entries: NotificationLogEntry[],
+): NotificationLogEntry[] {
+  const current = Array.isArray(existing) ? (existing as NotificationLogEntry[]) : [];
+  return [...current, ...entries];
+}
+
+async function fetchStepWithContext(
+  tx: PrismaClientOrTransaction,
+  stepId: string,
+): Promise<StepWithContext | null> {
+  return tx.workflowInstanceStep.findUnique({
+    where: { id: stepId },
+    include: {
+      assignedTo: {
+        select: { id: true, name: true, email: true },
+      },
+      instance: {
+        include: {
+          template: { select: { name: true } },
+          matter: {
+            select: {
+              id: true,
+              title: true,
+              ownerId: true,
+              owner: { select: { id: true, name: true, email: true } },
+              parties: {
+                include: {
+                  contact: {
+                    select: {
+                      email: true,
+                      firstName: true,
+                      lastName: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          contact: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      },
+    },
+  }) as Promise<StepWithContext | null>;
+}
+
+async function dispatchNotificationPolicies(
+  tx: PrismaClientOrTransaction,
+  step: StepWithContext,
+  trigger: NotificationTrigger,
+): Promise<boolean> {
+  const policies = parseNotificationPolicies(step.notificationPolicies);
+  if (policies.length === 0) {
+    return false;
+  }
+
+  const matching = policies.filter((policy) => {
+    const triggers = (policy.triggers && policy.triggers.length > 0) ? policy.triggers : ["ON_READY"];
+    return triggers.includes(trigger);
+  });
+
+  if (matching.length === 0) {
+    return false;
+  }
+
+  const templateContext = buildTemplateContext(step);
+  const logs: NotificationLogEntry[] = [];
+  const now = new Date().toISOString();
+
+  for (const policy of matching) {
+    if (
+      policy.sendStrategy === "DELAYED" &&
+      (policy.delayMinutes ?? 0) > 0
+    ) {
+      logs.push({
+        at: now,
+        trigger,
+        channel: policy.channel,
+        recipients: policy.recipients ?? [],
+        status: "SKIPPED",
+        error: "Delayed notifications are not implemented yet",
+      });
+      continue;
+    }
+
+    if (policy.channel === "EMAIL") {
+      const entry = await processEmailPolicy(policy, step, templateContext, trigger);
+      logs.push(entry);
+    } else {
+      logs.push({
+        at: now,
+        trigger,
+        channel: policy.channel,
+        recipients: policy.recipients ?? [],
+        status: "SKIPPED",
+        error: `Channel ${policy.channel} not implemented`,
+      });
+    }
+  }
+
+  if (logs.length > 0) {
+    await tx.workflowInstanceStep.update({
+      where: { id: step.id },
+      data: {
+        notificationLog: appendLogEntries(step.notificationLog, logs) as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  return logs.some((entry) => entry.status === "SENT");
+}
+
 /**
  * Send notification email for a READY workflow step
  */
@@ -137,10 +381,10 @@ async function sendStepReadyNotification(
   const subject = `Workflow Adımı Hazır: ${context.stepTitle}`;
 
   const actionTypeLabels: Record<string, string> = {
-    APPROVAL_LAWYER: "Avukat Onayı",
-    SIGNATURE_CLIENT: "Müvekkil İmzası",
+    APPROVAL: "Avukat Onayı",
+    SIGNATURE: "Müvekkil İmzası",
     REQUEST_DOC: "Doküman Talebi",
-    PAYMENT_CLIENT: "Ödeme",
+    PAYMENT: "Ödeme",
     CHECKLIST: "Kontrol Listesi",
   };
 
@@ -194,6 +438,81 @@ async function sendStepReadyNotification(
   });
 }
 
+async function processEmailPolicy(
+  policy: NotificationPolicy,
+  step: StepWithContext,
+  templateContext: TemplateContext,
+  trigger: NotificationTrigger,
+): Promise<NotificationLogEntry> {
+  const mailer = getMailer();
+  const recipients = resolveAddressList(policy.recipients ?? [], templateContext);
+
+  if (recipients.length === 0) {
+    return {
+      at: new Date().toISOString(),
+      trigger,
+      channel: "EMAIL",
+      recipients: [],
+      status: "SKIPPED",
+      error: "No recipients resolved",
+    };
+  }
+
+  const cc = resolveAddressList(policy.cc ?? [], templateContext);
+  const subject =
+    renderTemplate(policy.subjectTemplate, templateContext) ??
+    `Workflow Update: ${templateContext.step.title}`;
+
+  const defaultBody = [
+    `Hello,`,
+    "",
+    `Step "${templateContext.step.title}" (${templateContext.step.actionType}) triggered event ${trigger}.`,
+    templateContext.matter ? `Matter: ${templateContext.matter.title}` : "",
+    "",
+    "Please sign in to review the details.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const textBody = renderTemplate(policy.bodyTemplate, templateContext) ?? defaultBody;
+  const htmlBody = `<div style="font-family: Arial, sans-serif; line-height:1.6; white-space:pre-wrap;">${textBody.replace(
+    /\n/g,
+    "<br/>",
+  )}</div>`;
+
+  const from = process.env.SMTP_FROM ?? process.env.MAIL_FROM ?? "Legal CRM <noreply@legalcrm.local>";
+
+  try {
+    await mailer.sendMail({
+      from,
+      to: recipients,
+      cc: cc.length ? cc : undefined,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+    WorkflowMetrics.recordNotificationSent(step.actionType, true);
+    return {
+      at: new Date().toISOString(),
+      trigger,
+      channel: "EMAIL",
+      recipients,
+      status: "SENT",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    WorkflowMetrics.recordNotificationSent(step.actionType, false);
+    return {
+      at: new Date().toISOString(),
+      trigger,
+      channel: "EMAIL",
+      recipients,
+      status: "FAILED",
+      error: message,
+    };
+  }
+}
+
 /**
  * Notify eligible actors when a step enters READY state
  * 
@@ -217,45 +536,19 @@ export async function notifyStepReady(
   }
 
   try {
-    // Fetch step with related data
-    const step = await tx.workflowInstanceStep.findUnique({
-      where: { id: stepId },
-      include: {
-        instance: {
-          include: {
-            template: {
-              select: { name: true },
-            },
-            matter: {
-              select: {
-                id: true,
-                title: true,
-                ownerId: true,
-                parties: {
-                  include: {
-                    contact: {
-                      select: {
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    const step = await fetchStepWithContext(tx, stepId);
 
     if (!step) {
       console.warn(`[Workflow Notifications] Step ${stepId} not found`);
       return;
     }
 
-    // Get matter owner info
-    const ownerId = step.instance.matter.ownerId;
+    const handled = await dispatchNotificationPolicies(tx, step, "ON_READY");
+    if (handled) {
+      return;
+    }
+
+    const ownerId = step.instance.matter?.ownerId;
     if (!ownerId) {
       console.warn(`[Workflow Notifications] Matter has no owner for step ${stepId}`);
       return;
@@ -266,8 +559,8 @@ export async function notifyStepReady(
       select: { id: true, name: true, email: true },
     });
 
-    if (!matterOwner) {
-      console.warn(`[Workflow Notifications] Matter owner not found for step ${stepId}`);
+    if (!matterOwner?.email) {
+      console.warn(`[Workflow Notifications] Matter owner not found or missing email for step ${stepId}`);
       return;
     }
 
@@ -276,8 +569,8 @@ export async function notifyStepReady(
       stepTitle: step.title,
       actionType: step.actionType,
       roleScope: step.roleScope,
-      workflowName: step.instance.template.name,
-      matterTitle: step.instance.matter.title,
+      workflowName: step.instance.template?.name ?? "",
+      matterTitle: step.instance.matter?.title ?? "",
       matterOwner: {
         id: matterOwner.id,
         name: matterOwner.name,
@@ -285,38 +578,50 @@ export async function notifyStepReady(
       },
     };
 
-    // Get eligible actors
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const recipients = await getEligibleActors(tx, step as any);
+    const recipients = await getEligibleActors(tx, step);
 
     if (recipients.length === 0) {
       console.warn(`[Workflow Notifications] No eligible recipients for step ${stepId}`);
       return;
     }
 
-    // Send notifications (with basic throttling - one email per recipient)
-    console.log(`[Workflow Notifications] Sending ${recipients.length} notification(s) for step ${stepId}`);
-    
     for (const recipient of recipients) {
       try {
         await sendStepReadyNotification(recipient, context);
-        console.log(`[Workflow Notifications] Sent notification to ${recipient.email}`);
-        
-        // Record successful notification metric
         WorkflowMetrics.recordNotificationSent(step.actionType, true);
       } catch (error) {
         console.error(`[Workflow Notifications] Failed to send to ${recipient.email}:`, error);
-        
-        // Record failed notification metric
         WorkflowMetrics.recordNotificationSent(step.actionType, false);
-        
-        // Continue with other recipients even if one fails
       }
     }
   } catch (error) {
     console.error(`[Workflow Notifications] Error processing notification for step ${stepId}:`, error);
     // Don't throw - notifications are non-critical
   }
+}
+
+export async function notifyStepCompleted(
+  tx: PrismaClientOrTransaction,
+  stepId: string,
+): Promise<void> {
+  if (!isNotificationEnabled()) {
+    return;
+  }
+  const step = await fetchStepWithContext(tx, stepId);
+  if (!step) return;
+  await dispatchNotificationPolicies(tx, step, "ON_COMPLETED");
+}
+
+export async function notifyStepFailed(
+  tx: PrismaClientOrTransaction,
+  stepId: string,
+): Promise<void> {
+  if (!isNotificationEnabled()) {
+    return;
+  }
+  const step = await fetchStepWithContext(tx, stepId);
+  if (!step) return;
+  await dispatchNotificationPolicies(tx, step, "ON_FAILED");
 }
 
 /**

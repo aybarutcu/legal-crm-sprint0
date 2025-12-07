@@ -10,13 +10,26 @@ import { requireAdmin } from "@/lib/authorization";
 
 export const GET = withApiHandler(async (_req: NextRequest) => {
   const templates = await prisma.workflowTemplate.findMany({
+    where: {
+      deletedAt: null, // Only show non-deleted templates
+    },
     orderBy: [
       { isActive: "desc" },
       { updatedAt: "desc" },
     ],
     include: {
-      steps: {
-        orderBy: { order: "asc" },
+      steps: true,
+      dependencies: true,
+      _count: {
+        select: {
+          instances: {
+            where: {
+              matterId: {
+                not: null,
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -26,20 +39,13 @@ export const GET = withApiHandler(async (_req: NextRequest) => {
 
 function mapStepInput(step: WorkflowStepInput, index: number) {
   return {
+    id: step.id,
     title: step.title,
     actionType: step.actionType,
     roleScope: step.roleScope,
     required: step.required ?? true,
     actionConfig: step.actionConfig ?? {},
-    order: step.order ?? index,
-    // Conditional execution fields
-    conditionType: step.conditionType ?? "ALWAYS",
-    conditionConfig: step.conditionConfig ?? null,
-    nextStepOnTrue: step.nextStepOnTrue ?? null,
-    nextStepOnFalse: step.nextStepOnFalse ?? null,
-    // Dependency fields (P0.2)
-    dependsOn: step.dependsOn ?? [],
-    dependencyLogic: step.dependencyLogic ?? "ALL",
+    notificationPolicies: step.notificationPolicies ?? [],
     // Canvas position fields (P0.3)
     positionX: step.positionX ?? index * 300 + 50,
     positionY: step.positionY ?? 100,
@@ -87,11 +93,24 @@ export const POST = withApiHandler(
     const template = await prisma.workflowTemplate.create({
       data,
       include: {
-        steps: {
-          orderBy: { order: "asc" },
-        },
+        steps: true,
       },
     });
+
+    // Create dependencies if provided
+    if (payload.dependencies && payload.dependencies.length > 0) {
+      await prisma.workflowTemplateDependency.createMany({
+        data: payload.dependencies.map(dep => ({
+          templateId: template.id,
+          sourceStepId: dep.sourceStepId,
+          targetStepId: dep.targetStepId,
+          dependencyType: dep.dependencyType,
+          dependencyLogic: dep.dependencyLogic,
+          conditionType: dep.conditionType,
+          conditionConfig: dep.conditionConfig ?? undefined,
+        })),
+      });
+    }
 
     // Debug: Log returned template positions
     // console.log('✅ [API POST] Created template:', template.steps);

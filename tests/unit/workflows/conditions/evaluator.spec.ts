@@ -30,7 +30,7 @@ function createMockContext(overrides?: Partial<WorkflowRuntimeContext>): Workflo
       templateStepId: null,
       order: 1,
       title: "Test Step",
-      actionType: ActionType.APPROVAL_LAWYER,
+      actionType: ActionType.APPROVAL,
       roleScope: RoleScope.LAWYER,
       required: true,
       actionState: ActionState.READY,

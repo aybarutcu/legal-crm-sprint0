@@ -9,7 +9,7 @@ import {
   requireTask,
 } from "@/app/api/tasks/_helpers";
 
-export const POST = withApiHandler(
+export const POST = withApiHandler<{ id: string }>(
   async (req: NextRequest, { params, session }) => {
     const user = session!.user!;
     const taskId = params!.id;

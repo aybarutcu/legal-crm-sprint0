@@ -40,6 +40,27 @@ export async function assertMatterAccess(user: { id: string; role?: Role }, matt
   }
 }
 
+export async function assertContactAccess(user: { id: string; role?: Role }, contactId: string): Promise<void> {
+  if (user.role === Role.ADMIN) {
+    return;
+  }
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    select: { 
+      ownerId: true,
+      userId: true,
+    },
+  });
+
+  // Allow access if user is the contact owner OR the contact is linked to the user
+  const hasAccess = contact?.ownerId === user.id || contact?.userId === user.id;
+  
+  if (!hasAccess) {
+    throw new NotAuthorizedError("Contact access denied");
+  }
+}
+
 export function isAdmin(role: Role | undefined): boolean {
   return role === Role.ADMIN;
 }

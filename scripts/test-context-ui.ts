@@ -39,7 +39,7 @@ async function main() {
   }
 
   console.log(`✅ Found workflow instance: ${instance.template.name}`);
-  console.log(`   Matter: ${instance.matter.title}`);
+  console.log(`   Matter: ${instance.matter?.title || 'No matter'}`);
   console.log(`   Instance ID: ${instance.id}\n`);
 
   // Set sample context data

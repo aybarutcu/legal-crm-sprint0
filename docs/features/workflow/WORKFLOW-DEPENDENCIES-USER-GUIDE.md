@@ -144,7 +144,7 @@ Step 5: Escalate to Manager (depends on Steps 2, 3, 4 with ANY logic)
 Each step appears as a node showing:
 - **Step Order**: Number badge (1, 2, 3...)
 - **Step Title**: Full name of the step
-- **Action Type**: TASK, APPROVAL_LAWYER, etc.
+- **Action Type**: TASK, APPROVAL, etc.
 - **Dependency Count**: Number of dependencies (e.g., "2 deps")
 - **Dependency Logic**: && (ALL) or || (ANY)
 

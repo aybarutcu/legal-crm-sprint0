@@ -57,7 +57,7 @@ describe("POST /api/workflows/templates with dependencies", () => {
         {
           order: 1,
           title: "Step 2",
-          actionType: ActionType.APPROVAL_LAWYER,
+          actionType: ActionType.APPROVAL,
           roleScope: Role.LAWYER,
         },
       ],
@@ -89,6 +89,7 @@ describe("POST /api/workflows/templates with dependencies", () => {
       description: "Template with parallel execution",
       steps: [
         {
+          id: "step-0",
           order: 0,
           title: "Parent Task",
           actionType: ActionType.TASK,
@@ -97,19 +98,21 @@ describe("POST /api/workflows/templates with dependencies", () => {
           dependencyLogic: "ALL",
         },
         {
+          id: "step-1",
           order: 1,
           title: "Branch 1",
           actionType: ActionType.TASK,
           roleScope: Role.LAWYER,
-          dependsOn: [0], // Depends on step 0
+          dependsOn: ["step-0"], // Depends on step 0
           dependencyLogic: "ALL",
         },
         {
+          id: "step-2",
           order: 2,
           title: "Branch 2",
-          actionType: ActionType.REQUEST_DOC_CLIENT,
+          actionType: ActionType.REQUEST_DOC,
           roleScope: Role.CLIENT,
-          dependsOn: [0], // Also depends on step 0 (parallel with step 1)
+          dependsOn: ["step-0"], // Also depends on step 0 (parallel with step 1)
           dependencyLogic: "ALL",
         },
       ],
@@ -128,8 +131,8 @@ describe("POST /api/workflows/templates with dependencies", () => {
     expect(data.steps).toHaveLength(3);
     
     // Verify parallel dependencies
-    expect(data.steps[1].dependsOn).toEqual([0]);
-    expect(data.steps[2].dependsOn).toEqual([0]);
+    expect(data.steps[1].dependsOn).toEqual(["step-0"]);
+    expect(data.steps[2].dependsOn).toEqual(["step-0"]);
     
     // Both steps 1 and 2 can execute in parallel after step 0 completes
   });
@@ -140,6 +143,7 @@ describe("POST /api/workflows/templates with dependencies", () => {
       description: "Template with fork-join pattern",
       steps: [
         {
+          id: "step-0",
           order: 0,
           title: "Start",
           actionType: ActionType.TASK,
@@ -147,25 +151,28 @@ describe("POST /api/workflows/templates with dependencies", () => {
           dependsOn: [],
         },
         {
+          id: "step-1",
           order: 1,
           title: "Fork Branch 1",
           actionType: ActionType.TASK,
           roleScope: Role.LAWYER,
-          dependsOn: [0],
+          dependsOn: ["step-0"],
         },
         {
+          id: "step-2",
           order: 2,
           title: "Fork Branch 2",
-          actionType: ActionType.REQUEST_DOC_CLIENT,
+          actionType: ActionType.REQUEST_DOC,
           roleScope: Role.CLIENT,
-          dependsOn: [0],
+          dependsOn: ["step-0"],
         },
         {
+          id: "step-3",
           order: 3,
           title: "Join Point",
-          actionType: ActionType.APPROVAL_LAWYER,
+          actionType: ActionType.APPROVAL,
           roleScope: Role.LAWYER,
-          dependsOn: [1, 2], // Waits for both branches
+          dependsOn: ["step-1", "step-2"], // Waits for both branches
           dependencyLogic: "ALL",
         },
       ],
@@ -185,9 +192,9 @@ describe("POST /api/workflows/templates with dependencies", () => {
     
     // Verify fork-join structure
     expect(data.steps[0].dependsOn).toEqual([]);
-    expect(data.steps[1].dependsOn).toEqual([0]);
-    expect(data.steps[2].dependsOn).toEqual([0]);
-    expect(data.steps[3].dependsOn).toEqual([1, 2]); // Join point
+    expect(data.steps[1].dependsOn).toEqual(["step-0"]);
+    expect(data.steps[2].dependsOn).toEqual(["step-0"]);
+    expect(data.steps[3].dependsOn).toEqual(["step-1", "step-2"]); // Join point
     expect(data.steps[3].dependencyLogic).toBe("ALL");
   });
 
@@ -197,25 +204,28 @@ describe("POST /api/workflows/templates with dependencies", () => {
       description: "Template with ANY dependency logic (first-wins)",
       steps: [
         {
+          id: "step-0",
           order: 0,
           title: "Option 1",
-          actionType: ActionType.REQUEST_DOC_CLIENT,
+          actionType: ActionType.REQUEST_DOC,
           roleScope: Role.CLIENT,
           dependsOn: [],
         },
         {
+          id: "step-1",
           order: 1,
           title: "Option 2",
-          actionType: ActionType.SIGNATURE_CLIENT,
+          actionType: ActionType.SIGNATURE,
           roleScope: Role.CLIENT,
           dependsOn: [],
         },
         {
+          id: "step-2",
           order: 2,
           title: "Proceed when ANY complete",
           actionType: ActionType.TASK,
           roleScope: Role.LAWYER,
-          dependsOn: [0, 1], // Waits for ANY of the two options
+          dependsOn: ["step-0", "step-1"], // Waits for ANY of the two options
           dependencyLogic: "ANY",
         },
       ],
@@ -234,7 +244,7 @@ describe("POST /api/workflows/templates with dependencies", () => {
     expect(data.steps).toHaveLength(3);
     
     // Verify ANY logic
-    expect(data.steps[2].dependsOn).toEqual([0, 1]);
+    expect(data.steps[2].dependsOn).toEqual(["step-0", "step-1"]);
     expect(data.steps[2].dependencyLogic).toBe("ANY");
   });
 
@@ -244,6 +254,7 @@ describe("POST /api/workflows/templates with dependencies", () => {
       description: "Template with duplicate dependencies",
       steps: [
         {
+          id: "step-0",
           order: 0,
           title: "Step 1",
           actionType: ActionType.TASK,
@@ -251,11 +262,12 @@ describe("POST /api/workflows/templates with dependencies", () => {
           dependsOn: [],
         },
         {
+          id: "step-1",
           order: 1,
           title: "Step 2",
           actionType: ActionType.TASK,
           roleScope: Role.LAWYER,
-          dependsOn: [0, 0], // Duplicate!
+          dependsOn: ["step-0", "step-0"], // Duplicate!
         },
       ],
     };
@@ -277,6 +289,7 @@ describe("POST /api/workflows/templates with dependencies", () => {
       description: "Template with invalid dependency order",
       steps: [
         {
+          id: "step-0",
           order: 0,
           title: "Step 1",
           actionType: ActionType.TASK,
@@ -284,11 +297,12 @@ describe("POST /api/workflows/templates with dependencies", () => {
           dependsOn: [],
         },
         {
+          id: "step-1",
           order: 1,
           title: "Step 2",
           actionType: ActionType.TASK,
           roleScope: Role.LAWYER,
-          dependsOn: [0, 5], // Step 5 doesn't exist!
+          dependsOn: ["step-0", "step-5"], // Step 5 doesn't exist!
         },
       ],
     };
@@ -310,11 +324,12 @@ describe("POST /api/workflows/templates with dependencies", () => {
       description: "Template with step depending on itself",
       steps: [
         {
+          id: "step-0",
           order: 0,
           title: "Step 1",
           actionType: ActionType.TASK,
           roleScope: Role.LAWYER,
-          dependsOn: [0], // Depends on itself!
+          dependsOn: ["step-0"], // Depends on itself!
         },
       ],
     };

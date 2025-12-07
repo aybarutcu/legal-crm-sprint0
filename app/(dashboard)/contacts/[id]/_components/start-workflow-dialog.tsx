@@ -1,18 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ActionConfigDisplay } from "@/components/workflows/ActionConfigDisplay";
+import { WorkflowTemplatePreview } from "@/components/workflows/WorkflowTemplatePreview";
+import type { WorkflowTemplatePreviewStep, WorkflowTemplatePreviewDependency } from "@/components/workflows/WorkflowTemplatePreview";
 
 type ActionType =
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
-  | "PAYMENT_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
+  | "REQUEST_DOC"
+  | "PAYMENT"
   | "CHECKLIST"
   | "WRITE_TEXT"
-  | "POPULATE_QUESTIONNAIRE";
+  | "POPULATE_QUESTIONNAIRE"
+  | "AUTOMATION_EMAIL"
+  | "AUTOMATION_WEBHOOK";
 
 type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
+
+type WorkflowTemplateDependency = {
+  id: string;
+  sourceStepId: string;
+  targetStepId: string;
+  dependencyType: "DEPENDS_ON" | "TRIGGERS" | "IF_TRUE_BRANCH" | "IF_FALSE_BRANCH";
+  dependencyLogic: "ALL" | "ANY" | "CUSTOM";
+  conditionType?: "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
+  conditionConfig?: Record<string, unknown>;
+};
 
 type TemplateStep = {
   id: string;
@@ -22,6 +35,8 @@ type TemplateStep = {
   roleScope: RoleScope;
   required: boolean;
   actionConfig: Record<string, unknown> | null;
+  positionX?: number | null;
+  positionY?: number | null;
 };
 
 type WorkflowTemplate = {
@@ -31,6 +46,7 @@ type WorkflowTemplate = {
   version: number;
   isActive: boolean;
   steps: TemplateStep[];
+  dependencies?: WorkflowTemplateDependency[];
 };
 
 type StartWorkflowDialogProps = {
@@ -99,6 +115,16 @@ export function StartWorkflowDialog({
     () => templates.find((template) => template.id === selectedId) ?? null,
     [selectedId, templates],
   );
+
+  const previewSteps = useMemo(() => {
+    if (!selectedTemplate) return [];
+    return mapToPreviewSteps(selectedTemplate.steps);
+  }, [selectedTemplate]);
+
+  const previewDependencies = useMemo(() => {
+    if (!selectedTemplate?.dependencies) return [];
+    return mapToPreviewDependencies(selectedTemplate.dependencies);
+  }, [selectedTemplate]);
 
   async function handleStartWorkflow() {
     if (!selectedTemplate) return;
@@ -216,7 +242,7 @@ export function StartWorkflowDialog({
           </label>
 
           {selectedTemplate ? (
-            <section className="max-h-[60vh] overflow-y-auto space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-semibold text-slate-900">
@@ -233,40 +259,12 @@ export function StartWorkflowDialog({
                 ) : null}
               </div>
 
-              <div className="space-y-2">
-                {selectedTemplate.steps.map((step) => (
-                  <div
-                    key={step.id}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-medium text-slate-900">{step.title}</div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                          <span className="rounded bg-slate-100 px-2 py-0.5 font-medium uppercase tracking-wide text-slate-600">
-                            {step.actionType.replace(/_/g, " ")}
-                          </span>
-                          <span className="rounded bg-slate-100 px-2 py-0.5 font-medium uppercase tracking-wide text-slate-600">
-                            {step.roleScope}
-                          </span>
-                          <span className="rounded bg-slate-100 px-2 py-0.5 font-medium uppercase tracking-wide text-slate-600">
-                            {step.required ? "Required" : "Optional"}
-                          </span>
-                        </div>
-                        {step.actionConfig && Object.keys(step.actionConfig).length > 0 ? (
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <ActionConfigDisplay
-                              actionType={step.actionType}
-                              config={step.actionConfig}
-                              variant="compact"
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <WorkflowTemplatePreview
+                steps={previewSteps}
+                dependencies={previewDependencies}
+                height={320}
+                className="w-full"
+              />
             </section>
           ) : null}
 
@@ -292,4 +290,34 @@ export function StartWorkflowDialog({
       </div>
     </div>
   );
+}
+
+function mapToPreviewSteps(steps: TemplateStep[]): WorkflowTemplatePreviewStep[] {
+  return steps.map((step, index) => {
+    const order = (step.order ?? index) as number;
+
+    return {
+      id: step.id ?? `step-${index}`,
+      title: step.title,
+      order,
+      actionType: step.actionType as import("@prisma/client").ActionType,
+      roleScope: step.roleScope as import("@prisma/client").Role,
+      required: step.required,
+      actionConfig: step.actionConfig,
+      positionX: step.positionX,
+      positionY: step.positionY,
+    } satisfies WorkflowTemplatePreviewStep;
+  });
+}
+
+function mapToPreviewDependencies(dependencies: WorkflowTemplateDependency[]): WorkflowTemplatePreviewDependency[] {
+  return dependencies.map((dep) => ({
+    id: dep.id,
+    sourceStepId: dep.sourceStepId,
+    targetStepId: dep.targetStepId,
+    dependencyType: dep.dependencyType,
+    dependencyLogic: dep.dependencyLogic,
+    conditionType: dep.conditionType,
+    conditionConfig: dep.conditionConfig,
+  }));
 }

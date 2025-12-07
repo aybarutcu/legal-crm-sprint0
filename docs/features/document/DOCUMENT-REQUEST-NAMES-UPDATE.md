@@ -2,7 +2,7 @@
 
 ## Overview
 
-Updated the `REQUEST_DOC_CLIENT` action configuration to use **document names** instead of MIME types. This provides a more user-friendly approach where admins can specify what documents they need (e.g., "Copy of ID", "Passport Photocopy") rather than technical MIME types.
+Updated the `REQUEST_DOC` action configuration to use **document names** instead of MIME types. This provides a more user-friendly approach where admins can specify what documents they need (e.g., "Copy of ID", "Passport Photocopy") rather than technical MIME types.
 
 ## Changes Made
 
@@ -60,7 +60,7 @@ The changes are now available in both:
   - `components/matters/MatterDetailClient.tsx`
   - `app/(dashboard)/workflows/templates/_components/client.tsx`
 - **Changes:**
-  - Updated `defaultConfigFor("REQUEST_DOC_CLIENT")` to return `{ requestText: "", documentNames: [] }`
+  - Updated `defaultConfigFor("REQUEST_DOC")` to return `{ requestText: "", documentNames: [] }`
 
 #### Workflow Template Editor
 - **Location:** `app/(dashboard)/workflows/templates/_components/client.tsx`
@@ -166,7 +166,7 @@ const documentNames = (config?.documentNames as string[]) ??
 
 ### Creating a Document Request Step
 
-1. Select action type: "REQUEST_DOC_CLIENT"
+1. Select action type: "REQUEST_DOC"
 2. Enter request message:
    ```
    Lütfen aşağıdaki belgeleri renkli olarak yükleyiniz:

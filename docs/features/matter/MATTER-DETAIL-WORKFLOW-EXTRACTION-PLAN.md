@@ -155,10 +155,10 @@ export type ActionState =
 
 export type ActionType =
   | "CHECKLIST"
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
-  | "PAYMENT_CLIENT";
+  | "APPROVAL"
+  | "SIGNATURE"
+  | "REQUEST_DOC"
+  | "PAYMENT";
 
 export type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 
@@ -228,13 +228,13 @@ export function getStepClasses(
 
 export function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
   switch (actionType) {
-    case "APPROVAL_LAWYER":
+    case "APPROVAL":
       return { approverRole: "LAWYER", message: "" };
-    case "SIGNATURE_CLIENT":
+    case "SIGNATURE":
       return { documentId: null, provider: "mock" };
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return { requestText: "", documentNames: [] };
-    case "PAYMENT_CLIENT":
+    case "PAYMENT":
       return { amount: 0, currency: "USD", provider: "mock" };
     case "CHECKLIST":
     default:

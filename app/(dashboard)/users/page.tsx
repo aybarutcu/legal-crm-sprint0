@@ -10,7 +10,7 @@ export default async function UsersManagementPage() {
     redirect("/login");
   }
 
-  if (![Role.ADMIN, Role.LAWYER].includes(session.user.role ?? Role.LAWYER)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((session.user.role ?? Role.LAWYER) as "ADMIN" | "LAWYER")) {
     redirect("/dashboard");
   }
 

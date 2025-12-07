@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { ActionState, Prisma } from "@prisma/client";
-import { validateWorkflowDependencies, getReadySteps } from "@/lib/workflows/dependency-resolver";
 
 const createWorkflowSchema = z.object({
   templateId: z.string().cuid(),
@@ -38,7 +37,7 @@ export const POST = withApiHandler<{ id: string }>(
 
     // Check if user has permission (ADMIN, LAWYER, PARALEGAL can create workflows for contacts)
     const userRole = session!.user!.role;
-    if (!["ADMIN", "LAWYER", "PARALEGAL"].includes(userRole)) {
+    if (!["ADMIN", "LAWYER", "PARALEGAL"].includes(userRole ?? "CLIENT")) {
       return NextResponse.json(
         { error: "Insufficient permissions to create workflows" },
         { status: 403 }
@@ -49,9 +48,8 @@ export const POST = withApiHandler<{ id: string }>(
     const template = await prisma.workflowTemplate.findUnique({
       where: { id: templateId },
       include: {
-        steps: {
-          orderBy: { order: "asc" },
-        },
+        steps: true,
+        dependencies: true,
       },
     });
 
@@ -71,36 +69,10 @@ export const POST = withApiHandler<{ id: string }>(
 
     // Create workflow instance for contact
     const instance = await prisma.$transaction(async (tx) => {
-      // Sort template steps by order
+      // Sort template steps by some criteria (using index for now)
       const sortedSteps = template.steps
         .slice()
-        .sort((a, b) => a.order - b.order)
         .map((step, index) => ({ ...step, computedOrder: index }));
-
-      // Create a map from order to temp ID for validation
-      const orderToTempIdMap = new Map<number, string>();
-      sortedSteps.forEach((step) => {
-        orderToTempIdMap.set(step.computedOrder, `temp-${step.id}`);
-      });
-
-      // Validate dependencies before creation
-      // Convert dependsOn from orders to temp IDs for validation
-      const templateStepsForValidation = sortedSteps.map((step) => ({
-        id: `temp-${step.id}`,
-        order: step.computedOrder,
-        dependsOn: (step.dependsOn ?? [])
-          .map((order) => orderToTempIdMap.get(order))
-          .filter((id): id is string => id !== undefined),
-        dependencyLogic: step.dependencyLogic ?? "ALL",
-        actionState: ActionState.PENDING,
-      }));
-
-      // Type assertion: validation only needs id, order, dependsOn, dependencyLogic, actionState
-      const validation = validateWorkflowDependencies(templateStepsForValidation as any);
-
-      if (!validation.valid) {
-        throw new Error(`Invalid dependencies: ${validation.errors.join(", ")}`);
-      }
 
       // Create the workflow instance
       const newInstance = await tx.workflowInstance.create({
@@ -120,11 +92,15 @@ export const POST = withApiHandler<{ id: string }>(
             data: {
               instanceId: newInstance.id,
               templateStepId: templateStep.id,
-              order: templateStep.computedOrder,
               title: templateStep.title,
               actionType: templateStep.actionType,
               roleScope: templateStep.roleScope,
               required: templateStep.required,
+              positionX:
+                typeof templateStep.positionX === "number"
+                  ? templateStep.positionX
+                  : templateStep.computedOrder * 300 + 50,
+              positionY: typeof templateStep.positionY === "number" ? templateStep.positionY : 100,
               actionState: ActionState.PENDING, // Start as PENDING, will update READY steps after
               actionData: ({
                 config: templateStep.actionConfig ?? {},
@@ -140,63 +116,48 @@ export const POST = withApiHandler<{ id: string }>(
         })
       );
 
-      // Map dependencies from template orders to instance step IDs
-      const instanceSteps = await tx.workflowInstanceStep.findMany({
-        where: { instanceId: newInstance.id },
-        orderBy: { order: "asc" },
-      });
-
-      const orderToStepIdMap = new Map<number, string>();
-      instanceSteps.forEach((step) => {
-        orderToStepIdMap.set(step.order, step.id);
-      });
-
-      // Update steps with dependency information
-      await Promise.all(
-        sortedSteps.map(async (templateStep, index) => {
-          const instanceStep = instanceSteps[index];
-          const dependsOnOrders = templateStep.dependsOn ?? [];
-          const dependsOnStepIds = dependsOnOrders
-            .map((order) => orderToStepIdMap.get(order))
-            .filter((id): id is string => id !== undefined);
-
-          await tx.workflowInstanceStep.update({
-            where: { id: instanceStep.id },
-            data: {
-              dependsOn: dependsOnStepIds,
-              dependencyLogic: templateStep.dependencyLogic ?? "ALL",
-            },
-          });
-        })
-      );
-
-      // Reload instance with updated dependencies
-      const instanceWithDeps = await tx.workflowInstance.findUnique({
+      // Get instance with steps to create dependencies
+      const instanceWithSteps = await tx.workflowInstance.findUnique({
         where: { id: newInstance.id },
         include: {
-          steps: {
-            orderBy: { order: "asc" },
-          },
+          steps: true,
         },
       });
 
-      if (!instanceWithDeps) {
+      if (!instanceWithSteps) {
         throw new Error("Instance not found after creation");
       }
 
-      // Determine which steps are READY based on dependencies
-      const readySteps = getReadySteps(instanceWithDeps.steps);
+      // Create instance dependencies from template dependencies
+      const templateToInstanceId = new Map<string, string>();
+      instanceWithSteps.steps.forEach((step) => {
+        if (step.templateStepId) {
+          templateToInstanceId.set(step.templateStepId, step.id);
+        }
+      });
 
-      // Update READY steps in database
-      if (readySteps.length > 0) {
-        await Promise.all(
-          readySteps.map((step) =>
-            tx.workflowInstanceStep.update({
-              where: { id: step.id },
-              data: { actionState: ActionState.READY },
-            })
-          )
-        );
+      if ((template.dependencies || []).length > 0) {
+        await tx.workflowInstanceDependency.createMany({
+          data: (template.dependencies || []).map(dep => ({
+            instanceId: newInstance.id,
+            sourceStepId: templateToInstanceId.get(dep.sourceStepId)!,
+            targetStepId: templateToInstanceId.get(dep.targetStepId)!,
+            dependencyType: dep.dependencyType,
+            dependencyLogic: dep.dependencyLogic,
+            conditionType: dep.conditionType,
+            conditionConfig: dep.conditionConfig ?? undefined,
+          })),
+        });
+      }
+
+      // Determine which steps are READY based on dependencies
+      // For now, mark the first step as READY (no dependencies)
+      // TODO: Implement proper dependency resolution from template
+      if (instanceWithSteps.steps.length > 0) {
+        await tx.workflowInstanceStep.update({
+          where: { id: instanceWithSteps.steps[0].id },
+          data: { actionState: ActionState.READY },
+        });
       }
 
       return newInstance;
@@ -214,7 +175,6 @@ export const POST = withApiHandler<{ id: string }>(
               select: { id: true, name: true, email: true },
             },
           },
-          orderBy: { order: "asc" },
         },
       },
     });
@@ -245,7 +205,6 @@ export const GET = withApiHandler<{ id: string }>(
               select: { id: true, name: true, email: true },
             },
           },
-          orderBy: { order: "asc" },
         },
       },
       orderBy: { createdAt: "desc" },

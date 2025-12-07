@@ -36,10 +36,10 @@ Successfully extracted workflow rendering logic from `MatterDetailClient.tsx` in
   - Delete (remove step)
 - ✅ Execution UI integration (5 action types):
   - CHECKLIST → ChecklistExecution
-  - APPROVAL_LAWYER → ApprovalExecution
-  - SIGNATURE_CLIENT → SignatureExecution
-  - REQUEST_DOC_CLIENT → DocumentRequestExecution
-  - PAYMENT_CLIENT → PaymentExecution
+  - APPROVAL → ApprovalExecution
+  - SIGNATURE → SignatureExecution
+  - REQUEST_DOC → DocumentRequestExecution
+  - PAYMENT → PaymentExecution
 - ✅ State management via props (checklistStates, approvalComments, documentFiles)
 
 **Props**: 18 props including step, workflow, callbacks, and state setters
@@ -103,8 +103,8 @@ export type ActionState =
   | "COMPLETED" | "FAILED" | "SKIPPED";
 
 export type ActionType = 
-  | "CHECKLIST" | "APPROVAL_LAWYER" | "SIGNATURE_CLIENT" 
-  | "REQUEST_DOC_CLIENT" | "PAYMENT_CLIENT";
+  | "CHECKLIST" | "APPROVAL" | "SIGNATURE" 
+  | "REQUEST_DOC" | "PAYMENT";
 
 export type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 

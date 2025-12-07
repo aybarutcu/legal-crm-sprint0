@@ -89,13 +89,13 @@ WorkflowMetrics.recordTransition(
 ```typescript
 // Track step completions
 WorkflowMetrics.recordTransition(
-  ActionType.APPROVAL_LAWYER,
+  ActionType.APPROVAL,
   ActionState.IN_PROGRESS,
   ActionState.COMPLETED
 );
 
 // Counters created:
-// - workflow.step.completed.APPROVAL_LAWYER
+// - workflow.step.completed.APPROVAL
 // - workflow.step.completed.total
 ```
 
@@ -117,13 +117,13 @@ WorkflowMetrics.recordHandlerDuration(
 ```typescript
 // Track handler errors
 WorkflowMetrics.recordHandlerError(
-  ActionType.SIGNATURE_CLIENT,
+  ActionType.SIGNATURE,
   "complete",
   "ValidationError"
 );
 
 // Counters created:
-// - workflow.handler.error.SIGNATURE_CLIENT.complete
+// - workflow.handler.error.SIGNATURE.complete
 // - workflow.handler.error.ValidationError
 // - workflow.handler.error.total
 ```
@@ -133,14 +133,14 @@ WorkflowMetrics.recordHandlerError(
 ```typescript
 // Track time from READY to COMPLETED
 WorkflowMetrics.recordCycleTime(
-  ActionType.APPROVAL_LAWYER,
+  ActionType.APPROVAL,
   45000 // 45 seconds
 );
 
 // Histogram-like bucketing:
-// - workflow.cycle_time.APPROVAL_LAWYER.lt_1m
-// - workflow.cycle_time.APPROVAL_LAWYER.count
-// - workflow.cycle_time.APPROVAL_LAWYER.sum
+// - workflow.cycle_time.APPROVAL.lt_1m
+// - workflow.cycle_time.APPROVAL.count
+// - workflow.cycle_time.APPROVAL.sum
 ```
 
 **Cycle Time Buckets:**
@@ -181,15 +181,15 @@ WorkflowMetrics.recordInstanceCompleted(templateId, 3600000);
 ```typescript
 // Track notification success/failure
 WorkflowMetrics.recordNotificationSent(
-  ActionType.REQUEST_DOC_CLIENT,
+  ActionType.REQUEST_DOC,
   true // success
 );
 
 // Counters:
-// - workflow.notification.sent.REQUEST_DOC_CLIENT
+// - workflow.notification.sent.REQUEST_DOC
 // - workflow.notification.sent.total
 // OR
-// - workflow.notification.failed.REQUEST_DOC_CLIENT
+// - workflow.notification.failed.REQUEST_DOC
 // - workflow.notification.failed.total
 ```
 
@@ -311,24 +311,24 @@ WorkflowMetrics.recordInstanceCreated(template.id);
     "steps": {
       "started": {
         "CHECKLIST": 12,
-        "APPROVAL_LAWYER": 8,
+        "APPROVAL": 8,
         "total": 45
       },
       "completed": {
         "CHECKLIST": 10,
-        "APPROVAL_LAWYER": 7,
+        "APPROVAL": 7,
         "total": 38
       },
       "failed": {
-        "REQUEST_DOC_CLIENT": 2,
+        "REQUEST_DOC": 2,
         "total": 2
       },
       "skipped": {
-        "PAYMENT_CLIENT": 1,
+        "PAYMENT": 1,
         "total": 1
       },
       "claimed": {
-        "APPROVAL_LAWYER": 8,
+        "APPROVAL": 8,
         "total": 15
       },
       "advanced": {
@@ -345,8 +345,8 @@ WorkflowMetrics.recordInstanceCreated(template.id);
       "durations": {
         "workflow.handler.start.CHECKLIST.count": 12,
         "workflow.handler.start.CHECKLIST.duration_sum": 2340,
-        "workflow.handler.complete.APPROVAL_LAWYER.count": 7,
-        "workflow.handler.complete.APPROVAL_LAWYER.duration_sum": 15620,
+        "workflow.handler.complete.APPROVAL.count": 7,
+        "workflow.handler.complete.APPROVAL.duration_sum": 15620,
         ...
       },
       "errors": {
@@ -369,8 +369,8 @@ WorkflowMetrics.recordInstanceCreated(template.id);
       "workflow.cycle_time.CHECKLIST.lt_10s": 2,
       "workflow.cycle_time.CHECKLIST.count": 10,
       "workflow.cycle_time.CHECKLIST.sum": 45230,
-      "workflow.cycle_time.APPROVAL_LAWYER.lt_1m": 5,
-      "workflow.cycle_time.APPROVAL_LAWYER.lt_5m": 2,
+      "workflow.cycle_time.APPROVAL.lt_1m": 5,
+      "workflow.cycle_time.APPROVAL.lt_5m": 2,
       ...
     },
     "notifications": {
@@ -426,8 +426,8 @@ curl -X GET http://localhost:3000/api/workflows/metrics \
 
 Examples:
 - `workflow.transition.CHECKLIST.READY_to_IN_PROGRESS`
-- `workflow.transition.APPROVAL_LAWYER.IN_PROGRESS_to_COMPLETED`
-- `workflow.transition.REQUEST_DOC_CLIENT.IN_PROGRESS_to_FAILED`
+- `workflow.transition.APPROVAL.IN_PROGRESS_to_COMPLETED`
+- `workflow.transition.REQUEST_DOC.IN_PROGRESS_to_FAILED`
 
 ### Handler Metrics
 
@@ -509,7 +509,7 @@ Trace logs are written to console in structured format:
 ```
 [Workflow Trace] END workflow.step.complete {
   stepId: "step-abc123",
-  actionType: "REQUEST_DOC_CLIENT",
+  actionType: "REQUEST_DOC",
   instanceId: "instance-xyz789",
   error: "Document validation failed",
   error.type: "ValidationError",
@@ -642,8 +642,8 @@ export const GET = withApiHandler(async () => {
 
 **Queries:**
 ```promql
-# Average cycle time for APPROVAL_LAWYER
-workflow_cycle_time_APPROVAL_LAWYER_sum / workflow_cycle_time_APPROVAL_LAWYER_count
+# Average cycle time for APPROVAL
+workflow_cycle_time_APPROVAL_sum / workflow_cycle_time_APPROVAL_count
 
 # Step completion rate
 rate(workflow_step_completed_total[5m])
@@ -766,7 +766,7 @@ WorkflowMetrics.recordBusinessEvent("contract_signed", {
 });
 
 // Track SLA violations
-WorkflowMetrics.recordSLAViolation("APPROVAL_LAWYER", {
+WorkflowMetrics.recordSLAViolation("APPROVAL", {
   expectedDuration: 3600000, // 1 hour
   actualDuration: 7200000,   // 2 hours
 });

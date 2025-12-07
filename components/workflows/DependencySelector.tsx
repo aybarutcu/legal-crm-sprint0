@@ -3,21 +3,21 @@
 import { useState } from "react";
 
 interface DependencySelectorProps {
-  /** Current step order (to prevent self-dependency) */
-  currentStepOrder: number;
+  /** Current step ID (to prevent self-dependency) */
+  currentStepId: string;
   /** All steps in the workflow */
-  allSteps: Array<{ order: number; title: string }>;
-  /** Currently selected dependencies (step orders) */
-  selectedDependencies: number[];
+  allSteps: Array<{ id: string; title: string }>;
+  /** Currently selected dependencies (step IDs) */
+  selectedDependencies: string[];
   /** Callback when dependencies change */
-  onChange: (dependencies: number[]) => void;
+  onChange: (dependencies: string[]) => void;
   /** Optional: Disable the selector */
   disabled?: boolean;
 }
 
 /**
  * Multi-select component for choosing step dependencies
- * 
+ *
  * Features:
  * - Shows available steps (excluding current step)
  * - Visual indicators for selected steps
@@ -25,7 +25,7 @@ interface DependencySelectorProps {
  * - Badge display for selected items
  */
 export function DependencySelector({
-  currentStepOrder,
+  currentStepId,
   allSteps,
   selectedDependencies,
   onChange,
@@ -33,17 +33,17 @@ export function DependencySelector({
 }: DependencySelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Filter out the current step and steps after it (can't depend on future steps)
-  const availableSteps = allSteps.filter((step) => step.order < currentStepOrder);
+  // Filter out the current step to prevent self-dependency
+  const availableSteps = allSteps.filter((step) => step.id !== currentStepId);
 
-  const toggleDependency = (order: number) => {
+  const toggleDependency = (stepId: string) => {
     if (disabled) return;
 
-    const isSelected = selectedDependencies.includes(order);
+    const isSelected = selectedDependencies.includes(stepId);
     if (isSelected) {
-      onChange(selectedDependencies.filter((d) => d !== order));
+      onChange(selectedDependencies.filter((d) => d !== stepId));
     } else {
-      onChange([...selectedDependencies, order].sort((a, b) => a - b));
+      onChange([...selectedDependencies, stepId]);
     }
   };
 
@@ -54,16 +54,16 @@ export function DependencySelector({
 
   // Get step titles for selected dependencies
   const selectedStepTitles = selectedDependencies
-    .map((order) => {
-      const step = allSteps.find((s) => s.order === order);
-      return step ? { order, title: step.title } : null;
+    .map((stepId) => {
+      const step = allSteps.find((s) => s.id === stepId);
+      return step ? { id: stepId, title: step.title } : null;
     })
-    .filter((s): s is { order: number; title: string } => s !== null);
+    .filter((s): s is { id: string; title: string } => s !== null);
 
   if (availableSteps.length === 0) {
     return (
       <div className="rounded-lg border-2 border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500">
-        No previous steps available
+        No other steps available
       </div>
     );
   }
@@ -97,16 +97,15 @@ export function DependencySelector({
       {/* Selected Dependencies Badges */}
       {selectedStepTitles.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {selectedStepTitles.map(({ order, title }) => (
+          {selectedStepTitles.map(({ id, title }) => (
             <div
-              key={order}
+              key={id}
               className="flex items-center gap-1.5 rounded-md border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
             >
-              <span className="font-semibold">Step {order + 1}:</span>
               <span className="max-w-[200px] truncate">{title}</span>
               <button
                 type="button"
-                onClick={() => toggleDependency(order)}
+                onClick={() => toggleDependency(id)}
                 disabled={disabled}
                 className="ml-1 rounded-sm hover:bg-accent/20 disabled:opacity-50"
               >
@@ -150,12 +149,12 @@ export function DependencySelector({
                 Select steps to depend on
               </div>
               {availableSteps.map((step) => {
-                const isSelected = selectedDependencies.includes(step.order);
+                const isSelected = selectedDependencies.includes(step.id);
                 return (
                   <button
-                    key={step.order}
+                    key={step.id}
                     type="button"
-                    onClick={() => toggleDependency(step.order)}
+                    onClick={() => toggleDependency(step.id)}
                     className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
                       isSelected
                         ? "bg-accent/10 text-accent font-medium border-2 border-accent/30"
@@ -190,7 +189,6 @@ export function DependencySelector({
                       
                       {/* Step Info */}
                       <div className="flex-1 min-w-0">
-                        <span className="font-semibold">Step {step.order + 1}: </span>
                         <span className="truncate">{step.title || "(Untitled)"}</span>
                       </div>
                     </div>
@@ -200,7 +198,7 @@ export function DependencySelector({
               
               {availableSteps.length === 0 && (
                 <div className="px-3 py-8 text-center text-sm text-slate-500">
-                  No previous steps available
+                  No other steps available
                 </div>
               )}
             </div>

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Role, RoleScope, ActionState } from "@prisma/client";
-import { ApprovalActionHandler } from "@/lib/workflows/handlers/approval-lawyer";
+import { ApprovalActionHandler } from "@/lib/workflows/handlers/approval";
 import { SignatureActionHandler } from "@/lib/workflows/handlers/signature-client";
-import { RequestDocActionHandler } from "@/lib/workflows/handlers/request-doc-client";
+import { RequestDocActionHandler } from "@/lib/workflows/handlers/request-doc";
 import { PaymentActionHandler } from "@/lib/workflows/handlers/payment-client";
 import { ChecklistActionHandler } from "@/lib/workflows/handlers/checklist";
 import type { WorkflowRuntimeContext } from "@/lib/workflows/types";
@@ -12,7 +12,7 @@ describe("Workflow Handler Role-Based Access Control", () => {
   const mockInstance = { id: "inst-1", matterId: "matter-1" } as any;
   const mockNow = new Date("2024-01-15T10:00:00.000Z");
 
-  describe("ApprovalActionHandler (APPROVAL_LAWYER)", () => {
+  describe("ApprovalActionHandler (APPROVAL)", () => {
     const handler = new ApprovalActionHandler();
 
     it("should allow ADMIN to start approval", () => {
@@ -126,7 +126,7 @@ describe("Workflow Handler Role-Based Access Control", () => {
     });
   });
 
-  describe("SignatureActionHandler (SIGNATURE_CLIENT)", () => {
+  describe("SignatureActionHandler (SIGNATURE)", () => {
     const handler = new SignatureActionHandler();
 
     it("should allow ADMIN to start signature", () => {
@@ -218,7 +218,7 @@ describe("Workflow Handler Role-Based Access Control", () => {
     });
   });
 
-  describe("RequestDocActionHandler (REQUEST_DOC_CLIENT)", () => {
+  describe("RequestDocActionHandler (REQUEST_DOC)", () => {
     const handler = new RequestDocActionHandler();
 
     it("should allow ADMIN to start document request", () => {
@@ -288,7 +288,7 @@ describe("Workflow Handler Role-Based Access Control", () => {
     });
   });
 
-  describe("PaymentActionHandler (PAYMENT_CLIENT)", () => {
+  describe("PaymentActionHandler (PAYMENT)", () => {
     const handler = new PaymentActionHandler();
 
     it("should allow ADMIN to start payment", () => {

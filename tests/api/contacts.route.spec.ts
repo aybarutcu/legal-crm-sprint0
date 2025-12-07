@@ -52,7 +52,7 @@ describe("/api/contacts GET", () => {
     const { GET } = await routeModulePromise;
     getAuthSession.mockResolvedValueOnce(null);
 
-    const response = await GET(nextRequest("http://localhost/api/contacts"));
+    const response = await GET(nextRequest("http://localhost/api/contacts"), { params: Promise.resolve({}) });
     expect(response.status).toBe(401);
   });
 
@@ -67,6 +67,7 @@ describe("/api/contacts GET", () => {
 
     const response = await GET(
       nextRequest("http://localhost/api/contacts?page=1&pageSize=50"),
+      { params: Promise.resolve({}) }
     );
     expect(response.status).toBe(200);
     const json = await response.json();
@@ -85,6 +86,7 @@ describe("/api/contacts POST", () => {
         body: JSON.stringify({}),
         headers: { "content-type": "application/json" },
       }),
+      { params: Promise.resolve({}) }
     );
     expect(response.status).toBe(401);
   });
@@ -99,6 +101,7 @@ describe("/api/contacts POST", () => {
         body: JSON.stringify({ lastName: "Doe" }),
         headers: { "content-type": "application/json" },
       }),
+      { params: Promise.resolve({}) }
     );
     expect(response.status).toBe(422);
   });
@@ -121,6 +124,7 @@ describe("/api/contacts POST", () => {
         body: JSON.stringify({ firstName: "Jane", lastName: "Doe" }),
         headers: { "content-type": "application/json" },
       }),
+      { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(201);
@@ -148,6 +152,7 @@ describe("/api/contacts POST", () => {
         body: JSON.stringify({ firstName: "Jane", lastName: "Doe" }),
         headers: { "content-type": "application/json" },
       }),
+      { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(429);

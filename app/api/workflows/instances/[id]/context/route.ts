@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { assertMatterAccess } from "@/lib/authorization";
+import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
 import {
   getWorkflowContext,
   updateWorkflowContext,
@@ -20,18 +20,23 @@ export const GET = withApiHandler(
     const user = session!.user!;
     const instanceId = params!.id;
 
-    // Get the workflow instance to check matter access
+    // Get the workflow instance to check access
     const instance = await prisma.workflowInstance.findUnique({
       where: { id: instanceId },
-      select: { matterId: true }
+      select: { matterId: true, contactId: true }
     });
 
     if (!instance) {
       return NextResponse.json({ error: "Workflow instance not found" }, { status: 404 });
     }
 
-    // Check matter access
-    await assertMatterAccess(user, instance.matterId);
+    // Check access
+    if (instance.matterId) {
+      await assertMatterAccess(user, instance.matterId);
+    }
+    if (instance.contactId) {
+      await assertContactAccess(user, instance.contactId);
+    }
 
     // Get the workflow context
     const context = await getWorkflowContext(instanceId);
@@ -64,18 +69,23 @@ export const PATCH = withApiHandler(
     const user = session!.user!;
     const instanceId = params!.id;
     
-    // Get the workflow instance to check matter access
+    // Get the workflow instance to check access
     const instance = await prisma.workflowInstance.findUnique({
       where: { id: instanceId },
-      select: { matterId: true }
+      select: { matterId: true, contactId: true }
     });
 
     if (!instance) {
       return NextResponse.json({ error: "Workflow instance not found" }, { status: 404 });
     }
 
-    // Check matter access (must be owner or admin)
-    await assertMatterAccess(user, instance.matterId);
+    // Check access (must be owner or admin)
+    if (instance.matterId) {
+      await assertMatterAccess(user, instance.matterId);
+    }
+    if (instance.contactId) {
+      await assertContactAccess(user, instance.contactId);
+    }
 
     const body = await req.json();
 

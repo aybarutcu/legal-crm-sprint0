@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { assertMatterAccess } from "@/lib/authorization";
+import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
 import "@/lib/workflows";
 import {
   ensureActorCanPerform,
@@ -17,19 +17,24 @@ const payloadSchema = z.object({
   reason: z.string().trim().min(1, "Failure reason is required"),
 });
 
-type Params = { params: { id: string } };
+type Params = { id: string };
 
-export const POST = withApiHandler(
-  async (req: NextRequest, { params, session }: Params) => {
+export const POST = withApiHandler<Params>(
+  async (req: NextRequest, { params, session }) => {
     const user = session!.user!;
     const actor = { id: user.id, role: user.role! };
     const body = payloadSchema.parse(await req.json());
 
     const updatedStep = await prisma.$transaction(async (tx) => {
-      const row = await getWorkflowStepOrThrow(tx, params.id);
+      const row = await getWorkflowStepOrThrow(tx, params!.id);
       const step = toStepWithTemplate(row);
 
-      await assertMatterAccess(user, step.instance.matterId);
+      if (step.instance.matterId) {
+        await assertMatterAccess(user, step.instance.matterId);
+      }
+      if (step.instance.contactId) {
+        await assertContactAccess(user, step.instance.contactId);
+      }
       await ensureActorCanPerform(tx, step, actor);
 
       if (step.assignedToId && step.assignedToId !== actor.id) {

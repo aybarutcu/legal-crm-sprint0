@@ -18,7 +18,7 @@ type PaymentData = {
 };
 
 export class PaymentActionHandler implements IActionHandler<PaymentConfig, PaymentData> {
-  readonly type = ActionType.PAYMENT_CLIENT;
+  readonly type = ActionType.PAYMENT;
 
   validateConfig(config: PaymentConfig): void {
     configSchema.parse(config ?? {});

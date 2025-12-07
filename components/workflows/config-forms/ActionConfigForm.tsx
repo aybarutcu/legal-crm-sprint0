@@ -8,16 +8,21 @@ import { DocumentRequestConfigForm } from "./DocumentRequestConfigForm";
 import { PaymentConfigForm } from "./PaymentConfigForm";
 import { WriteTextConfigForm } from "./WriteTextConfigForm";
 import { PopulateQuestionnaireConfigForm } from "./PopulateQuestionnaireConfigForm";
+import { AutomationEmailConfigForm } from "./AutomationEmailConfigForm";
+import { AutomationWebhookConfigForm } from "./AutomationWebhookConfigForm";
+import type { AutomationEmailConfig, AutomationWebhookConfig } from "@/lib/workflows/automation/types";
 
-type ActionType =
+export type ActionType =
   | "TASK"
   | "CHECKLIST"
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
   | "REQUEST_DOC"
-  | "PAYMENT_CLIENT"
+  | "PAYMENT"
   | "WRITE_TEXT"
-  | "POPULATE_QUESTIONNAIRE";
+  | "POPULATE_QUESTIONNAIRE"
+  | "AUTOMATION_EMAIL"
+  | "AUTOMATION_WEBHOOK";
 
 interface ActionConfigFormProps {
   actionType: ActionType;
@@ -43,7 +48,7 @@ export function ActionConfigForm({ actionType, config, onChange }: ActionConfigF
         />
       );
 
-    case "APPROVAL_LAWYER":
+    case "APPROVAL":
       return (
         <ApprovalConfigForm
           initialConfig={config as { message?: string; approverRole?: string }}
@@ -51,7 +56,7 @@ export function ActionConfigForm({ actionType, config, onChange }: ActionConfigF
         />
       );
 
-    case "SIGNATURE_CLIENT":
+    case "SIGNATURE":
       return (
         <SignatureConfigForm
           initialConfig={config as { documentId?: string | null; provider?: string }}
@@ -67,7 +72,7 @@ export function ActionConfigForm({ actionType, config, onChange }: ActionConfigF
         />
       );
 
-    case "PAYMENT_CLIENT":
+    case "PAYMENT":
       return (
         <PaymentConfigForm
           initialConfig={config as { amount?: number; currency?: string; provider?: string }}
@@ -94,6 +99,20 @@ export function ActionConfigForm({ actionType, config, onChange }: ActionConfigF
       return (
         <PopulateQuestionnaireConfigForm
           initialConfig={config as { questionnaireId?: string | null; title?: string; description?: string; dueInDays?: number }}
+          onChange={(newConfig) => onChange(newConfig)}
+        />
+      );
+    case "AUTOMATION_EMAIL":
+      return (
+        <AutomationEmailConfigForm
+          initialConfig={config as AutomationEmailConfig}
+          onChange={(newConfig) => onChange(newConfig)}
+        />
+      );
+    case "AUTOMATION_WEBHOOK":
+      return (
+        <AutomationWebhookConfigForm
+          initialConfig={config as AutomationWebhookConfig}
           onChange={(newConfig) => onChange(newConfig)}
         />
       );

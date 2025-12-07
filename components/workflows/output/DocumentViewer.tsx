@@ -7,11 +7,14 @@ import { DocumentTypeIcon } from "@/components/documents/DocumentTypeIcon";
 interface Document {
   id: string;
   filename: string;
-  mimeType: string;
-  fileSize: number;
-  uploadedAt: string;
-  uploadedBy?: {
-    name: string;
+  displayName?: string | null;
+  mime: string;
+  size: number;
+  createdAt: string;
+  uploader?: {
+    id: string;
+    name: string | null;
+    email: string | null;
   };
 }
 
@@ -44,17 +47,26 @@ export function DocumentViewer({ documentIds }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  console.log('[DocumentViewer] Received documentIds:', documentIds);
+
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
+        console.log('[DocumentViewer] Fetching documents for IDs:', documentIds);
         const results = await Promise.all(
           documentIds.map(async (id) => {
+            console.log('[DocumentViewer] Fetching document:', id);
             const res = await fetch(`/api/documents/${id}`);
-            if (!res.ok) throw new Error(`Failed to fetch document ${id}`);
+            if (!res.ok) {
+              console.error('[DocumentViewer] Failed to fetch document:', id, res.status);
+              throw new Error(`Failed to fetch document ${id}`);
+            }
             const data = await res.json();
-            return data.document;
+            console.log('[DocumentViewer] Fetched document data:', data);
+            return data;
           })
         );
+        console.log('[DocumentViewer] All fetched results:', results);
         setDocuments(results);
       } catch (err) {
         console.error("Error fetching documents:", err);
@@ -67,6 +79,7 @@ export function DocumentViewer({ documentIds }: DocumentViewerProps) {
     if (documentIds.length > 0) {
       void fetchDocuments();
     } else {
+      console.log('[DocumentViewer] No document IDs provided');
       setLoading(false);
     }
   }, [documentIds]);
@@ -122,13 +135,15 @@ export function DocumentViewer({ documentIds }: DocumentViewerProps) {
             key={doc.id}
             className="flex items-center gap-3 bg-white rounded-lg border border-slate-200 p-3 hover:border-green-300 transition-colors"
           >
-            <DocumentTypeIcon mimeType={doc.mimeType} className="h-5 w-5 flex-shrink-0" />
+            <DocumentTypeIcon mimeType={doc.mime} className="h-5 w-5 flex-shrink-0" />
             
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">{doc.filename}</p>
+              <p className="text-sm font-medium text-slate-900 truncate">
+                {doc.displayName || doc.filename}
+              </p>
               <p className="text-xs text-slate-500">
-                {formatFileSize(doc.fileSize)} • Uploaded {formatDate(doc.uploadedAt)}
-                {doc.uploadedBy && ` by ${doc.uploadedBy.name}`}
+                {formatFileSize(doc.size)} • Uploaded {formatDate(doc.createdAt)}
+                {doc.uploader?.name && ` by ${doc.uploader.name}`}
               </p>
             </div>
 

@@ -12,6 +12,11 @@ type ReminderCandidate = Awaited<
     email: string | null;
     name: string | null;
   };
+  matter?: {
+    id: string;
+    title: string;
+    ownerId: string;
+  } | null;
 };
 
 const MAX_LOOKAHEAD_MINUTES = 24 * 60;
@@ -117,7 +122,7 @@ async function sendReminderEmail(
     lines.push(`Konum: ${event.location}`);
   }
 
-  if (event.matter?.title) {
+  if (event.matterId && event.matter?.title) {
     lines.push(`İlişkili dava: ${event.matter.title}`);
   }
 

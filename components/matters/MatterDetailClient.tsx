@@ -11,10 +11,9 @@ import type { DocumentListItem } from "@/components/documents/types";
 import { DocumentDetailDrawer } from "@/components/documents/DocumentDetailDrawer";
 import { isTerminal } from "@/lib/workflows/state-machine";
 import { MatterDocumentUploadDialog } from "@/components/documents/MatterDocumentUploadDialog";
-import { WorkflowTimeline, WorkflowStepDetail } from "@/components/matters/workflows";
+import { WorkflowManagementSection } from "@/components/matters/workflows";
 import {
   MatterPartiesSection,
-  MatterDocumentsSection,
   MatterStatusUpdateSection,
 } from "@/components/matters/sections";
 import { MatterTeamSection } from "@/components/matters/MatterTeamSection";
@@ -28,13 +27,15 @@ import { ClientInfoCard } from "./ClientInfoCard";
 import { EditContactDialog } from "@/components/contact/edit-contact-dialog";
 
 type ActionType =
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
   | "REQUEST_DOC"
-  | "PAYMENT_CLIENT"
+  | "PAYMENT"
   | "CHECKLIST"
   | "WRITE_TEXT"
-  | "POPULATE_QUESTIONNAIRE";
+  | "POPULATE_QUESTIONNAIRE"
+  | "AUTOMATION_EMAIL"
+  | "AUTOMATION_WEBHOOK";
 
 type ActionState =
   | "PENDING"
@@ -49,13 +50,13 @@ type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 
 function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
   switch (actionType) {
-    case "APPROVAL_LAWYER":
+    case "APPROVAL":
       return { approverRole: "LAWYER", message: "" };
-    case "SIGNATURE_CLIENT":
+    case "SIGNATURE":
       return { documentId: null, provider: "mock" };
     case "REQUEST_DOC":
       return { requestText: "", documentNames: [] };
-    case "PAYMENT_CLIENT":
+    case "PAYMENT":
       return { amount: 0, currency: "USD", provider: "mock" };
     case "WRITE_TEXT":
       return {
@@ -68,6 +69,31 @@ function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
       };
     case "POPULATE_QUESTIONNAIRE":
       return { questionnaireId: null, title: "", description: "", dueInDays: undefined };
+    case "AUTOMATION_EMAIL":
+      return {
+        recipients: ["{{contact.email}}"],
+        cc: [],
+        subjectTemplate: "Automated update for {{matter.title}}",
+        bodyTemplate: "Hello {{contact.firstName}},\n\nWe will keep you posted.\n",
+        sendStrategy: "IMMEDIATE",
+        delayMinutes: null,
+      };
+    case "AUTOMATION_WEBHOOK":
+      return {
+        url: "https://example.com/webhooks/workflow",
+        method: "POST",
+        headers: [],
+        payloadTemplate: JSON.stringify(
+          {
+            matterId: "{{matter.id}}",
+            stepId: "{{step.id}}",
+          },
+          null,
+          2,
+        ),
+        sendStrategy: "IMMEDIATE",
+        delayMinutes: null,
+      };
     case "CHECKLIST":
     default:
       return { items: [] };
@@ -91,8 +117,13 @@ type WorkflowInstanceStep = {
   startedAt: string | null;
   completedAt: string | null;
   dependsOn?: string[];
+  nextStepOnTrue?: string | null;
+  nextStepOnFalse?: string | null;
   positionX?: number;
   positionY?: number;
+  notificationPolicies?: NotificationPolicy[];
+  automationLog?: unknown;
+  notificationLog?: unknown;
 };
 
 type WorkflowInstance = {
@@ -115,6 +146,7 @@ type MatterDetailClientProps = {
   contacts: ContactOption[];
   documents?: DocumentListItem[];
   currentUserRole?: "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
+  currentUserId?: string;
 };
 
 type ToastState = {
@@ -132,7 +164,7 @@ const initialPartyForm: PartyFormState = {
   role: "PLAINTIFF",
 };
 
-export function MatterDetailClient({ matter, contacts, currentUserRole }: MatterDetailClientProps) {
+export function MatterDetailClient({ matter, contacts, currentUserRole, currentUserId }: MatterDetailClientProps) {
   const router = useRouter();
   const [status, setStatus] = useState(matter.status);
   const [nextHearingAt, setNextHearingAt] = useState(matter.nextHearingAt ?? "");
@@ -147,21 +179,9 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [loading, setLoading] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
   const [_workflowsLoading, setWorkflowsLoading] = useState(false);
-  const [stepFormState, setStepFormState] = useState<
-    | null
-    | {
-      mode: "add" | "edit";
-      instanceId: string;
-      stepId?: string;
-    }
-  >(null);
-  const [stepFormValues, setStepFormValues] = useState({
-    title: "",
-    actionType: "CHECKLIST" as ActionType,
-    roleScope: "ADMIN" as RoleScope,
-    required: true,
-    actionConfig: "{}",
-  });
+  const [matterTeamMemberIds, setMatterTeamMemberIds] = useState<string[]>([]);
+  const [folderTreeRefreshKey, setFolderTreeRefreshKey] = useState(0);
+
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [relatedDocs, setRelatedDocs] = useState<DocumentListItem[]>(matter.documents ?? []);
   const [docsLoading, setDocsLoading] = useState(false);
@@ -169,18 +189,10 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<DocumentListItem | null>(null);
 
-  // State for action execution UIs
-  const [checklistStates, setChecklistStates] = useState<Record<string, Set<string>>>({});
-  const [approvalComments, setApprovalComments] = useState<Record<string, string>>({});
-  const [documentFiles, setDocumentFiles] = useState<Record<string, File | null>>({});
-
-  // State for execution log
-  const [hoveredStep, setHoveredStep] = useState<string | null>(null);
-
   // State for new timeline and detail view
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [attachedDocumentIds, setAttachedDocumentIds] = useState<string[]>([]);
+  const [_selectedWorkflowId, _setSelectedWorkflowId] = useState<string | null>(null);
+  const [_selectedStepId, _setSelectedStepId] = useState<string | null>(null);
+  const [_attachedDocumentIds, _setAttachedDocumentIds] = useState<string[]>([]);
 
   // State for tabs and editing
   const [activeTab, setActiveTab] = useState<"overview" | "team" | "activity" | "settings">("overview");
@@ -250,65 +262,76 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
   useEffect(() => {
     void loadWorkflowInstances();
     void loadRelatedDocuments();
+    void loadMatterTeam();
   }, []);
 
-  // Auto-select current step when workflows load or change
+    // Auto-select current step when workflows load or change
   useEffect(() => {
-    if (workflows.length > 0 && !selectedStepId) {
+    if (workflows.length > 0 && !_selectedStepId) {
       // Find the first active workflow and its current step
       const activeWorkflow = workflows.find(w => w.status === "ACTIVE") || workflows[0];
       if (activeWorkflow) {
-        const currentStep = activeWorkflow.steps.find(s => !isTerminal(s.actionState));
-        if (currentStep) {
-          setSelectedWorkflowId(activeWorkflow.id);
-          setSelectedStepId(currentStep.id);
+        // Prioritize READY steps first
+        const readyStep = activeWorkflow.steps.find(s => s.actionState === "READY");
+        if (readyStep) {
+          _setSelectedWorkflowId(activeWorkflow.id);
+          _setSelectedStepId(readyStep.id);
         } else {
-          // If all steps are terminal, select the last step
-          const lastStep = activeWorkflow.steps[activeWorkflow.steps.length - 1];
-          if (lastStep) {
-            setSelectedWorkflowId(activeWorkflow.id);
-            setSelectedStepId(lastStep.id);
+          // Fallback: find the first non-terminal step
+          const currentStep = activeWorkflow.steps.find(s => !isTerminal(s.actionState));
+          if (currentStep) {
+            _setSelectedWorkflowId(activeWorkflow.id);
+            _setSelectedStepId(currentStep.id);
+          } else {
+            // If all steps are terminal, select the last step
+            const lastStep = activeWorkflow.steps[activeWorkflow.steps.length - 1];
+            if (lastStep) {
+              _setSelectedWorkflowId(activeWorkflow.id);
+              _setSelectedStepId(lastStep.id);
+            }
           }
         }
       }
     }
-  }, [workflows, selectedStepId]);
+  }, [workflows, _selectedStepId]);
 
   // Update highlighted documents when step is selected
   useEffect(() => {
-    if (!selectedStepId) {
-      setAttachedDocumentIds([]);
+    if (!_selectedStepId) {
+      _setAttachedDocumentIds([]);
       return;
     }
 
-    // Filter documents that are linked to the selected step
     const stepDocumentIds = relatedDocs
-      .filter((doc) => (doc as { workflowStepId?: string }).workflowStepId === selectedStepId)
+      .filter((doc) => (doc as { workflowStepId?: string }).workflowStepId === _selectedStepId)
       .map((doc) => doc.id);
-    
-    setAttachedDocumentIds(stepDocumentIds);
-  }, [selectedStepId, relatedDocs]);
+
+    _setAttachedDocumentIds(stepDocumentIds);
+  }, [_selectedStepId, relatedDocs]);
 
   async function loadWorkflowInstances() {
     setWorkflowsLoading(true);
     try {
+      console.log('[MatterDetailClient] Loading workflow instances...');
       const response = await fetch(`/api/workflows/instances?matterId=${matter.id}`);
       if (!response.ok) {
         throw new Error("Workflows could not be loaded");
       }
       const data = (await response.json()) as Array<WorkflowInstance>;
+      console.log('[MatterDetailClient] Loaded workflows:', data);
 
       setWorkflows(
-        data.map((instance) => ({
-          ...instance,
-          steps: instance.steps
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((step) => ({
+        data.map((instance) => {
+          const sortedSteps = instance.steps.slice().sort((a, b) => a.order - b.order);
+
+          return {
+            ...instance,
+            steps: sortedSteps.map((step) => ({
               ...step,
               actionData: step.actionData ?? null,
             })),
-        })),
+          };
+        }),
       );
     } catch (error) {
       console.error(error);
@@ -334,21 +357,24 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
-  function openAddStep(instanceId: string) {
-    setStepFormState({ mode: "add", instanceId });
-    const config = defaultConfigFor("CHECKLIST");
-    setStepFormValues({
-      title: "",
-      actionType: "CHECKLIST",
-      roleScope: "ADMIN",
-      required: true,
-      actionConfig: JSON.stringify(config, null, 2),
-    });
+  async function loadMatterTeam() {
+    try {
+      const response = await fetch(`/api/matters/${matter.id}/team`);
+      if (response.ok) {
+        const teamMembers = await response.json();
+        // Extract user IDs from team members and include the matter owner
+        const memberIds: string[] = teamMembers.map((member: { userId: string }) => member.userId);
+        if (matter.owner?.id) {
+          memberIds.push(matter.owner.id);
+        }
+        setMatterTeamMemberIds([...new Set(memberIds)]); // Deduplicate
+      }
+    } catch (error) {
+      console.error("Failed to load matter team:", error);
+    }
   }
 
-  function closeStepForm() {
-    setStepFormState(null);
-  }
+ 
 
   function showToast(type: "success" | "error", message: string) {
     setToast({ type, message });
@@ -469,27 +495,6 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     }
   }
 
-  async function _handleDownload(doc: DocumentListItem) {
-    _setDownloadingId(doc.id);
-    try {
-      const response = await fetch(`/api/documents/${doc.id}/download`);
-      if (!response.ok) {
-        throw new Error("İndirme bağlantısı alınamadı.");
-      }
-      const payload: { getUrl: string; mime?: string } = await response.json();
-      const mime = payload.mime ?? doc.mime;
-      if (mime.startsWith("application/pdf") || mime.startsWith("image/")) {
-        window.open(payload.getUrl, "_blank", "noopener,noreferrer");
-      } else {
-        window.location.href = payload.getUrl;
-      }
-    } catch (error) {
-      console.error(error);
-      showToast("error", "İndirme bağlantısı oluşturulamadı.");
-    } finally {
-      _setDownloadingId(null);
-    }
-  }
 
   const openDocDetail = useCallback((doc: DocumentListItem) => {
     setSelectedDocumentId(doc.id);
@@ -506,84 +511,32 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     setSelectedDocument((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
   }, []);
 
-  // TODO: Re-implement step form modal for adding/editing steps
-  async function _submitStepForm() {
-    if (!stepFormState) return;
-    try {
-      const configString = stepFormValues.actionConfig?.trim() ?? "";
-      const parsedConfig = configString.length ? (JSON.parse(configString) as Record<string, unknown>) : {};
-
-      const payload = {
-        title: stepFormValues.title.trim(),
-        actionType: stepFormValues.actionType,
-        roleScope: stepFormValues.roleScope,
-        required: stepFormValues.required,
-        actionConfig: parsedConfig,
-      };
-
-      if (!payload.title) {
-        showToast("error", "Adım başlığı gerekli.");
-        return;
-      }
-
-      const endpoint =
-        stepFormState.mode === "add"
-          ? `/api/workflows/instances/${stepFormState.instanceId}/steps`
-          : `/api/workflows/instances/${stepFormState.instanceId}/steps/${stepFormState.stepId}`;
-
-      const response = await fetch(endpoint, {
-        method: stepFormState.mode === "add" ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error ?? "Adım kaydedilemedi");
-      }
-
-      await loadWorkflowInstances();
-      closeStepForm();
-      showToast("success", "Adım kaydedildi.");
-    } catch (error) {
-      console.error(error);
-      showToast("error", error instanceof Error ? error.message : "Adım kaydedilemedi.");
-    }
-  }
-
-  async function runStepAction(stepId: string, action: string, payload?: unknown) {
-    try {
-      setActionLoading(`${stepId}:${action}`);
-      const isAdvance = action === "advance";
-      const hasPayload = payload !== undefined;
-      const response = await fetch(
-        isAdvance
-          ? `/api/workflows/instances/${stepId}/advance`
-          : `/api/workflows/steps/${stepId}/${action}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: isAdvance ? undefined : hasPayload ? JSON.stringify(payload) : undefined,
-        },
-      );
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error ?? "İşlem tamamlanamadı");
-      }
-      await loadWorkflowInstances();
-      showToast("success", "Adım güncellendi.");
-    } catch (error) {
-      console.error(error);
-      showToast("error", error instanceof Error ? error.message : "İşlem tamamlanamadı.");
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  function handleAddDocumentForStep(stepId: string, documentName: string) {
-    // Set the workflow step and document tag for upload
+  function handleAddDocumentForStep(stepId: string, requestId: string, documentName: string) {
+    // Set the workflow step, requestId, and document tag for upload
+    console.log('[MatterDetailClient] handleAddDocumentForStep called:', {
+      stepId,
+      requestId,
+      documentName,
+      requestIdType: typeof requestId,
+      documentNameType: typeof documentName,
+    });
     setUploadWorkflowStepId(stepId);
-    setUploadDocumentTags([documentName]);
+    
+    // If documentName is missing, extract it from requestId
+    // requestId format: "stepId-document-name-in-kebab-case"
+    let finalDocumentName = documentName;
+    if (!finalDocumentName && requestId && requestId.includes('-')) {
+      // Extract the document name part from requestId
+      const parts = requestId.split('-');
+      // Skip the first part (stepId which is typically 25 chars)
+      if (parts.length > 1 && parts[0].length > 15) {
+        finalDocumentName = parts.slice(1).join('-');
+      }
+    }
+    
+    const tags = [requestId, finalDocumentName];
+    console.log('[MatterDetailClient] Tags to set:', tags);
+    setUploadDocumentTags(tags);
     setIsUploadDialogOpen(true);
   }
 
@@ -623,7 +576,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     try {
       setActionLoading(`${instanceId}:deleteInstance`);
       const response = await fetch(`/api/workflows/instances/${instanceId}`, {
-        method: "DELETE",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cancellationReason: reason.trim() || undefined,
@@ -640,6 +593,45 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         result?.cancelled
           ? "Workflow iptal edildi; bekleyen adımlar iptal edildi."
           : "Workflow kaldırıldı.",
+      );
+    } catch (error) {
+      console.error(error);
+      showToast("error", error instanceof Error ? error.message : "Workflow kaldırılamadı.");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function deleteWorkflow(instanceId: string) {
+    if (!isWorkflowRemovable) {
+      showToast("error", "Bu işlemi yapmaya yetkiniz yok.");
+      return;
+    }
+    const reason = window.prompt(
+      "Workflow'u iptal etmek istediğinize emin misiniz? Lütfen iptal sebebini yazın (boş bırakırsanız varsayılan kullanılacak).",
+      "",
+    );
+    if (reason === null) return;
+    try {
+      setActionLoading(`${instanceId}:deleteInstance`);
+      const response = await fetch(`/api/workflows/instances/${instanceId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cancellationReason: reason.trim() || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Workflow kaldırılamadı");
+      }
+      const result = await response.json().catch(() => null);
+      await loadWorkflowInstances();
+      showToast(
+        "success",
+        result?.deleted
+          ? "Workflow aldırıldı.."
+          : "Unexpectet response.",
       );
     } catch (error) {
       console.error(error);
@@ -886,58 +878,29 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
             )}
           </div>
 
-          {/* Workflow Timeline - Horizontal Timeline */}
-          <WorkflowTimeline
-            workflows={workflows}
-            selectedStepId={selectedStepId}
-            currentUserRole={currentUserRole}
-            onStepClick={(workflowId, stepId) => {
-              setSelectedWorkflowId(workflowId);
-              setSelectedStepId(stepId);
-            }}
+          {/* Unified Workflow Management Section */}
+          <WorkflowManagementSection
+            entityId={matter.id}
+            entityType="matter"
+            workflows={workflows as any}
+            currentUserRole={currentUserRole ?? "CLIENT"}
+            currentUserId={currentUserId}
+            canManageWorkflows={["ADMIN", "LAWYER", "PARALEGAL"].includes(currentUserRole ?? "")}
+            documents={relatedDocs}
+            docsLoading={docsLoading}
+            onUploadDocument={() => setIsUploadDialogOpen(true)}
+            onViewDocument={openDocDetail}
+            highlightedDocumentIds={_attachedDocumentIds}
+            teamMemberIds={matterTeamMemberIds}
+            matterOwnerId={matter.owner?.id}
+            folderTreeRefreshKey={folderTreeRefreshKey}
+            onRefresh={loadWorkflowInstances}
             onAddWorkflow={() => setWorkflowModalOpen(true)}
-                onCancelWorkflow={cancelWorkflow}
-            onAddStep={openAddStep}
+            onCancelWorkflow={cancelWorkflow}
+            onDeleteWorkflow={deleteWorkflow}
+            onUpdateStepMetadata={updateStepMetadata}
+            onAddDocumentForStep={handleAddDocumentForStep}
           />
-          
-
-          {/* Workflows (2/3) and Documents (1/3) Grid */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Workflows Section - 2/3 width on large screens */}
-            <div className="lg:col-span-2">
-              <WorkflowStepDetail
-                step={selectedStepId ? workflows.flatMap(w => w.steps).find(s => s.id === selectedStepId) ?? null : null}
-                workflow={selectedWorkflowId ? workflows.find(w => w.id === selectedWorkflowId) ?? null : null}
-                matterId={matter.id}
-                actionLoading={actionLoading}
-                hoveredStep={hoveredStep}
-                currentUserRole={currentUserRole ?? "CLIENT"}
-                onClose={() => {
-                  setSelectedStepId(null);
-                  setSelectedWorkflowId(null);
-                }}
-                onSetHoveredStep={setHoveredStep}
-                onRunStepAction={runStepAction}
-                onUpdateStepMetadata={updateStepMetadata}
-                onAddDocumentForStep={handleAddDocumentForStep}
-                checklistStates={checklistStates}
-                approvalComments={approvalComments}
-                documentFiles={documentFiles}
-                onSetChecklistStates={setChecklistStates}
-                onSetApprovalComments={setApprovalComments}
-                onSetDocumentFiles={setDocumentFiles}
-              />
-            </div>
-
-            {/* Documents Section - 1/3 width on large screens */}
-            <MatterDocumentsSection
-              documents={relatedDocs}
-              loading={docsLoading}
-              onUploadClick={() => setIsUploadDialogOpen(true)}
-              onViewDocument={openDocDetail}
-              highlightedDocumentIds={attachedDocumentIds}
-            />
-          </div>
         </>
       )}
 
@@ -1088,6 +1051,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
         onUploadComplete={async () => {
           await loadRelatedDocuments();
           await loadWorkflowInstances(); // Refresh workflow to update document status
+          setFolderTreeRefreshKey(prev => prev + 1); // Trigger folder tree refresh
           showToast("success", "Document uploaded successfully.");
           setUploadWorkflowStepId(null);
           setUploadDocumentTags([]);
@@ -1169,3 +1133,4 @@ export function MatterDetailClient({ matter, contacts, currentUserRole }: Matter
     </div>
   );
 }
+import type { NotificationPolicy } from "@/lib/workflows/notification-policy";

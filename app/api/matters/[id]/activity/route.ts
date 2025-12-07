@@ -3,11 +3,11 @@ import type { NextRequest } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 
-type Params = { params: { id: string } };
+type Params = { id: string };
 
-export const GET = withApiHandler(
-  async (_req: NextRequest, { params }: Params) => {
-    const matterId = params.id;
+export const GET = withApiHandler<Params>(
+  async (_req, { params }) => {
+    const matterId = params!.id;
 
     // Fetch audit logs for this matter
     const activities = await prisma.auditLog.findMany({

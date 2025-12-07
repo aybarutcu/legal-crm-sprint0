@@ -1,10 +1,21 @@
 // app/(dashboard)/workflows/ai/page.tsx
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { TWorkflowTemplateDraft } from "@/lib/workflows/schema";
-import { CheckCircle, UserCheck, FileText, Upload, CreditCard, Sparkles, Loader2, CheckCheck, ArrowLeft, Edit, ClipboardList, Scale, Heart, Users, Home, Briefcase, Car, Gavel } from "lucide-react";
+import { Sparkles, Loader2, CheckCheck, ArrowLeft, Scale, Heart, Users, Home, Briefcase, Car, Gavel, FileText, Send, Edit3, Eye, MessageSquare } from "lucide-react";
 import Link from "next/link";
+import { WorkflowTemplatePreview } from "@/components/workflows/WorkflowTemplatePreview";
+import { WorkflowCanvas } from "@/components/workflows/WorkflowCanvas";
+import type { WorkflowStep as CanvasWorkflowStep } from "@/components/workflows/WorkflowCanvas";
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+};
+
+type ViewMode = "preview" | "edit";
 
 // Pre-generated workflow templates
 const WORKFLOW_TEMPLATES = [
@@ -66,206 +77,6 @@ const WORKFLOW_TEMPLATES = [
   }
 ];
 
-
-// Action config renderer (same as TemplateCard)
-function renderActionConfig(actionType: string, config: Record<string, unknown>) {
-  switch (actionType) {
-    case "CHECKLIST": {
-      const items = (config.items as { title: string; completed?: boolean }[]) || [];
-      if (items.length === 0) return null;
-      
-      return (
-        <div className="space-y-1.5">
-          {items.map((item, i) => (
-            <div key={i} className="flex items-start gap-2 text-slate-700">
-              <CheckCircle className="h-4 w-4 mt-0.5 text-slate-400 flex-shrink-0" />
-              <span className="text-sm">{item.title}</span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    
-    case "APPROVAL_LAWYER": {
-      const message = config.message as string;
-      const approverRole = config.approverRole as string;
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <UserCheck className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="text-slate-700">
-              <span className="font-medium text-slate-900">Approver:</span>{" "}
-              <span className="text-blue-600 font-medium">{approverRole || "LAWYER"}</span>
-            </div>
-            {message && (
-              <div className="text-slate-600 italic">"{message}"</div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    case "SIGNATURE_CLIENT": {
-      const provider = config.provider as string;
-      const documentId = config.documentId as string;
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <FileText className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="text-slate-700">
-              <span className="font-medium text-slate-900">Provider:</span>{" "}
-              <span className="text-purple-600 font-medium">{provider || "mock"}</span>
-            </div>
-            {documentId && (
-              <div className="text-slate-600 text-xs font-mono">
-                Document: {documentId}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    case "REQUEST_DOC_CLIENT": {
-      const requestText = config.requestText as string;
-      const acceptedTypes = (config.acceptedTypes as string[]) || [];
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <Upload className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            {requestText && (
-              <div className="text-slate-700">{requestText}</div>
-            )}
-            {acceptedTypes.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {acceptedTypes.map((type, i) => (
-                  <span key={i} className="inline-flex items-center rounded-md bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 border border-orange-200">
-                    {type}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    case "PAYMENT_CLIENT": {
-      const amount = config.amount as number;
-      const currency = (config.currency as string) || "USD";
-      const provider = config.provider as string;
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <CreditCard className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="text-slate-700">
-              <span className="font-medium text-slate-900">Amount:</span>{" "}
-              <span className="text-green-600 font-semibold text-base">
-                {new Intl.NumberFormat('en-US', { 
-                  style: 'currency', 
-                  currency: currency 
-                }).format(amount || 0)}
-              </span>
-            </div>
-            {provider && (
-              <div className="text-slate-600 text-xs">
-                Provider: <span className="font-medium">{provider}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    case "WRITE_TEXT": {
-      const title = config.title as string;
-      const description = config.description as string;
-      const minLength = config.minLength as number;
-      const maxLength = config.maxLength as number;
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <Edit className="h-5 w-5 text-indigo-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="text-slate-700 font-medium">{title}</div>
-            {description && (
-              <div className="text-slate-600 text-xs">{description}</div>
-            )}
-            {(minLength || maxLength) && (
-              <div className="text-slate-600 text-xs">
-                Length: {minLength ? `min ${minLength}` : ''}{minLength && maxLength ? ' - ' : ''}{maxLength ? `max ${maxLength}` : ''} characters
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    case "POPULATE_QUESTIONNAIRE": {
-      const title = config.title as string;
-      const description = config.description as string;
-      const questionnaireId = config.questionnaireId as string;
-      const dueInDays = config.dueInDays as number;
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <ClipboardList className="h-5 w-5 text-teal-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="text-slate-700 font-medium">{title}</div>
-            {description && (
-              <div className="text-slate-600 text-xs">{description}</div>
-            )}
-            <div className="text-slate-600 text-xs font-mono">
-              Questionnaire ID: {questionnaireId}
-            </div>
-            {dueInDays && (
-              <div className="text-slate-600 text-xs">
-                Due in: <span className="font-medium">{dueInDays} days</span>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    case "TASK": {
-      const description = config.description as string;
-      const requiresEvidence = config.requiresEvidence as boolean;
-      const estimatedMinutes = config.estimatedMinutes as number;
-      
-      return (
-        <div className="flex items-start gap-3 text-sm">
-          <CheckCheck className="h-5 w-5 text-cyan-500 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            {description && (
-              <div className="text-slate-700">{description}</div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {estimatedMinutes && (
-                <span className="inline-flex items-center rounded-md bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 border border-cyan-200">
-                  ~{estimatedMinutes} min
-                </span>
-              )}
-              {requiresEvidence && (
-                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
-                  Evidence Required
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-    
-    default:
-      return null;
-  }
-}
-
 export default function AIWorkflowPage() {
     const router = useRouter();
     const [input, setInput] = useState("");
@@ -274,12 +85,23 @@ export default function AIWorkflowPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [viewMode, setViewMode] = useState<ViewMode>("preview");
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatInput, setChatInput] = useState("");
+    const [refining, setRefining] = useState(false);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+
+    // Scroll chat to bottom
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [chatMessages]);
 
     // Handler to use a template
     const useTemplate = (prompt: string) => {
         setInput(prompt);
         setError(null);
         setDraft(null);
+        setChatMessages([]);
     };
 
     async function generate() {
@@ -291,6 +113,7 @@ export default function AIWorkflowPage() {
         setGenerating(true);
         setError(null);
         setDraft(null);
+        setChatMessages([]);
 
         try {
             const r = await fetch("/api/agent/workflow/parse", {
@@ -310,10 +133,96 @@ export default function AIWorkflowPage() {
 
             const data = JSON.parse(text);
             setDraft(data);
+            setChatMessages([
+                {
+                    role: "user",
+                    content: input,
+                    timestamp: new Date(),
+                },
+                {
+                    role: "assistant",
+                    content: `"${data.name}" workflow'u oluşturdum. ${data.steps.length} adım ve ${data.dependencies?.length || 0} bağlantı içeriyor. İstersen düzenleyebilir veya değişiklik isteyebilirsin.`,
+                    timestamp: new Date(),
+                }
+            ]);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Bir hata oluştu");
         } finally {
             setGenerating(false);
+        }
+    }
+
+    async function refineWorkflow() {
+        if (!chatInput.trim() || !draft) return;
+
+        setRefining(true);
+        setError(null);
+
+        const userMessage: ChatMessage = {
+            role: "user",
+            content: chatInput,
+            timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, userMessage]);
+        setChatInput("");
+
+        try {
+            // Build detailed current state including IDs and dependencies
+            const currentStepsDetail = draft.steps.map(s => 
+                `  - id: "${s.id}", title: "${s.title}", type: ${s.actionType}, role: ${s.roleScope}`
+            ).join('\n');
+            
+            const currentDepsDetail = (draft.dependencies ?? []).map(d =>
+                `  - "${d.sourceStepId}" → "${d.targetStepId}" (${d.dependencyType})`
+            ).join('\n');
+
+            const refinementPrompt = `I have a workflow that needs modification. Here is the CURRENT structure:
+
+Workflow Name: ${draft.name}
+Description: ${draft.description}
+
+Current Steps (PRESERVE THESE IDs):
+${currentStepsDetail}
+
+Current Dependencies:
+${currentDepsDetail || '  (none)'}
+
+USER REQUEST: ${chatInput}
+
+IMPORTANT INSTRUCTIONS:
+1. When modifying existing steps, PRESERVE their original step IDs (e.g., "step_0", "step_1")
+2. Only generate NEW step IDs for NEW steps you're adding
+3. Update dependencies to use the correct step IDs
+4. Maintain the same positionX/positionY for existing steps where possible
+5. Return a complete updated workflow with ALL steps (modified + new + preserved)
+
+Generate the updated workflow JSON.`;
+
+            const r = await fetch("/api/agent/workflow/parse", {
+                method: "POST",
+                body: JSON.stringify({ userInput: refinementPrompt }),
+                headers: { "Content-Type": "application/json" }
+            });
+
+            if (!r.ok) {
+                throw new Error(`API error: ${r.statusText}`);
+            }
+
+            const data = JSON.parse(await r.text());
+            setDraft(data);
+
+            const assistantMessage: ChatMessage = {
+                role: "assistant",
+                content: `Workflow'u güncelledim. Artık ${data.steps.length} adım ve ${data.dependencies?.length || 0} bağlantı var. Başka bir değişiklik ister misin?`,
+                timestamp: new Date(),
+            };
+            setChatMessages(prev => [...prev, assistantMessage]);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Güncelleme başarısız");
+            // Remove user message on error
+            setChatMessages(prev => prev.slice(0, -1));
+        } finally {
+            setRefining(false);
         }
     }
 
@@ -349,29 +258,28 @@ export default function AIWorkflowPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-6">
-            <div className="max-w-5xl mx-auto space-y-6">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div>
-                        <Link 
-                            href="/workflows/templates"
-                            className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 mb-3 transition-colors"
-                        >
-                            <ArrowLeft className="h-4 w-4" />
-                            Workflow Templates'e Dön
-                        </Link>
-                        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-                            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg">
-                                <Sparkles className="h-6 w-6" />
-                            </span>
-                            AI ile Workflow Oluştur
-                        </h1>
-                        <p className="text-slate-600 mt-2">
-                            Workflow'unuzu açıklayın, AI sizin için otomatik olarak oluştursun
-                        </p>
-                    </div>
+        <div className="space-y-6 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 min-h-screen p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <Link 
+                        href="/workflows/templates"
+                        className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 mb-3 transition-colors"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Workflow Templates'e Dön
+                    </Link>
+                    <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg">
+                            <Sparkles className="h-6 w-6" />
+                        </span>
+                        AI ile Workflow Oluştur
+                    </h1>
+                    <p className="text-slate-600 mt-2">
+                        Workflow'unuzu açıklayın, AI sizin için otomatik olarak oluştursun
+                    </p>
                 </div>
+            </div>
 
                 {/* Quick Templates */}
                 <div className="rounded-2xl border-2 border-white bg-white/80 backdrop-blur-sm p-6 shadow-xl">
@@ -458,86 +366,271 @@ export default function AIWorkflowPage() {
                                 </>
                             )}
                         </button>
-
-                        {draft && !success && (
-                            <button 
-                                onClick={save} 
-                                disabled={saving}
-                                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            >
-                                {saving ? (
-                                    <>
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        Kaydediliyor...
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckCheck className="h-5 w-5" />
-                                        Onayla & Kaydet
-                                    </>
-                                )}
-                            </button>
-                        )}
                     </div>
                 </div>
 
-                {/* Generated Draft Preview */}
+                {/* Generated Draft Preview/Editor */}
                 {draft && (
-                    <div className="rounded-2xl border-2 border-white bg-white/80 backdrop-blur-sm p-6 shadow-xl space-y-4">
-                        <div className="flex items-start justify-between gap-4 pb-4 border-b-2 border-slate-200">
-                            <div>
-                                <h2 className="text-2xl font-bold text-slate-900">{draft.name}</h2>
-                                {draft.description && (
-                                    <p className="text-sm text-slate-600 mt-1">{draft.description}</p>
+                    <div className="rounded-2xl border-2 border-white bg-white/80 backdrop-blur-sm shadow-xl overflow-hidden">
+                        {/* Header with View Toggle */}
+                        <div className="flex items-start justify-between gap-4 p-6 pb-4 border-b-2 border-slate-200">
+                            <div className="flex-1 space-y-3">
+                                {/* Editable Template Name */}
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                                        Template Adı
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={draft.name}
+                                        onChange={(e) => setDraft(prev => prev ? { ...prev, name: e.target.value } : null)}
+                                        className="w-full text-2xl font-bold text-slate-900 border-2 border-slate-200 rounded-lg px-3 py-2 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
+                                        placeholder="Workflow adını girin..."
+                                    />
+                                </div>
+                                {/* Editable Description */}
+                                {draft.description !== undefined && (
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                                            Açıklama (Opsiyonel)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={draft.description || ''}
+                                            onChange={(e) => setDraft(prev => prev ? { ...prev, description: e.target.value } : null)}
+                                            className="w-full text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
+                                            placeholder="Template açıklaması..."
+                                        />
+                                    </div>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 border border-purple-200">
-                                    {draft.steps.length} Adım
-                                </span>
-                                {draft.isActive && (
-                                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
-                                        Aktif
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 border border-purple-200">
+                                        {draft.steps.length} Adım
                                     </span>
-                                )}
+                                    {draft.dependencies && draft.dependencies.length > 0 && (
+                                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 border border-blue-200">
+                                            {draft.dependencies.length} Bağlantı
+                                        </span>
+                                    )}
+                                    {draft.isActive && (
+                                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                                            Aktif
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+                                    <button
+                                        onClick={() => setViewMode("preview")}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                            viewMode === "preview"
+                                                ? "bg-white text-slate-900 shadow-sm"
+                                                : "text-slate-600 hover:text-slate-900"
+                                        }`}
+                                    >
+                                        <Eye className="h-3.5 w-3.5" />
+                                        Önizleme
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode("edit")}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                            viewMode === "edit"
+                                                ? "bg-white text-slate-900 shadow-sm"
+                                                : "text-slate-600 hover:text-slate-900"
+                                        }`}
+                                    >
+                                        <Edit3 className="h-3.5 w-3.5" />
+                                        Düzenle
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            {draft.steps.map((step, index) => (
-                                <div
-                                    key={step.order}
-                                    className="relative flex flex-col rounded-lg border-2 border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm hover:border-slate-300 transition-colors"
-                                >
-                                    <div className="absolute -left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-blue-600 text-xs font-bold text-white border-2 border-white shadow-md">
-                                        {index + 1}
-                                    </div>
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-slate-900 text-base">{step.title}</div>
-                                            <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                                                <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 font-medium text-blue-700 border border-blue-200">
-                                                    {step.actionType.replace(/_/g, " ")}
-                                                </span>
-                                                <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-medium text-slate-700 border border-slate-200">
-                                                    {step.roleScope}
-                                                </span>
-                                                {step.required && (
-                                                    <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 font-medium text-amber-700 border border-amber-200">
-                                                        Required
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {step.actionConfig && Object.keys(step.actionConfig).length > 0 && renderActionConfig(step.actionType, step.actionConfig) && (
-                                        <div className="mt-3 pt-3 border-t border-slate-200">
-                                            {renderActionConfig(step.actionType, step.actionConfig)}
-                                        </div>
-                                    )}
+                        {/* Canvas Area */}
+                        <div className="p-6">
+                            {viewMode === "preview" ? (
+                                <WorkflowTemplatePreview
+                                    steps={draft.steps.map(s => ({
+                                        id: s.id || `step_${s.order}`,
+                                        title: s.title,
+                                        order: s.order,
+                                        actionType: s.actionType,
+                                        roleScope: s.roleScope,
+                                        required: s.required,
+                                        actionConfig: s.actionConfig,
+                                        positionX: s.positionX,
+                                        positionY: s.positionY,
+                                    }))}
+                                    dependencies={draft.dependencies?.map(d => ({
+                                        id: d.id || `dep_${d.sourceStepId}_${d.targetStepId}`,
+                                        sourceStepId: d.sourceStepId,
+                                        targetStepId: d.targetStepId,
+                                        dependencyType: d.dependencyType,
+                                        dependencyLogic: d.dependencyLogic,
+                                        conditionType: d.conditionType,
+                                        conditionConfig: d.conditionConfig,
+                                    }))}
+                                    height={500}
+                                />
+                            ) : (
+                                <div className="rounded-xl border-2 border-slate-200 bg-slate-50" style={{ height: 500 }}>
+                                    <WorkflowCanvas
+                                        steps={draft.steps.map(s => {
+                                            const stepId = s.id || `step_${s.order}`;
+                                            return {
+                                                id: stepId,
+                                                title: s.title,
+                                                actionType: s.actionType as any,
+                                                roleScope: s.roleScope as any,
+                                                required: s.required ?? true,
+                                                actionConfig: s.actionConfig ?? {},
+                                                positionX: s.positionX ?? 0,
+                                                positionY: s.positionY ?? 0,
+                                                notificationPolicies: s.notificationPolicies ?? [],
+                                            };
+                                        })}
+                                        dependencies={(draft.dependencies ?? []).map(d => {
+                                            const depId = d.id || `dep_${d.sourceStepId}_${d.targetStepId}`;
+                                            return {
+                                                id: depId,
+                                                sourceStepId: d.sourceStepId,
+                                                targetStepId: d.targetStepId,
+                                                dependencyType: d.dependencyType,
+                                                dependencyLogic: d.dependencyLogic,
+                                                conditionType: d.conditionType,
+                                                conditionConfig: d.conditionConfig,
+                                            };
+                                        })}
+                                        onChange={(steps, deps) => {
+                                            setDraft(prev => {
+                                                if (!prev) return null;
+                                                return {
+                                                    ...prev,
+                                                    steps: steps.map((s, idx) => ({
+                                                        id: s.id,
+                                                        order: idx,
+                                                        title: s.title,
+                                                        actionType: s.actionType as any,
+                                                        roleScope: s.roleScope as any,
+                                                        required: s.required ?? true,
+                                                        actionConfig: s.actionConfig as any ?? {},
+                                                        positionX: s.positionX ?? 0,
+                                                        positionY: s.positionY ?? 0,
+                                                        notificationPolicies: s.notificationPolicies as any ?? [],
+                                                    })),
+                                                    dependencies: (deps ?? []).map(d => ({
+                                                        id: d.id,
+                                                        sourceStepId: d.sourceStepId,
+                                                        targetStepId: d.targetStepId,
+                                                        dependencyType: d.dependencyType as any,
+                                                        dependencyLogic: d.dependencyLogic as any,
+                                                        conditionType: d.conditionType as any,
+                                                        conditionConfig: d.conditionConfig as any,
+                                                    }))
+                                                } as any;
+                                            });
+                                        }}
+                                    />
                                 </div>
-                            ))}
+                            )}
                         </div>
+
+                        {/* Chat Interface */}
+                        {chatMessages.length > 0 && (
+                            <div className="border-t-2 border-slate-200 bg-slate-50/50">
+                                <div className="p-4">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <MessageSquare className="h-4 w-4 text-slate-600" />
+                                        <h3 className="text-sm font-semibold text-slate-900">AI ile İyileştir</h3>
+                                    </div>
+                                    
+                                    {/* Chat Messages */}
+                                    <div className="space-y-3 mb-3 max-h-60 overflow-y-auto">
+                                        {chatMessages.map((msg, idx) => (
+                                            <div
+                                                key={idx}
+                                                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                                            >
+                                                <div
+                                                    className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+                                                        msg.role === "user"
+                                                            ? "bg-purple-600 text-white"
+                                                            : "bg-white border border-slate-200 text-slate-900"
+                                                    }`}
+                                                >
+                                                    {msg.content}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div ref={chatEndRef} />
+                                    </div>
+
+                                    {/* Chat Input */}
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={chatInput}
+                                            onChange={(e) => setChatInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter" && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    refineWorkflow();
+                                                }
+                                            }}
+                                            placeholder="Değişiklik iste... (örn: 'bir ödeme adımı ekle' veya 'ilk adımı kaldır')"
+                                            disabled={refining}
+                                            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:opacity-50"
+                                        />
+                                        <button
+                                            onClick={refineWorkflow}
+                                            disabled={refining || !chatInput.trim()}
+                                            className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            {refining ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    <span>Güncelleniyor...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Send className="h-4 w-4" />
+                                                    <span>Gönder</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Save Button - Fixed at Bottom */}
+                        {!success && (
+                            <div className="border-t-2 border-slate-200 bg-white p-4">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-slate-600">
+                                        Workflow hazır mı? Kaydet ve kullanmaya başla!
+                                    </p>
+                                    <button 
+                                        onClick={save} 
+                                        disabled={saving}
+                                        className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        {saving ? (
+                                            <>
+                                                <Loader2 className="h-5 w-5 animate-spin" />
+                                                Kaydediliyor...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <CheckCheck className="h-5 w-5" />
+                                                Onayla & Kaydet
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -557,7 +650,6 @@ export default function AIWorkflowPage() {
                         </div>
                     </div>
                 )}
-            </div>
         </div>
     );
 }

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { workflowInstantiateSchema } from "@/lib/validation/workflow";
 import { buildMatterAccessFilter } from "@/lib/tasks/service";
 import { WorkflowMetrics } from "@/lib/workflows/observability";
-import { validateWorkflowDependencies, getReadySteps } from "@/lib/workflows/dependency-resolver";
+import { getReadySteps } from "@/lib/workflows/dependency-resolver";
 
 export const POST = withApiHandler<{ id: string }>(
   async (req: NextRequest, { session, params }) => {
@@ -20,9 +20,8 @@ export const POST = withApiHandler<{ id: string }>(
     const template = await prisma.workflowTemplate.findUnique({
       where: { id: resolvedParams.id },
       include: {
-        steps: {
-          orderBy: { order: "asc" },
-        },
+        steps: true,
+        dependencies: true, // Include template dependencies
       },
     });
 
@@ -55,39 +54,20 @@ export const POST = withApiHandler<{ id: string }>(
 
     const sortedSteps = template.steps
       .slice()
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .sort((a, b) => a.id.localeCompare(b.id))
       .map((step, index) => ({
         ...step,
-        computedOrder: step.order ?? index,
+        computedOrder: index,
       }));
 
-    // Create a mapping from order number to temp step ID
-    const orderToIdMap = new Map<number, string>();
-    sortedSteps.forEach((step) => {
-      orderToIdMap.set(step.computedOrder, `temp-${step.id}`);
-    });
-
-    // Validate dependencies before creating instance
-    // Convert dependsOn from orders to step IDs for validation
-    const templateStepsForValidation = sortedSteps.map((step) => ({
-      id: `temp-${step.id}`,
-      order: step.computedOrder,
-      dependsOn: (step.dependsOn ?? [])
-        .map((depOrder) => orderToIdMap.get(depOrder))
-        .filter((id): id is string => id !== undefined),
-      dependencyLogic: step.dependencyLogic ?? "ALL",
-      actionState: ActionState.PENDING,
-    }));
-
-    // Type assertion: validation only needs id, order, dependsOn, dependencyLogic, actionState
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const validation = validateWorkflowDependencies(templateStepsForValidation as any);
-    if (!validation.valid) {
-      return NextResponse.json(
-        { error: `Invalid workflow dependencies: ${validation.errors.join(", ")}` },
-        { status: 400 },
-      );
-    }
+    // TODO: Add template dependency validation before instantiation
+    // const validation = validateWorkflowDependencies(...);
+    // if (!validation.valid) {
+    //   return NextResponse.json(
+    //     { error: `Invalid workflow dependencies: ${validation.errors.join(", ")}` },
+    //     { status: 400 },
+    //   );
+    // }
 
     const instance = await prisma.workflowInstance.create({
       data: {
@@ -96,14 +76,22 @@ export const POST = withApiHandler<{ id: string }>(
         templateVersion: template.version,
         createdById: user.id,
         status: WorkflowInstanceStatus.ACTIVE,
-        steps: {
-          create: sortedSteps.map((step) => ({
+      },
+    });
+
+    // Create workflow steps from template (all initially PENDING)
+    await Promise.all(
+      sortedSteps.map(async (step, index) => {
+        await prisma.workflowInstanceStep.create({
+          data: {
+            instanceId: instance.id,
             templateStepId: step.id,
-            order: step.computedOrder,
             title: step.title,
             actionType: step.actionType,
             roleScope: step.roleScope,
             required: step.required,
+            positionX: typeof step.positionX === "number" ? step.positionX : index * 300 + 50,
+            positionY: typeof step.positionY === "number" ? step.positionY : 100,
             // Note: dependsOn will be set after instance creation (need step IDs)
             // All steps start as PENDING - will be updated to READY based on dependencies
             actionState: ActionState.PENDING,
@@ -111,43 +99,46 @@ export const POST = withApiHandler<{ id: string }>(
               config: step.actionConfig ?? {},
               history: [],
             } satisfies Prisma.JsonObject,
-          })),
-        },
-      },
-      include: {
-        template: { select: { id: true, name: true, version: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        steps: {
-          orderBy: { order: "asc" },
-        },
-      },
-    });
-
-    // After creation, map template dependencies (orders) to instance dependencies (step IDs)
-    // and determine which steps are READY
-    const orderToStepIdMap = new Map<number, string>();
-    instance.steps.forEach((step) => {
-      orderToStepIdMap.set(step.order, step.id);
-    });
-
-    // Update steps with dependency information
-    await prisma.$transaction(
-      sortedSteps.map((templateStep, index) => {
-        const instanceStep = instance.steps[index];
-        const dependsOnOrders = templateStep.dependsOn ?? [];
-        const dependsOnStepIds = dependsOnOrders
-          .map((order) => orderToStepIdMap.get(order))
-          .filter((id): id is string => id !== undefined);
-
-        return prisma.workflowInstanceStep.update({
-          where: { id: instanceStep.id },
-          data: {
-            dependsOn: dependsOnStepIds,
-            dependencyLogic: templateStep.dependencyLogic ?? "ALL",
           },
         });
       })
     );
+
+    // Fetch the created instance with steps
+    const fullInstance = await prisma.workflowInstance.findUnique({
+      where: { id: instance.id },
+      include: {
+        template: { select: { id: true, name: true, version: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        steps: true,
+      },
+    });
+
+    if (!fullInstance) {
+      throw new Error("Failed to create workflow instance");
+    }
+
+    const templateToInstanceId = new Map<string, string>();
+    fullInstance.steps.forEach((step) => {
+      if (step.templateStepId) {
+        templateToInstanceId.set(step.templateStepId, step.id);
+      }
+    });
+
+    // Create instance dependencies from template dependencies
+    if ((template.dependencies || []).length > 0) {
+      await prisma.workflowInstanceDependency.createMany({
+        data: (template.dependencies || []).map(dep => ({
+          instanceId: instance.id,
+          sourceStepId: templateToInstanceId.get(dep.sourceStepId)!,
+          targetStepId: templateToInstanceId.get(dep.targetStepId)!,
+          dependencyType: dep.dependencyType,
+          dependencyLogic: dep.dependencyLogic,
+          conditionType: dep.conditionType,
+          conditionConfig: dep.conditionConfig ?? undefined,
+        })),
+      });
+    }
 
     // Reload instance with updated dependency information
     const instanceWithDeps = await prisma.workflowInstance.findUnique({
@@ -155,9 +146,8 @@ export const POST = withApiHandler<{ id: string }>(
       include: {
         template: { select: { id: true, name: true, version: true } },
         createdBy: { select: { id: true, name: true, email: true } },
-        steps: {
-          orderBy: { order: "asc" },
-        },
+        steps: true,
+        dependencies: true,
       },
     });
 
@@ -166,7 +156,7 @@ export const POST = withApiHandler<{ id: string }>(
     }
 
     // Determine which steps are READY based on dependencies
-    const readySteps = getReadySteps(instanceWithDeps.steps);
+    const readySteps = getReadySteps(instanceWithDeps.steps, instanceWithDeps.dependencies);
 
     // Update READY steps in database
     if (readySteps.length > 0) {
@@ -198,9 +188,8 @@ export const POST = withApiHandler<{ id: string }>(
       include: {
         template: { select: { id: true, name: true, version: true } },
         createdBy: { select: { id: true, name: true, email: true } },
-        steps: {
-          orderBy: { order: "asc" },
-        },
+        steps: true,
+        dependencies: true,
       },
     });
 

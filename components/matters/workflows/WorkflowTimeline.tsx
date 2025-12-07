@@ -1,16 +1,30 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { CheckCircle2, Circle, XCircle, MinusCircle, Clock, AlertCircle } from "lucide-react";
+import { useState } from "react";
+import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  MiniMap,
+  Controls,
+  MarkerType,
+  Node,
+  Edge,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { WorkflowTimelineNode } from "./WorkflowTimelineNode";
+import type { NotificationPolicy } from "@/lib/workflows/notification-policy";
 
 type ActionType =
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
   | "REQUEST_DOC"
-  | "PAYMENT_CLIENT"
+  | "PAYMENT"
   | "CHECKLIST"
   | "WRITE_TEXT"
-  | "POPULATE_QUESTIONNAIRE";
+  | "POPULATE_QUESTIONNAIRE"
+  | "TASK"
+  | "AUTOMATION_EMAIL"
+  | "AUTOMATION_WEBHOOK";
 
 type ActionState =
   | "PENDING"
@@ -25,7 +39,7 @@ type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 
 export type WorkflowTimelineStep = {
   id: string;
-  order: number;
+  order?: number;
   title: string;
   actionType: ActionType;
   roleScope: RoleScope;
@@ -33,9 +47,18 @@ export type WorkflowTimelineStep = {
   actionState: ActionState;
   actionData: Record<string, unknown> | null;
   assignedToId: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH" | null;
+  dueDate?: string | null;
   startedAt: string | null;
   completedAt: string | null;
-  dependsOn: string[];
+  dependsOn?: string[];
+  positionX?: number | null;
+  positionY?: number | null;
+  nextStepOnTrue?: string | null;
+  nextStepOnFalse?: string | null;
+  notificationPolicies?: NotificationPolicy[];
+  automationLog?: unknown;
+  notificationLog?: unknown;
 };
 
 export type WorkflowTimelineInstance = {
@@ -46,6 +69,17 @@ export type WorkflowTimelineInstance = {
   createdAt: string;
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELED";
   steps: WorkflowTimelineStep[];
+  dependencies?: WorkflowTimelineDependency[];
+};
+
+export type WorkflowTimelineDependency = {
+  id: string;
+  sourceStepId: string;
+  targetStepId: string;
+  dependencyType: "DEPENDS_ON" | "TRIGGERS" | "IF_TRUE_BRANCH" | "IF_FALSE_BRANCH";
+  dependencyLogic: "ALL" | "ANY" | "CUSTOM";
+  conditionType?: "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
+  conditionConfig?: Record<string, unknown>;
 };
 
 type WorkflowTimelineProps = {
@@ -55,190 +89,9 @@ type WorkflowTimelineProps = {
   onStepClick: (workflowId: string, stepId: string) => void;
   onAddWorkflow?: () => void;
   onCancelWorkflow?: (workflowId: string) => void;
+  onDeleteWorkflow?: (workflowId: string) => void;
   onAddStep?: (workflowId: string) => void;
 };
-
-function getStepIcon(state: ActionState) {
-  switch (state) {
-    case "COMPLETED":
-      return <CheckCircle2 className="h-5 w-5" />;
-    case "FAILED":
-      return <XCircle className="h-5 w-5" />;
-    case "SKIPPED":
-      return <MinusCircle className="h-5 w-5" />;
-    case "IN_PROGRESS":
-      return <Clock className="h-5 w-5" />;
-    case "BLOCKED":
-      return <AlertCircle className="h-5 w-5" />;
-    case "READY":
-      return <Circle className="h-5 w-5 fill-current" />;
-    case "PENDING":
-    default:
-      return <Circle className="h-5 w-5" />;
-  }
-}
-
-// Group steps into chains (rows) where each row is a sequence of dependent steps
-function groupStepsByLevel(steps: WorkflowTimelineStep[]): WorkflowTimelineStep[][] {
-  const chains: WorkflowTimelineStep[][] = [];
-  const visited = new Set<string>();
-  
-  // Create a map of step ID to step for quick lookup
-  const stepMap = new Map<string, WorkflowTimelineStep>();
-  steps.forEach(step => stepMap.set(step.id, step));
-  
-  // Create a map of dependents: which steps depend on this step
-  const dependentsMap = new Map<string, string[]>();
-  steps.forEach(step => {
-    step.dependsOn?.forEach(depId => {
-      if (!dependentsMap.has(depId)) {
-        dependentsMap.set(depId, []);
-      }
-      dependentsMap.get(depId)!.push(step.id);
-    });
-  });
-  
-  // Find root steps (steps with no dependencies)
-  const rootSteps = steps
-    .filter(step => !step.dependsOn || step.dependsOn.length === 0)
-    .sort((a, b) => a.order - b.order);
-  
-  // Build chains starting from each root
-  function buildChain(startStep: WorkflowTimelineStep): WorkflowTimelineStep[] {
-    const chain: WorkflowTimelineStep[] = [];
-    let currentStep: WorkflowTimelineStep | null = startStep;
-    
-    while (currentStep && !visited.has(currentStep.id)) {
-      visited.add(currentStep.id);
-      chain.push(currentStep);
-      
-      const currentStepId: string = currentStep.id;
-      
-      // Find next step: a step that depends ONLY on the current step
-      const dependents: string[] = dependentsMap.get(currentStepId) || [];
-      const nextStepId: string | undefined = dependents.find((depId: string): boolean => {
-        const step = stepMap.get(depId);
-        if (!step || visited.has(step.id)) return false;
-        // Check if this step depends ONLY on current step (linear chain)
-        return step.dependsOn?.length === 1 && step.dependsOn[0] === currentStepId;
-      });
-      
-      currentStep = nextStepId ? stepMap.get(nextStepId) || null : null;
-    }
-    
-    return chain;
-  }
-  
-  // Build chains starting from root steps
-  rootSteps.forEach(rootStep => {
-    if (!visited.has(rootStep.id)) {
-      const chain = buildChain(rootStep);
-      if (chain.length > 0) {
-        chains.push(chain);
-      }
-    }
-  });
-  
-  // Handle remaining steps that have multiple dependencies or are in branches
-  const remainingSteps = steps
-    .filter(step => !visited.has(step.id))
-    .sort((a, b) => a.order - b.order);
-  
-  remainingSteps.forEach(step => {
-    if (!visited.has(step.id)) {
-      const chain = buildChain(step);
-      if (chain.length > 0) {
-        chains.push(chain);
-      }
-    }
-  });
-  
-  return chains;
-}
-
-function getStepStyles(state: ActionState, isSelected: boolean) {
-  const baseStyles = "transition-all duration-200 cursor-pointer hover:scale-105";
-  
-  if (isSelected) {
-    switch (state) {
-      case "COMPLETED":
-        return `${baseStyles} bg-emerald-100 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500 ring-offset-2`;
-      case "FAILED":
-        return `${baseStyles} bg-red-100 border-red-500 text-red-900 ring-2 ring-red-500 ring-offset-2`;
-      case "SKIPPED":
-        return `${baseStyles} bg-slate-100 border-slate-400 text-slate-700 ring-2 ring-slate-400 ring-offset-2`;
-      case "IN_PROGRESS":
-        return `${baseStyles} bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500 ring-offset-2`;
-      case "BLOCKED":
-        return `${baseStyles} bg-red-100 border-red-500 text-red-900 ring-2 ring-red-500 ring-offset-2`;
-      case "READY":
-        return `${baseStyles} bg-blue-100 border-blue-500 text-blue-900 ring-2 ring-blue-500 ring-offset-2`;
-      case "PENDING":
-      default:
-        return `${baseStyles} bg-slate-50 border-slate-300 text-slate-700 ring-2 ring-slate-300 ring-offset-2`;
-    }
-  }
-
-  switch (state) {
-    case "COMPLETED":
-      return `${baseStyles} bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100`;
-    case "FAILED":
-      return `${baseStyles} bg-red-50 border-red-300 text-red-800 hover:bg-red-100`;
-    case "SKIPPED":
-      return `${baseStyles} bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100`;
-    case "IN_PROGRESS":
-      return `${baseStyles} bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100`;
-    case "BLOCKED":
-      return `${baseStyles} bg-red-50 border-red-300 text-red-800 hover:bg-red-100`;
-    case "READY":
-      return `${baseStyles} bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100`;
-    case "PENDING":
-    default:
-      return `${baseStyles} bg-white border-slate-200 text-slate-600 hover:bg-slate-50`;
-  }
-}
-
-function getActionTypeLabel(type: ActionType): string {
-  switch (type) {
-    case "APPROVAL_LAWYER":
-      return "Lawyer Approval";
-    case "SIGNATURE_CLIENT":
-      return "Client Signature";
-    case "REQUEST_DOC":
-      return "Document Request";
-    case "PAYMENT_CLIENT":
-      return "Payment";
-    case "CHECKLIST":
-      return "Checklist";
-    case "WRITE_TEXT":
-      return "Write Text";
-    case "POPULATE_QUESTIONNAIRE":
-      return "Questionnaire";
-    default:
-      return type;
-  }
-}
-
-function getStateLabel(state: ActionState): string {
-  switch (state) {
-    case "PENDING":
-      return "Pending";
-    case "READY":
-      return "Ready";
-    case "IN_PROGRESS":
-      return "In Progress";
-    case "BLOCKED":
-      return "Blocked";
-    case "COMPLETED":
-      return "Completed";
-    case "FAILED":
-      return "Failed";
-    case "SKIPPED":
-      return "Skipped";
-    default:
-      return state;
-  }
-}
 
 export function WorkflowTimeline({
   workflows,
@@ -247,18 +100,13 @@ export function WorkflowTimeline({
   onStepClick,
   onAddWorkflow,
   onCancelWorkflow,
+  onDeleteWorkflow,
 }: WorkflowTimelineProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const selectedStepRef = useRef<any>(null);
-
-  // Auto-scroll to the selected step within its local container
-  useEffect(() => {
-    if (selectedStepId && selectedStepRef.current) {
-      selectedStepRef.current.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-    }
-  }, [selectedStepId]);
-
   const canManageWorkflows = currentUserRole === "ADMIN" || currentUserRole === "LAWYER";
+  const [expandedWorkflowIds, setExpandedWorkflowIds] = useState<Record<string, boolean>>({});
+  const toggleWorkflow = (id: string) => {
+    setExpandedWorkflowIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   if (workflows.length === 0) {
     return (
@@ -294,141 +142,287 @@ export function WorkflowTimeline({
           </button>
         )}
       </div>
-      
+
       <div className="px-6 py-6">
         {workflows.map((workflow) => (
           <div key={workflow.id} className="mb-8 last:mb-0">
-              {/* Workflow Header */}
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div className="flex-1">
-                  <h4 className="font-medium text-slate-900">
-                    {workflow.template.name} · v{workflow.template.version ?? workflow.templateVersion}
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    Status: <span className="font-medium">{workflow.status}</span>
-                    {workflow.createdBy && (
-                      <> · Created by {workflow.createdBy.name || workflow.createdBy.email}</>
-                    )}
-                  </p>
+            {/* Workflow Header */}
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <h4 className="font-medium text-slate-900">
+                  {workflow.template.name} · v{workflow.template.version ?? workflow.templateVersion}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Status: <span className="font-medium">{workflow.status}</span>
+                  {workflow.createdBy && (
+                    <> · Created by {workflow.createdBy.name || workflow.createdBy.email}</>
+                  )}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-shrink-0 text-xs text-slate-500" data-testid="workflow-progress">
+                  {workflow.steps.filter((step) => step.actionState === "COMPLETED").length} / {workflow.steps.length} completed
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex-shrink-0 text-xs text-slate-500" data-testid="workflow-progress">
-                    {workflow.steps.filter((step) => step.actionState === "COMPLETED").length} / {workflow.steps.length} completed
-                  </div>
-                  {canManageWorkflows && (
-                    <>
-                      {/* Edit Workflow Button - before Remove */}
-                      <a
-                        href={`/workflows/instances/${workflow.id}/edit`}
-                        className="rounded-lg border-2 border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
-                        title="Edit entire workflow"
+                {canManageWorkflows && (
+                  <>
+                    {/* Edit Workflow Button - before Remove */}
+                    <a
+                      href={`/workflows/instances/${workflow.id}/edit`}
+                      className="rounded-lg border-2 border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
+                      title="Edit entire workflow"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
                       >
-                        <svg
-                          className="h-3.5 w-3.5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                      Edit Workflow
+                    </a>
+                    {/* Cancel Workflow Button */}
+                    {onCancelWorkflow && (
+                      <button
+                        type="button"
+                        onClick={() => onCancelWorkflow(workflow.id)}
+                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                        title="Cancel Workflow"
+                      >
+                        Cancel Workflow
+                      </button>
+                    )}
+                    {/* Delete Workflow Button */}
+                    {onDeleteWorkflow && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteWorkflow(workflow.id)}
+                        className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black"
+                        title="Delete Workflow"
+                        style={{ marginLeft: 4 }}
+                      >
+                        Delete Workflow
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleWorkflow(workflow.id)}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-600 hover:shadow transition-colors"
+                    >
+                      <span>{expandedWorkflowIds[workflow.id] ?? true ? "Hide Timeline" : "Show Timeline"}</span>
+                      {expandedWorkflowIds[workflow.id] ?? true ? (
+                        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                           <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            fillRule="evenodd"
+                            d="M5.23 7.21a.75.75 0 011.06.02L10 10.939l3.71-3.71a.75.75 0 111.06 1.062L10.53 12.53a.75.75 0 01-1.06 0L5.21 8.293a.75.75 0 01.02-1.082z"
+                            clipRule="evenodd"
                           />
                         </svg>
-                        Edit Workflow
-                      </a>
-                      {onCancelWorkflow && (
-                        <button
-                          type="button"
-                          onClick={() => onCancelWorkflow(workflow.id)}
-                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-                          title="Cancel Workflow"
-                        >
-                          Cancel Workflow
-                        </button>
+                      ) : (
+                        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M14.77 12.79a.75.75 0 01-1.06-.02L10 9.061l-3.71 3.71a.75.75 0 11-1.06-1.062l4.24-4.24a.75.75 0 011.06 0l4.24 4.24a.75.75 0 01-.02 1.082z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
                       )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Timeline Steps - Grouped by Dependency Level */}
-              <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
-                <div className="space-y-4 p-4">
-                  {groupStepsByLevel(workflow.steps).map((levelSteps, levelIndex) => (
-                    <div key={levelIndex} className="flex w-max items-stretch gap-0">
-                      {levelSteps.map((step, stepIndex) => {
-                        const isSelected = step.id === selectedStepId;
-                        
-                        return (
-                          <div key={step.id} className="flex shrink-0 items-stretch gap-0">
-                            {/* Step Card */}
-                            <div
-                              ref={isSelected ? selectedStepRef : null}
-                              onClick={() => onStepClick(workflow.id, step.id)}
-                              data-testid={`timeline-step-${step.id}`}
-                              data-state={step.actionState}
-                              className={`flex w-64 shrink-0 flex-col gap-3 rounded-xl border-2 p-4 transition-transform duration-200 ${getStepStyles(step.actionState, isSelected)}`}
-                            >
-                        {/* Header with Icon and Title */}
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0">
-                            {getStepIcon(step.actionState)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="truncate text-base font-semibold">
-                              {step.title}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Details */}
-                        <div className="space-y-1 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="opacity-70">Type:</span>
-                            <span className="font-medium">{getActionTypeLabel(step.actionType)}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="opacity-70">Status:</span>
-                            <span className="font-medium">{getStateLabel(step.actionState)}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="opacity-70">Role:</span>
-                            <span className="font-medium">{step.roleScope}</span>
-                          </div>
-                          {step.required && (
-                            <div className="mt-1 rounded bg-black/10 px-2 py-0.5 text-center text-xs font-medium">
-                              Required
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Arrow Connector - only between steps in the same chain */}
-                      {stepIndex < levelSteps.length - 1 && (
-                        <div className="flex items-center px-3 text-slate-400">
-                          <svg
-                            className="h-8 w-8"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                    </div>
-                  ))}
-                </div>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
-          ))}
+
+            {(expandedWorkflowIds[workflow.id] ?? true) ? (
+              <WorkflowTimelineCanvas
+                workflow={workflow}
+                selectedStepId={selectedStepId}
+                onStepClick={onStepClick}
+              />
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-center text-xs text-slate-500">
+                Canvas hidden. Click "Show Canvas" to visualize steps.
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
+}
+type WorkflowTimelineCanvasProps = {
+  workflow: WorkflowTimelineInstance;
+  selectedStepId: string | null;
+  onStepClick: (workflowId: string, stepId: string) => void;
+};
+
+const nodeTypes = { timelineNode: WorkflowTimelineNode };
+
+function WorkflowTimelineCanvas({ workflow, selectedStepId, onStepClick }: WorkflowTimelineCanvasProps) {
+  if (workflow.steps.length === 0) {
+    return (
+      <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
+        This workflow has no steps yet.
+      </div>
+    );
+  }
+
+  const nodes = buildTimelineNodes(workflow, selectedStepId);
+  const edges = buildTimelineEdges(workflow);
+  const height = computeCanvasHeight(workflow.steps);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/80 p-2">
+      <div style={{ height }} className="w-full">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          minZoom={0.2}
+          maxZoom={1.5}
+          defaultEdgeOptions={{
+            type: "smoothstep",
+            markerEnd: { type: MarkerType.ArrowClosed },
+          }}
+          onNodeClick={(_, node) => onStepClick(workflow.id, node.id)}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+          <MiniMap pannable zoomable />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
+    </div>
+  );
+}
+
+function buildTimelineNodes(workflow: WorkflowTimelineInstance, selectedStepId: string | null): Node[] {
+  return workflow.steps.map((step, index) => {
+    const fallback = getFallbackPosition(index);
+    const position = {
+      x: typeof step.positionX === "number" ? step.positionX : fallback.x,
+      y: typeof step.positionY === "number" ? step.positionY : fallback.y,
+    };
+    const showDefaultHandle = hasDefaultOutgoingDependency(step, workflow);
+
+    return {
+      id: step.id,
+      type: "timelineNode",
+      position,
+      data: {
+        step,
+        isSelected: step.id === selectedStepId,
+        showDefaultHandle,
+      },
+      draggable: false,
+    };
+  });
+}
+
+function buildTimelineEdges(workflow: WorkflowTimelineInstance): Edge[] {
+  const edges: Edge[] = [];
+  const steps = workflow.steps;
+  const stepById = new Map(steps.map((step) => [step.id, step]));
+  const dependencies = workflow.dependencies || [];
+
+  // Build edges from dependencies array
+  dependencies.forEach((dep) => {
+    if (!stepById.has(dep.sourceStepId) || !stepById.has(dep.targetStepId)) return;
+
+    let edgeStyle = { stroke: "#cbd5f5", strokeWidth: 2 };
+    let markerColor = "#94a3b8";
+    let sourceHandle = "next";
+    let label: string | undefined;
+
+    // Handle different dependency types
+    switch (dep.dependencyType) {
+      case "IF_TRUE_BRANCH":
+        edgeStyle = { stroke: "#10b981", strokeWidth: 2 };
+        markerColor = "#10b981";
+        sourceHandle = "approve";
+        label = "Approve";
+        break;
+      case "IF_FALSE_BRANCH":
+        edgeStyle = { stroke: "#ef4444", strokeWidth: 2 };
+        markerColor = "#ef4444";
+        sourceHandle = "reject";
+        label = "Reject";
+        break;
+      case "DEPENDS_ON":
+      default:
+        // Default dependency styling
+        break;
+    }
+
+    edges.push({
+      id: `${dep.sourceStepId}-${dep.targetStepId}`,
+      source: dep.sourceStepId,
+      sourceHandle,
+      target: dep.targetStepId,
+      type: "smoothstep",
+      animated: false,
+      label,
+      style: edgeStyle,
+      markerEnd: { type: MarkerType.ArrowClosed, color: markerColor },
+      data: dep.dependencyType === "IF_TRUE_BRANCH" ? { branchCase: "approve" } :
+            dep.dependencyType === "IF_FALSE_BRANCH" ? { branchCase: "reject" } : undefined,
+    });
+  });
+
+  return edges;
+}
+
+function getFallbackPosition(index: number) {
+  const columnWidth = 260;
+  const rowHeight = 180;
+  const columns = 4;
+  const column = index % columns;
+  const row = Math.floor(index / columns);
+  return {
+    x: column * columnWidth + 40,
+    y: row * rowHeight + 40,
+  };
+}
+
+function computeCanvasHeight(steps: WorkflowTimelineStep[]) {
+  if (steps.length === 0) return 240;
+  const maxY = Math.max(
+    ...steps.map((step, index) =>
+      typeof step.positionY === "number" ? step.positionY : getFallbackPosition(index).y,
+    ),
+  );
+
+  return Math.max(280, maxY + 160);
+}
+
+function hasDefaultOutgoingDependency(step: WorkflowTimelineStep, workflow: WorkflowTimelineInstance) {
+  const dependencies = workflow.dependencies || [];
+  const branchTrueTarget = step.nextStepOnTrue;
+  const branchFalseTarget = step.nextStepOnFalse;
+
+  return dependencies.some((dep) => {
+    if (dep.sourceStepId !== step.id) {
+      return false;
+    }
+
+    // Exclude branching dependencies
+    if (branchTrueTarget && dep.targetStepId === branchTrueTarget && dep.dependencyType === "IF_TRUE_BRANCH") {
+      return false;
+    }
+    if (branchFalseTarget && dep.targetStepId === branchFalseTarget && dep.dependencyType === "IF_FALSE_BRANCH") {
+      return false;
+    }
+
+    // Include DEPENDS_ON and TRIGGERS dependencies
+    return dep.dependencyType === "DEPENDS_ON" || dep.dependencyType === "TRIGGERS";
+  });
 }

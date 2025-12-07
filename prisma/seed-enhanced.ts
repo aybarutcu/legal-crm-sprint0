@@ -630,7 +630,8 @@ async function main() {
       steps: {
         create: [
           {
-            order: 0,
+            positionX: 100,
+            positionY: 100,
             title: "Checklist: Discovery hazırlık",
             actionType: ActionType.CHECKLIST,
             roleScope: RoleScope.ADMIN,
@@ -639,9 +640,10 @@ async function main() {
             },
           },
           {
-            order: 1,
+            positionX: 300,
+            positionY: 100,
             title: "Lawyer approval of discovery plan",
-            actionType: ActionType.APPROVAL_LAWYER,
+            actionType: ActionType.APPROVAL,
             roleScope: RoleScope.LAWYER,
             actionConfig: {
               approverRole: "LAWYER",
@@ -649,9 +651,10 @@ async function main() {
             },
           },
           {
-            order: 2,
+            positionX: 500,
+            positionY: 100,
             title: "Client signature on engagement",
-            actionType: ActionType.SIGNATURE_CLIENT,
+            actionType: ActionType.SIGNATURE,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               documentId: documents[0].id,
@@ -659,9 +662,10 @@ async function main() {
             },
           },
           {
-            order: 3,
+            positionX: 700,
+            positionY: 100,
             title: "Request outstanding discovery documents",
-            actionType: ActionType.REQUEST_DOC_CLIENT,
+            actionType: ActionType.REQUEST_DOC,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               requestText: "Lütfen aşağıdaki belgeleri yükleyin",
@@ -669,9 +673,10 @@ async function main() {
             },
           },
           {
-            order: 4,
+            positionX: 900,
+            positionY: 100,
             title: "Collect discovery retainer payment",
-            actionType: ActionType.PAYMENT_CLIENT,
+            actionType: ActionType.PAYMENT,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               amount: 5000,
@@ -687,6 +692,22 @@ async function main() {
     },
   });
 
+  // Set up ID-based dependencies: each step depends on the previous one
+  const steps = discoveryTemplate.steps;
+  for (let i = 1; i < steps.length; i++) {
+    const currentStep = steps[i];
+    const previousStep = steps[i - 1];
+    await prisma.workflowTemplateDependency.create({
+      data: {
+        templateId: discoveryTemplate.id,
+        sourceStepId: previousStep.id,
+        targetStepId: currentStep.id,
+        dependencyType: "DEPENDS_ON",
+        dependencyLogic: "ALL",
+      },
+    });
+  }
+
   await prisma.workflowInstance.create({
     data: {
       templateId: discoveryTemplate.id,
@@ -697,7 +718,6 @@ async function main() {
       steps: {
         create: discoveryTemplate.steps.map((step, index) => ({
           templateStepId: step.id,
-          order: step.order,
           title: step.title,
           actionType: step.actionType,
           roleScope: step.roleScope,

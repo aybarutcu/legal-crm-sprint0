@@ -84,10 +84,10 @@ export function registerDefaultWorkflowHandlers(): void {
 ```
 
 **Available Action Types** (8 total):
-- `APPROVAL_LAWYER` - Internal approval by lawyer
-- `SIGNATURE_CLIENT` - Client e-signature request
+- `APPROVAL` - Internal approval by lawyer
+- `SIGNATURE` - Client e-signature request
 - `REQUEST_DOC` - Document request from client
-- `PAYMENT_CLIENT` - Payment request from client
+- `PAYMENT` - Payment request from client
 - `TASK` - Task assignment
 - `CHECKLIST` - Multi-item checklist
 - `WRITE_TEXT` - Text input/writing task

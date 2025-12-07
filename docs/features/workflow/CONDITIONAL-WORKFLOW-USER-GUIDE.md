@@ -118,7 +118,7 @@ Each step has:
 **Configuration**:
 ```
 Step Title: Request Corporate Documents
-Action Type: REQUEST_DOC_CLIENT
+Action Type: REQUEST_DOC
 Execution Condition: Execute if Condition is True
 Condition:
   ├─ Field Path: contactType
@@ -225,7 +225,7 @@ Use **OR** when ANY condition can be true:
 **Configuration**:
 ```
 Step Title: Collect Payment
-Action Type: PAYMENT_CLIENT
+Action Type: PAYMENT
 Execution Condition: Execute if Condition is True
 Compound Condition (AND):
   ├─ Condition 1: approvalDecision equals "APPROVED"

@@ -60,9 +60,7 @@ export const POST = withApiHandler(async (req: NextRequest, { session }) => {
     include: {
       questionnaire: {
         include: {
-          questions: {
-            orderBy: { order: "asc" },
-          },
+          questions: true,
         },
       },
     },

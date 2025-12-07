@@ -25,7 +25,7 @@ async function main() {
         where: { status: "ACTIVE" },
         include: {
           steps: {
-            orderBy: { order: "asc" },
+            orderBy: { createdAt: "asc" },
           },
           template: true,
         },
@@ -57,7 +57,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log(`🔄 Completing: Step ${activeStep.order} - ${activeStep.title}`);
+  console.log(`🔄 Completing: Step ${activeStep.id} - ${activeStep.title}`);
   console.log(`   Type: ${activeStep.actionType}`);
   console.log(`   State: ${activeStep.actionState}\n`);
 
@@ -78,7 +78,7 @@ async function main() {
       },
     });
     console.log(`✅ Checklist completed (${items.length} items checked)`);
-  } else if (activeStep.actionType === ActionType.APPROVAL_LAWYER) {
+  } else if (activeStep.actionType === ActionType.APPROVAL) {
     await prisma.workflowInstanceStep.update({
       where: { id: activeStep.id },
       data: {
@@ -105,24 +105,8 @@ async function main() {
     console.log("✅ Step completed");
   }
 
-  // Make next step READY
-  const nextStep = workflow.steps.find((s) => s.order === activeStep.order + 1);
-  if (nextStep && nextStep.actionState === ActionState.PENDING) {
-    await prisma.workflowInstanceStep.update({
-      where: { id: nextStep.id },
-      data: { actionState: ActionState.READY },
-    });
-    console.log(`🟢 Step ${nextStep.order} (${nextStep.title}) is now READY\n`);
-  } else if (!nextStep) {
-    console.log("\n🎉 This was the last step!");
-    
-    // Update workflow to COMPLETED
-    await prisma.workflowInstance.update({
-      where: { id: workflow.id },
-      data: { status: "COMPLETED" },
-    });
-    console.log("✅ Workflow marked as COMPLETED\n");
-  }
+  // Note: Next step advancement is now handled automatically by the workflow runtime system
+  console.log("✅ Step completed - workflow runtime will advance next steps based on dependencies");
 
   console.log("✨ Done!\n");
 }

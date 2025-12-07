@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         title: parsed.title,
         description: parsed.description,
         isActive: parsed.isActive,
-        createdById: session.user.id,
+        createdById: session.user!.id,
       },
     });
 

@@ -514,7 +514,7 @@ useEffect(() => {
 **Example of inline duplication:**
 ```typescript
 // MatterDetailClient.tsx
-type ActionType = "APPROVAL_LAWYER" | ...  // Duplicated
+type ActionType = "APPROVAL" | ...  // Duplicated
 type ActionState = "PENDING" | ...         // Duplicated
 type RoleScope = "ADMIN" | ...            // Duplicated
 

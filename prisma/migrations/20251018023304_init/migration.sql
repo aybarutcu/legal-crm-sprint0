@@ -26,7 +26,7 @@ CREATE TYPE "TaskPriority" AS ENUM ('LOW', 'MEDIUM', 'HIGH');
 CREATE TYPE "TaskStatus" AS ENUM ('OPEN', 'IN_PROGRESS', 'DONE', 'CANCELED');
 
 -- CreateEnum
-CREATE TYPE "ActionType" AS ENUM ('APPROVAL_LAWYER', 'SIGNATURE_CLIENT', 'REQUEST_DOC_CLIENT', 'PAYMENT_CLIENT', 'TASK', 'CHECKLIST', 'WRITE_TEXT', 'POPULATE_QUESTIONNAIRE');
+CREATE TYPE "ActionType" AS ENUM ('APPROVAL', 'SIGNATURE', 'REQUEST_DOC', 'PAYMENT', 'TASK', 'CHECKLIST', 'WRITE_TEXT', 'POPULATE_QUESTIONNAIRE', 'AUTOMATION_EMAIL', 'AUTOMATION_WEBHOOK');
 
 -- CreateEnum
 CREATE TYPE "RoleScope" AS ENUM ('ADMIN', 'LAWYER', 'PARALEGAL', 'CLIENT');
@@ -344,6 +344,7 @@ CREATE TABLE "WorkflowTemplateStep" (
     "title" TEXT NOT NULL,
     "actionType" "ActionType" NOT NULL,
     "actionConfig" JSONB NOT NULL,
+    "notificationPolicies" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "roleScope" "RoleScope" NOT NULL,
     "required" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -379,6 +380,9 @@ CREATE TABLE "WorkflowInstanceStep" (
     "required" BOOLEAN NOT NULL DEFAULT true,
     "actionState" "ActionState" NOT NULL DEFAULT 'PENDING',
     "actionData" JSONB,
+    "notificationPolicies" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "automationLog" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "notificationLog" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "assignedToId" TEXT,
     "dueDate" TIMESTAMP(3),
     "priority" "TaskPriority" DEFAULT 'MEDIUM',

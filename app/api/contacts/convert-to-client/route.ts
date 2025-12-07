@@ -9,7 +9,7 @@ import { convertContactToClient, getContactForInvitation } from "@/lib/contact-t
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !["ADMIN", "LAWYER"].includes(session.user.role)) {
+  if (!session || !session.user?.role || !["ADMIN", "LAWYER"].includes(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !["ADMIN", "LAWYER"].includes(session.user.role)) {
+  if (!session || !session.user?.role || !["ADMIN", "LAWYER"].includes(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

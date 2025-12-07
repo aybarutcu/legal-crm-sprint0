@@ -3,14 +3,14 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { assertMatterAccess } from "@/lib/authorization";
+import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
+import { recordAuditLog } from "@/lib/audit";
 import "@/lib/workflows";
 import {
   ensureActorCanPerform,
   getWorkflowStepOrThrow,
   toStepWithTemplate,
 } from "@/lib/workflows/service";
-import { reindexInstanceSteps } from "@/lib/workflows/instances";
 import { WorkflowPermissionError } from "@/lib/workflows/errors";
 
 const updateSchema = z.object({
@@ -18,36 +18,40 @@ const updateSchema = z.object({
   roleScope: z.enum(["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"]).optional(),
   required: z.boolean().optional(),
   actionConfig: z.union([z.record(z.any()), z.array(z.any())]).optional(),
-  insertAfterStepId: z.string().nullable().optional(),
+  positionX: z.number().optional(),
+  positionY: z.number().optional(),
   dueDate: z.string().datetime().nullable().optional(),
   assignedToId: z.string().nullable().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
 });
 
-type Params = { params: { id: string; stepId: string } };
-
-export const PATCH = withApiHandler(
-  async (req: NextRequest, { session, params }: Params) => {
-    const user = session!.user!;
+export const PATCH = withApiHandler<{ id: string; stepId: string }>(
+  async (req: NextRequest, context) => {
+    const user = context.session!.user!;
     const actor = { id: user.id, role: user.role! };
     const payload = updateSchema.parse(await req.json());
 
     const updated = await prisma.$transaction(async (tx) => {
       const instance = await tx.workflowInstance.findUnique({
-        where: { id: params.id },
-        select: { id: true, matterId: true, status: true },
+        where: { id: context.params!.id },
+        select: { id: true, matterId: true, contactId: true, status: true },
       });
 
       if (!instance) {
         return NextResponse.json({ error: "Workflow instance not found" }, { status: 404 });
       }
 
-      await assertMatterAccess(user, instance.matterId);
+      if (instance.matterId) {
+        await assertMatterAccess(user, instance.matterId);
+      } else if (instance.contactId) {
+        await assertContactAccess(user, instance.contactId);
+      }
+
       if (user.role !== "ADMIN" && instance.status !== "DRAFT") {
         throw new WorkflowPermissionError("Only admins can modify active workflows");
       }
 
-      const row = await getWorkflowStepOrThrow(tx, params.stepId);
+      const row = await getWorkflowStepOrThrow(tx, context.params!.stepId);
       const step = toStepWithTemplate(row);
 
       if (step.instanceId !== instance.id) {
@@ -56,46 +60,14 @@ export const PATCH = withApiHandler(
 
       await ensureActorCanPerform(tx, step, actor);
 
-      let targetOrder = step.order;
-
-      if (payload.insertAfterStepId !== undefined) {
-        const steps = await tx.workflowInstanceStep.findMany({
-          where: { instanceId: instance.id },
-          orderBy: { order: "asc" },
-        });
-
-        const filtered = steps.filter((item) => item.id !== step.id);
-        const sequence = filtered.map((item) => item.id);
-
-        if (payload.insertAfterStepId) {
-          const idx = sequence.findIndex((id) => id === payload.insertAfterStepId);
-          if (idx === -1) {
-            throw new WorkflowPermissionError("Reference step not found");
-          }
-          sequence.splice(idx + 1, 0, step.id);
-        } else {
-          sequence.unshift(step.id);
-        }
-
-        for (let order = 0; order < sequence.length; order += 1) {
-          const id = sequence[order];
-          await tx.workflowInstanceStep.update({
-            where: { id },
-            data: { order, updatedAt: new Date() },
-          });
-          if (id === step.id) {
-            targetOrder = order;
-          }
-        }
-      }
-
       const updatedStep = await tx.workflowInstanceStep.update({
         where: { id: step.id },
         data: {
           title: payload.title ?? step.title,
           roleScope: payload.roleScope ?? step.roleScope,
           required: payload.required ?? step.required,
-          order: targetOrder,
+          positionX: payload.positionX ?? step.positionX,
+          positionY: payload.positionY ?? step.positionY,
           dueDate: payload.dueDate !== undefined 
             ? (payload.dueDate ? new Date(payload.dueDate) : null)
             : step.dueDate,
@@ -107,10 +79,10 @@ export const PATCH = withApiHandler(
             : step.priority,
           actionData:
             payload.actionConfig !== undefined
-              ? {
-                  ...(step.actionData ?? { config: {}, history: [] }),
+              ? ({
+                  ...((step.actionData as { config: unknown; history: unknown[] } | null) ?? { config: {}, history: [] }),
                   config: payload.actionConfig,
-                }
+                } as any) // eslint-disable-line @typescript-eslint/no-explicit-any
               : step.actionData,
         },
         include: {
@@ -125,7 +97,25 @@ export const PATCH = withApiHandler(
         },
       });
 
-      await reindexInstanceSteps(tx, instance.id);
+      // Create audit log for metadata changes
+      const metadataChanges: Record<string, unknown> = {};
+      if (payload.dueDate !== undefined) metadataChanges.dueDate = payload.dueDate;
+      if (payload.assignedToId !== undefined) metadataChanges.assignedToId = payload.assignedToId;
+      if (payload.priority !== undefined) metadataChanges.priority = payload.priority;
+
+      if (Object.keys(metadataChanges).length > 0 && instance.matterId) {
+        await recordAuditLog({
+          actorId: user.id,
+          action: "workflow.step.update",
+          entityType: "matter",
+          entityId: instance.matterId,
+          metadata: {
+            stepId: updatedStep.id,
+            stepTitle: updatedStep.title,
+            changes: metadataChanges,
+          },
+        });
+      }
 
       return updatedStep;
     });
@@ -138,13 +128,13 @@ export const PATCH = withApiHandler(
   },
 );
 
-export const DELETE = withApiHandler(
-  async (_req: NextRequest, { session, params }: Params) => {
-    const user = session!.user!;
+export const DELETE = withApiHandler<{ id: string; stepId: string }>(
+  async (_req: NextRequest, context) => {
+    const user = context.session!.user!;
 
     await prisma.$transaction(async (tx) => {
       const instance = await tx.workflowInstance.findUnique({
-        where: { id: params.id },
+        where: { id: context.params!.id },
         select: { id: true, matterId: true, status: true },
       });
 
@@ -152,17 +142,18 @@ export const DELETE = withApiHandler(
         throw new WorkflowPermissionError("Workflow instance not found");
       }
 
-      await assertMatterAccess(user, instance.matterId);
+      if (instance.matterId) {
+        await assertMatterAccess(user, instance.matterId);
+      }
 
       if (user.role !== "ADMIN") {
         throw new WorkflowPermissionError("Only admins may remove steps");
       }
 
       await tx.workflowInstanceStep.delete({
-        where: { id: params.stepId },
+        where: { id: context.params!.stepId },
       });
 
-      await reindexInstanceSteps(tx, instance.id);
     });
 
     return new NextResponse(null, { status: 204 });

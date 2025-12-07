@@ -1,7 +1,7 @@
 /*
   Warnings:
 
-  - The values [REQUEST_DOC_CLIENT] on the enum `ActionType` will be removed. If these variants are still used in the database, this will fail.
+  - The values [REQUEST_DOC] on the enum `ActionType` will be removed. If these variants are still used in the database, this will fail.
 
 */
 -- Step 1: Add new enum value (must be in separate transaction)

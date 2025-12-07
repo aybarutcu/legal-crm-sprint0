@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { ActionState } from "@prisma/client";
 import type { WorkflowActor, WorkflowActorSnapshot, WorkflowInstanceStepWithTemplate } from "./types";
 import { canPerformAction } from "./permissions";
-import { loadWorkflowActorSnapshot } from "./roles";
+import { loadWorkflowActorSnapshot, loadContactWorkflowActorSnapshot } from "./roles";
 import { WorkflowNotFoundError, WorkflowPermissionError } from "./errors";
 import { assertTransition } from "./state-machine";
 import { WorkflowMetrics } from "./observability";
@@ -29,13 +29,7 @@ export async function getWorkflowStepOrThrow(
     where: { id: stepId },
     include: {
       templateStep: true,
-      instance: {
-        select: {
-          id: true,
-          matterId: true,
-          status: true,
-        },
-      },
+      instance: true,
     },
   });
 
@@ -51,16 +45,36 @@ export async function ensureActorCanPerform(
   step: WorkflowInstanceStepWithTemplate,
   actor: WorkflowActor,
 ): Promise<WorkflowActorSnapshot> {
-  const snapshot = await loadWorkflowActorSnapshot(tx, step.instance.matterId);
-  const allowed = canPerformAction({
-    actor,
-    step,
-    snapshot,
-  });
-  if (!allowed.canPerform) {
-    throw new WorkflowPermissionError(allowed.reason ?? "Actor cannot perform this action");
+  // Check if this is a matter workflow or contact workflow
+  if (step.instance.matterId) {
+    // Matter workflow - use existing logic
+    const snapshot = await loadWorkflowActorSnapshot(tx, step.instance.matterId);
+    const allowed = canPerformAction({
+      actor,
+      step,
+      snapshot,
+    });
+    if (!allowed.canPerform) {
+      throw new WorkflowPermissionError(allowed.reason ?? "Actor cannot perform this action");
+    }
+    return snapshot;
+  } else if (step.instance.contactId) {
+    // Contact workflow - check contact access and load contact actor snapshot
+    // Note: We need to check contact access at the API level, not here
+    // This function focuses on workflow permissions, not entity access
+    const snapshot = await loadContactWorkflowActorSnapshot(tx, step.instance.contactId);
+    const allowed = canPerformAction({
+      actor,
+      step,
+      snapshot,
+    });
+    if (!allowed.canPerform) {
+      throw new WorkflowPermissionError(allowed.reason ?? "Actor cannot perform this action");
+    }
+    return snapshot;
+  } else {
+    throw new WorkflowPermissionError("Workflow instance must be associated with either a matter or contact");
   }
-  return snapshot;
 }
 
 export async function setStepState(
@@ -106,7 +120,6 @@ export async function advanceInstanceReadySteps(
 ): Promise<number> {
   const steps = await tx.workflowInstanceStep.findMany({
     where: { instanceId },
-    orderBy: { order: "asc" },
   });
 
   const firstPending = steps.find((item) => item.actionState === ActionState.PENDING);
@@ -148,7 +161,7 @@ export async function refreshInstanceStatus(
   }
 
   const allComplete = steps.every((item) =>
-    [ActionState.COMPLETED, ActionState.SKIPPED].includes(item.actionState),
+    item.actionState === ActionState.COMPLETED || item.actionState === ActionState.SKIPPED,
   );
 
   if (allComplete) {

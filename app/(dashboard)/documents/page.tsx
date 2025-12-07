@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { DocumentsPageClient } from "@/components/documents/DocumentsPageClient";
 import type {
   DocumentListItem,
@@ -31,6 +32,9 @@ export default async function DocumentsPage({
     contactId: Array.isArray(resolvedSearchParams.contactId)
       ? resolvedSearchParams.contactId[0]
       : resolvedSearchParams.contactId,
+    folderId: Array.isArray(resolvedSearchParams.folderId)
+      ? resolvedSearchParams.folderId[0]
+      : resolvedSearchParams.folderId,
     uploaderId: Array.isArray(resolvedSearchParams.uploaderId)
       ? resolvedSearchParams.uploaderId[0]
       : resolvedSearchParams.uploaderId,
@@ -50,7 +54,7 @@ export default async function DocumentsPage({
     redirect(`/documents?page=1&pageSize=20`);
   }
 
-  const { q, matterId, contactId, uploaderId, tags, page, pageSize } = parsed.data;
+  const { q, matterId, contactId, folderId, uploaderId, tags, page, pageSize } = parsed.data;
   const skip = (page - 1) * pageSize;
   const tagList = tags
     ? tags
@@ -62,31 +66,63 @@ export default async function DocumentsPage({
   const where = {
     ...(matterId ? { matterId } : {}),
     ...(contactId ? { contactId } : {}),
+    ...(folderId ? { folderId } : {}),
     ...(uploaderId ? { uploaderId } : {}),
     ...(tagList.length ? { tags: { hasSome: tagList } } : {}),
     ...(q
       ? {
           OR: [
-            { filename: { contains: q, mode: "insensitive" } },
+            { filename: { contains: q, mode: Prisma.QueryMode.insensitive } },
             { tags: { has: q } },
           ],
         }
       : {}),
-  } satisfies Parameters<typeof prisma.document.findMany>[0]["where"];
+  };
 
-  const documents = await prisma.document.findMany({
+  // Fetch ALL documents matching the filter (not paginated yet)
+  const allDocuments = await prisma.document.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    skip,
-    take: pageSize,
-    include: {
+    select: {
+      id: true,
+      filename: true,
+      displayName: true,
+      mime: true,
+      size: true,
+      version: true,
+      parentDocumentId: true,
+      tags: true,
+      storageKey: true,
+      hash: true,
+      createdAt: true,
+      signedAt: true,
+      workflowStepId: true,
+      folderId: true,
       matter: { select: { id: true, title: true } },
       contact: { select: { id: true, firstName: true, lastName: true } },
       uploader: { select: { id: true, name: true, email: true } },
     },
-  });
+  }) as any;
 
-  const total = await prisma.document.count({ where });
+  // Group by root document and keep only latest version
+  const latestVersionsMap = new Map<string, typeof allDocuments[0]>();
+  
+  for (const doc of allDocuments) {
+    const rootId = doc.parentDocumentId || doc.id;
+    const existing = latestVersionsMap.get(rootId);
+    
+    if (!existing || doc.version > existing.version) {
+      latestVersionsMap.set(rootId, doc);
+    }
+  }
+  
+  // Convert map to array and apply pagination
+  const groupedDocuments = Array.from(latestVersionsMap.values())
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(skip, skip + pageSize);
+    
+  const total = latestVersionsMap.size;
+  const documents = groupedDocuments;
 
   const [matters, contacts, uploaders] = await Promise.all([
     prisma.matter.findMany({
@@ -105,17 +141,20 @@ export default async function DocumentsPage({
     }),
   ]);
 
-  const documentItems: DocumentListItem[] = documents.map((doc) => ({
+  const documentItems: DocumentListItem[] = documents.map((doc: any) => ({
     id: doc.id,
     filename: doc.filename,
+    displayName: doc.displayName,
     mime: doc.mime,
     size: doc.size,
     version: doc.version,
     tags: doc.tags,
     storageKey: doc.storageKey,
     hash: doc.hash ?? null,
+    folderId: doc.folderId ?? null,
     createdAt: doc.createdAt.toISOString(),
     signedAt: doc.signedAt?.toISOString() ?? null,
+    workflowStepId: doc.workflowStepId ?? null,
     matter: doc.matter,
     contact: doc.contact,
     uploader: doc.uploader,
@@ -152,7 +191,7 @@ export default async function DocumentsPage({
         hasNext: skip + pageSize < total,
         hasPrev: page > 1,
       }}
-      filters={{ q, matterId, contactId, uploaderId, tags }}
+      filters={{ q, matterId, contactId, folderId, uploaderId, tags }}
       maxUploadBytes={MAX_UPLOAD_BYTES}
     />
   );

@@ -9,7 +9,7 @@ export const GET = withApiHandler(async (req: NextRequest, { session }) => {
   const user = session!.user!;
 
   // Only ADMIN/LAWYER can manage questionnaires
-  if (![Role.ADMIN, Role.LAWYER].includes(user.role!)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((user.role!) as "ADMIN" | "LAWYER")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -66,7 +66,7 @@ export const POST = withApiHandler(async (req: NextRequest, { session }) => {
   const user = session!.user!;
 
   // Only ADMIN/LAWYER can create questionnaires
-  if (![Role.ADMIN, Role.LAWYER].includes(user.role!)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((user.role!) as "ADMIN" | "LAWYER")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -92,9 +92,7 @@ export const POST = withApiHandler(async (req: NextRequest, { session }) => {
       },
     },
     include: {
-      questions: {
-        orderBy: { order: "asc" },
-      },
+      questions: true,
       createdBy: {
         select: { id: true, name: true, email: true },
       },

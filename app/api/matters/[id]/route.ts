@@ -77,9 +77,47 @@ export const PATCH = withApiHandler<MatterParams>(async (req, { params, session 
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const updated = await prisma.matter.update({
-    where: { id: params!.id },
-    data: update,
+  // Use transaction to update matter and sync folder name atomically
+  const updated = await prisma.$transaction(async (tx) => {
+    // Update matter
+    const matter = await tx.matter.update({
+      where: { id: params!.id },
+      data: update,
+    });
+
+    // If title changed, sync matter's root folder name
+    if (update.title && update.title !== existing.title) {
+      // Find matter's root folder
+      const matterFolder = await tx.documentFolder.findFirst({
+        where: {
+          matterId: params!.id,
+          parentFolderId: { not: null }, // Has a parent (not orphaned)
+          deletedAt: null,
+        },
+      });
+
+      if (matterFolder) {
+        await tx.documentFolder.update({
+          where: { id: matterFolder.id },
+          data: { name: update.title },
+        });
+
+        await recordAuditLog({
+          actorId: userId,
+          action: "folder.name_synced",
+          entityType: "folder",
+          entityId: matterFolder.id,
+          metadata: {
+            oldName: existing.title,
+            newName: update.title,
+            reason: "matter_title_changed",
+            matterId: params!.id,
+          },
+        });
+      }
+    }
+
+    return matter;
   });
 
   await recordAuditLog({

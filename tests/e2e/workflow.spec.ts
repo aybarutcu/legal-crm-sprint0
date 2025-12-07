@@ -4,7 +4,7 @@
  * Tests the complete workflow lifecycle:
  * 1. Create a 3-step workflow template via UI
  * 2. Instantiate the template to a matter
- * 3. Execute steps in sequence: CHECKLIST → APPROVAL_LAWYER → REQUEST_DOC_CLIENT
+ * 3. Execute steps in sequence: CHECKLIST → APPROVAL → REQUEST_DOC
  * 4. Verify audit trail and state transitions
  * 5. Verify notifications are triggered (if enabled)
  */
@@ -61,21 +61,21 @@ async function createThreeStepTemplate(page: Page) {
     await checklistConfig.fill('["Review requirements", "Verify documentation"]');
   }
   
-  // Add Step 2: APPROVAL_LAWYER
+  // Add Step 2: APPROVAL
   await page.click('button:has-text("Add Step")');
   const stepInputs = page.locator('input[placeholder*="Step Title"], input[placeholder*="step title"]');
-  await stepInputs.nth(1).fill("Lawyer Approval");
+  await stepInputs.nth(1).fill("Approval");
   
   const actionTypeSelects = page.locator('select[name*="actionType"]');
-  await actionTypeSelects.nth(1).selectOption("APPROVAL_LAWYER");
+  await actionTypeSelects.nth(1).selectOption("APPROVAL");
   
   const roleScopeSelects = page.locator('select[name*="roleScope"]');
   await roleScopeSelects.nth(1).selectOption("LAWYER");
   
-  // Add Step 3: REQUEST_DOC_CLIENT
+  // Add Step 3: REQUEST_DOC
   await page.click('button:has-text("Add Step")');
   await stepInputs.nth(2).fill("Request Client Documents");
-  await actionTypeSelects.nth(2).selectOption("REQUEST_DOC_CLIENT");
+  await actionTypeSelects.nth(2).selectOption("REQUEST_DOC");
   await roleScopeSelects.nth(2).selectOption("CLIENT");
   
   // Submit template creation
@@ -196,11 +196,11 @@ async function executeChecklistStep(page: Page) {
 }
 
 /**
- * Execute APPROVAL_LAWYER step
+ * Execute APPROVAL step
  */
 async function executeApprovalStep(page: Page) {
-  // Find the APPROVAL_LAWYER step card
-  const approvalStep = page.locator('[data-testid*="workflow-step"]:has-text("Lawyer Approval")').first();
+  // Find the APPROVAL step card
+  const approvalStep = page.locator('[data-testid*="workflow-step"]:has-text("Approval")').first();
   
   // Verify it's in READY state (should be automatically advanced)
   await expect(approvalStep.getByText(/READY/i)).toBeVisible({ timeout: 5000 });
@@ -219,20 +219,20 @@ async function executeApprovalStep(page: Page) {
   // Verify step is COMPLETED
   await expect(approvalStep.getByText(/COMPLETED/i)).toBeVisible({ timeout: 5000 });
   
-  console.log("✓ Completed APPROVAL_LAWYER step");
+  console.log("✓ Completed APPROVAL step");
 }
 
 /**
- * Execute REQUEST_DOC_CLIENT step (simulate document upload)
+ * Execute REQUEST_DOC step (simulate document upload)
  */
 async function executeRequestDocStep(page: Page) {
-  // Find the REQUEST_DOC_CLIENT step card
+  // Find the REQUEST_DOC step card
   const docRequestStep = page.locator('[data-testid*="workflow-step"]:has-text("Request Client Documents")').first();
   
   // Verify it's in READY state
   await expect(docRequestStep.getByText(/READY/i)).toBeVisible({ timeout: 5000 });
   
-  // For REQUEST_DOC_CLIENT, we might need to simulate document upload
+  // For REQUEST_DOC, we might need to simulate document upload
   // This could involve clicking "Upload" button and handling file upload
   
   const uploadButton = docRequestStep.locator('button:has-text("Upload"), input[type="file"]').first();
@@ -263,7 +263,7 @@ async function executeRequestDocStep(page: Page) {
     docRequestStep.locator('text=/COMPLETED|SKIPPED/i')
   ).toBeVisible({ timeout: 5000 });
   
-  console.log("✓ Completed REQUEST_DOC_CLIENT step");
+  console.log("✓ Completed REQUEST_DOC step");
 }
 
 /**
@@ -323,12 +323,12 @@ test.describe("WF-114: E2E Workflow Smoke Test", () => {
     console.log("7. Executing CHECKLIST step...");
     await executeChecklistStep(page);
     
-    // Step 8: Execute APPROVAL_LAWYER step
-    console.log("8. Executing APPROVAL_LAWYER step...");
+    // Step 8: Execute APPROVAL step
+    console.log("8. Executing APPROVAL step...");
     await executeApprovalStep(page);
     
-    // Step 9: Execute REQUEST_DOC_CLIENT step
-    console.log("9. Executing REQUEST_DOC_CLIENT step...");
+    // Step 9: Execute REQUEST_DOC step
+    console.log("9. Executing REQUEST_DOC step...");
     await executeRequestDocStep(page);
     
     // Step 10: Verify audit trail

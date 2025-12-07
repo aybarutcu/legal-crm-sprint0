@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { assertTaskAccess } from "@/app/api/tasks/_helpers";
 
-export const DELETE = withApiHandler(
+export const DELETE = withApiHandler<{ linkId: string }>(
   async (_req: NextRequest, { params, session }) => {
     const user = session!.user!;
     const linkId = params!.linkId;

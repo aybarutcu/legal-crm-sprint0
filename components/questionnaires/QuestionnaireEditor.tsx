@@ -239,9 +239,7 @@ export function QuestionnaireEditor({ questionnaire }: QuestionnaireEditorProps)
 
         {/* Preview Content */}
         <QuestionnairePreview
-          title={title}
-          description={description}
-          questions={questions}
+          questionnaire={questionnaire}
         />
       </div>
     );

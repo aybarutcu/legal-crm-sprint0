@@ -22,25 +22,25 @@ Enhanced the TemplateCard component to replace raw JSON and basic bullet points 
 - Clean item list without HTML bullets
 - Text: `text-sm text-slate-700`
 
-**2. APPROVAL_LAWYER** 👤
+**2. APPROVAL** 👤
 - UserCheck icon in blue-500
 - Shows approver role in blue-600
 - Displays message in italic
 - Color theme: Blue
 
-**3. SIGNATURE_CLIENT** 📄
+**3. SIGNATURE** 📄
 - FileText icon in purple-500
 - Shows provider in purple-600
 - Document ID in monospace
 - Color theme: Purple
 
-**4. REQUEST_DOC_CLIENT** 📤
+**4. REQUEST_DOC** 📤
 - Upload icon in orange-500
 - Request text display
 - File type badges (orange-50/700)
 - Color theme: Orange
 
-**5. PAYMENT_CLIENT** 💳
+**5. PAYMENT** 💳
 - CreditCard icon in green-500
 - Formatted currency display
 - Provider information

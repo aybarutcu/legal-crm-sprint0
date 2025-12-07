@@ -8,6 +8,7 @@ import type {
   Prisma,
   PrismaClient,
 } from "@prisma/client";
+import type { NotificationPolicy } from "./notification-policy";
 
 export type WorkflowActor = {
   id: string;
@@ -16,7 +17,8 @@ export type WorkflowActor = {
 
 export type WorkflowInstanceStepWithTemplate = WorkflowInstanceStep & {
   instance: WorkflowInstance;
-  templateStep?: Pick<WorkflowTemplateStep, "actionConfig" | "roleScope" | "actionType" | "required"> | null;
+  templateStep?: Pick<WorkflowTemplateStep, "actionConfig" | "roleScope" | "actionType" | "required" | "notificationPolicies"> | null;
+  notificationPolicies?: NotificationPolicy[];
 };
 
 export type WorkflowRuntimeContext<TConfig = unknown, TData = unknown> = {

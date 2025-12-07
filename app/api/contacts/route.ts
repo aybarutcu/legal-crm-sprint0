@@ -7,6 +7,7 @@ import {
 } from "@/lib/validation/contact";
 import { recordAuditLog } from "@/lib/audit";
 import { withApiHandler } from "@/lib/api-handler";
+import { Prisma } from "@prisma/client";
 
 export const GET = withApiHandler(async (req) => {
   const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries());
@@ -17,9 +18,9 @@ export const GET = withApiHandler(async (req) => {
     ...(q
       ? {
           OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
+            { firstName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { lastName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { email: { contains: q, mode: Prisma.QueryMode.insensitive } },
           ],
         }
       : {}),

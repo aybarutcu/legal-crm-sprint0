@@ -1,7 +1,6 @@
 "use client";
 
 import { Dispatch, SetStateAction, useState, useEffect } from "react";
-import Link from "next/link";
 import {
   X,
   CheckCircle2,
@@ -24,6 +23,7 @@ import {
   WriteTextExecution,
   PopulateQuestionnaireExecution,
   TaskExecution,
+  AutomationExecution,
 } from "@/components/workflows/execution";
 import {
   QuestionnaireResponseViewer,
@@ -32,8 +32,11 @@ import {
   ChecklistViewer,
   RequestDocViewer,
   TaskViewer,
+  ApprovalViewer,
+  AutomationViewer,
 } from "@/components/workflows/output";
 import type { WorkflowInstance, WorkflowInstanceStep } from "./types";
+import type { AutomationActionData } from "@/lib/workflows/automation/types";
 
 interface WorkflowStepDetailProps {
   step: WorkflowInstanceStep | null;
@@ -49,7 +52,7 @@ interface WorkflowStepDetailProps {
   onMoveStep: (instanceId: string, stepId: string, direction: -1 | 1) => Promise<void>;
   onDeleteStep: (instanceId: string, stepId: string) => Promise<void>;
   onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
-  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
+  onAddDocumentForStep?: (stepId: string, requestId: string, documentName: string) => void;
   // Execution UI state
   checklistStates: Record<string, Set<string>>;
   approvalComments: Record<string, string>;
@@ -94,7 +97,8 @@ export function WorkflowStepDetail({
     );
   }
 
-  const stepIndex = workflow.steps.findIndex(s => s.id === step.id);
+  const stepIndex = workflow.steps.findIndex((s) => s.id === step.id);
+  const displayStepNumber = stepIndex >= 0 ? stepIndex + 1 : undefined;
   const isCompleted = step.actionState === "COMPLETED";
   const isSkipped = step.actionState === "SKIPPED";
   const isFailed = step.actionState === "FAILED";
@@ -103,10 +107,20 @@ export function WorkflowStepDetail({
   const isPending = step.actionState === "PENDING";
   const isBlocked = step.actionState === "BLOCKED";
 
-  // Find next step
-  const nextStep = workflow.steps.find(s => s.order === step.order + 1);
+  // Find next step based on dependencies
+  const nextStepCandidates = workflow.steps.filter((candidate) => {
+    // Find dependencies where current step is the source (must be completed first)
+    const hasDependency = workflow.dependencies?.some(
+      (dep) => dep.sourceStepId === step.id && dep.targetStepId === candidate.id
+    );
+    return hasDependency && !["COMPLETED", "SKIPPED", "FAILED"].includes(candidate.actionState);
+  });
 
-  // Calculate duration for completed steps
+  // Prefer the first ready step, otherwise any pending step
+  const nextStep =
+    nextStepCandidates.find((candidate) => candidate.actionState === "READY") ??
+    nextStepCandidates.find((candidate) => candidate.actionState === "PENDING") ??
+    nextStepCandidates[0];  // Calculate duration for completed steps
   const calculateDuration = () => {
     if (!step.startedAt || !step.completedAt) return null;
     const start = new Date(step.startedAt);
@@ -139,33 +153,14 @@ export function WorkflowStepDetail({
       {/* Header with close button */}
       <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-slate-900" data-testid="step-title">{step.title}</h3>
-          <p className="text-sm text-slate-500" data-testid="action-type">{workflow.template.name} · Step {step.order + 1} of {workflow.steps.length}</p>
+          <h3 className="text-lg font-semibold text-slate-900" data-testid="step-title">
+            {step.title}
+          </h3>
+          <p className="text-sm text-slate-500" data-testid="action-type">
+            {workflow.template?.name ?? "Unknown Template"} · Step {displayStepNumber ?? "—"} of {workflow.steps.length}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Edit Workflow Button - Only for ADMIN/LAWYER */}
-          {(currentUserRole === "ADMIN" || currentUserRole === "LAWYER") && (
-            <Link
-              href={`/workflows/instances/${workflow.id}/edit`}
-              className="rounded-lg border-2 border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors inline-flex items-center gap-1.5"
-              title="Edit entire workflow"
-            >
-              <svg
-                className="h-3.5 w-3.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                />
-              </svg>
-              Edit Workflow
-            </Link>
-          )}
           <button
             type="button"
             onClick={onClose}
@@ -199,6 +194,7 @@ export function WorkflowStepDetail({
             onMoveStep={onMoveStep}
             onDeleteStep={onDeleteStep}
             onUpdateStepMetadata={onUpdateStepMetadata}
+            onAddDocumentForStep={onAddDocumentForStep}
           />
         )}
 
@@ -206,8 +202,10 @@ export function WorkflowStepDetail({
         {isInProgress && (
           <InProgressStateView
             step={step}
+            workflow={workflow}
             matterId={matterId}
             actionLoading={actionLoading}
+            currentUserRole={currentUserRole}
             formatRelativeTime={formatRelativeTime}
             checklistStates={checklistStates}
             approvalComments={approvalComments}
@@ -217,6 +215,7 @@ export function WorkflowStepDetail({
             onSetDocumentFiles={onSetDocumentFiles}
             onRunStepAction={onRunStepAction}
             onAddDocumentForStep={onAddDocumentForStep}
+            onUpdateStepMetadata={onUpdateStepMetadata}
           />
         )}
 
@@ -363,7 +362,7 @@ function HeroStatusBadge({ step, formatRelativeTime }: HeroStatusBadgeProps) {
         )}
       </div>
       
-      {/* Metadata badges */}
+      {/* Metadata badges - Action Type, Role, Required */}
       <div className="flex flex-wrap gap-2 justify-center">
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
           {step.actionType.replace(/_/g, " ")}
@@ -377,6 +376,73 @@ function HeroStatusBadge({ step, formatRelativeTime }: HeroStatusBadgeProps) {
           </span>
         )}
       </div>
+
+      {/* Additional metadata badges - Priority, Assignee, Due Date */}
+      {(step.priority || step.assignedToId || step.dueDate) && (
+        <div className="flex flex-wrap gap-2 justify-center text-xs">
+          {/* Priority Badge */}
+          {step.priority && (
+            <span
+              className={`rounded-full px-3 py-1 font-semibold border ${
+                step.priority === "HIGH"
+                  ? "bg-red-100 text-red-700 border-red-300"
+                  : step.priority === "MEDIUM"
+                  ? "bg-amber-100 text-amber-700 border-amber-300"
+                  : "bg-slate-100 text-slate-600 border-slate-300"
+              }`}
+              title={`Priority: ${step.priority}`}
+            >
+              {step.priority === "HIGH" ? "🔴 HIGH Priority" : step.priority === "MEDIUM" ? "🟡 MEDIUM Priority" : "⚪ LOW Priority"}
+            </span>
+          )}
+
+          {/* Assignee Badge */}
+          {step.assignedToId && (
+            <span
+              className="rounded-full px-3 py-1 font-semibold bg-purple-100 text-purple-700 border border-purple-300"
+              title={step.assignedTo ? `Assigned to: ${step.assignedTo.name || step.assignedTo.email || "Unknown"}` : "Assigned"}
+            >
+              👤 {step.assignedTo?.name || step.assignedTo?.email || "Assigned"}
+            </span>
+          )}
+
+          {/* Due Date Badge */}
+          {step.dueDate && (
+            <span
+              className={`rounded-full px-3 py-1 font-semibold border ${
+                (() => {
+                  const dueDate = new Date(step.dueDate);
+                  const now = new Date();
+                  const diffMs = dueDate.getTime() - now.getTime();
+                  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                  if (diffDays < 0) return "bg-red-100 text-red-700 border-red-300"; // Overdue
+                  if (diffDays === 0) return "bg-orange-100 text-orange-700 border-orange-300"; // Due today
+                  if (diffDays <= 2) return "bg-yellow-100 text-yellow-700 border-yellow-300"; // Due soon
+                  return "bg-blue-100 text-blue-700 border-blue-300"; // Future
+                })()
+              }`}
+              title={`Due: ${new Date(step.dueDate).toLocaleDateString("tr-TR", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}`}
+            >
+              📅{" "}
+              {(() => {
+                const dueDate = new Date(step.dueDate);
+                const now = new Date();
+                const diffMs = dueDate.getTime() - now.getTime();
+                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+                if (diffDays === 0) return "Due Today";
+                if (diffDays === 1) return "Due Tomorrow";
+                if (diffDays <= 7) return `Due in ${diffDays} days`;
+                return `Due ${new Date(step.dueDate).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}`;
+              })()}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -393,6 +459,7 @@ interface ReadyStateViewProps {
   onMoveStep: (instanceId: string, stepId: string, direction: -1 | 1) => Promise<void>;
   onDeleteStep: (instanceId: string, stepId: string) => Promise<void>;
   onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
+  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
 }
 
 function ReadyStateView({
@@ -403,6 +470,7 @@ function ReadyStateView({
   matterId: _matterId,
   onRunStepAction,
   onUpdateStepMetadata,
+  onAddDocumentForStep,
 }: ReadyStateViewProps) {
   const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; name: string | null; email: string | null }>>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -473,6 +541,15 @@ function ReadyStateView({
             variant="compact"
           />
         </div>
+      )}
+
+      {/* REQUEST_DOC: Show interactive execution UI even in PENDING/READY state */}
+      {step.actionType === "REQUEST_DOC" && (
+        <DocumentRequestExecution
+          step={step}
+          onAddDocument={onAddDocumentForStep ? (requestId, documentName) => onAddDocumentForStep(step.id, requestId, documentName) : undefined}
+          isLoading={actionLoading === `${step.id}:start`}
+        />
       )}
 
       {/* Step Metadata Info - Editable inline */}
@@ -707,59 +784,61 @@ function ReadyStateView({
             </div>
           </div>
           
-          {step.dependsOn && step.dependsOn.length > 0 && (
+          {step.actionState === "PENDING" && workflow.dependencies && (
             <div className="space-y-2">
               <div className="text-xs font-medium text-slate-600 mb-2">
-                Required steps ({step.dependsOn.length}):
+                Required steps ({workflow.dependencies.filter(dep => dep.targetStepId === step.id).length}):
               </div>
               <div className="space-y-2">
-                {step.dependsOn.map(depId => {
-                  const depStep = workflow.steps.find(s => s.id === depId);
-                  if (!depStep) return null;
-                  
-                  const isDepCompleted = depStep.actionState === 'COMPLETED';
-                  const isDepInProgress = depStep.actionState === 'IN_PROGRESS';
-                  
-                  return (
-                    <div
-                      key={depId}
-                      className={`flex items-center gap-3 p-3 rounded-lg border-2 ${
-                        isDepCompleted
-                          ? 'bg-green-50 border-green-200'
-                          : isDepInProgress
-                          ? 'bg-blue-50 border-blue-200'
-                          : 'bg-white border-slate-200'
-                      }`}
-                    >
-                      <div className="flex-shrink-0">
-                        {isDepCompleted ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        ) : isDepInProgress ? (
-                          <Clock className="h-5 w-5 text-blue-600" />
-                        ) : (
-                          <Circle className="h-5 w-5 text-slate-400" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-900 truncate">
-                          {depStep.title}
+                {workflow.dependencies
+                  .filter(dep => dep.targetStepId === step.id)
+                  .map(dep => {
+                    const depStep = workflow.steps.find(s => s.id === dep.sourceStepId);
+                    if (!depStep) return null;
+
+                    const isDepCompleted = depStep.actionState === 'COMPLETED';
+                    const isDepInProgress = depStep.actionState === 'IN_PROGRESS';
+
+                    return (
+                      <div
+                        key={dep.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border-2 ${
+                          isDepCompleted
+                            ? 'bg-green-50 border-green-200'
+                            : isDepInProgress
+                            ? 'bg-blue-50 border-blue-200'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div className="flex-shrink-0">
+                          {isDepCompleted ? (
+                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                          ) : isDepInProgress ? (
+                            <Clock className="h-5 w-5 text-blue-600" />
+                          ) : (
+                            <Circle className="h-5 w-5 text-slate-400" />
+                          )}
                         </div>
-                        <div className="text-xs text-slate-600">
-                          {depStep.actionType.replace(/_/g, ' ')} • {depStep.roleScope}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-900 truncate">
+                            {depStep.title}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            {depStep.actionType.replace(/_/g, ' ')} • {depStep.roleScope}
+                          </div>
+                        </div>
+                        <div className={`text-xs font-semibold px-2 py-1 rounded ${
+                          isDepCompleted
+                            ? 'bg-green-100 text-green-700'
+                            : isDepInProgress
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {isDepCompleted ? 'Done' : isDepInProgress ? 'In Progress' : 'Pending'}
                         </div>
                       </div>
-                      <div className={`text-xs font-semibold px-2 py-1 rounded ${
-                        isDepCompleted
-                          ? 'bg-green-100 text-green-700'
-                          : isDepInProgress
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {isDepCompleted ? 'Done' : isDepInProgress ? 'In Progress' : 'Pending'}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -778,8 +857,10 @@ function ReadyStateView({
 
 interface InProgressStateViewProps {
   step: WorkflowInstanceStep;
+  workflow: WorkflowInstance;
   matterId: string;
   actionLoading: string | null;
+  currentUserRole: string;
   formatRelativeTime: (dateString: string | null) => string | null;
   checklistStates: Record<string, Set<string>>;
   approvalComments: Record<string, string>;
@@ -789,12 +870,15 @@ interface InProgressStateViewProps {
   onSetDocumentFiles: Dispatch<SetStateAction<Record<string, File | null>>>;
   onRunStepAction: (stepId: string, action: string, payload?: unknown) => Promise<void>;
   onAddDocumentForStep?: (stepId: string, documentName: string) => void;
+  onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
 }
 
 function InProgressStateView({
   step,
+  workflow,
   matterId: _matterId,
   actionLoading,
+  currentUserRole,
   formatRelativeTime,
   checklistStates,
   approvalComments,
@@ -804,9 +888,60 @@ function InProgressStateView({
   onSetDocumentFiles: _onSetDocumentFiles,
   onRunStepAction,
   onAddDocumentForStep,
+  onUpdateStepMetadata,
 }: InProgressStateViewProps) {
+  const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; name: string | null; email: string | null }>>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  
   const checkedItems = checklistStates[step.id] ?? new Set<string>();
   const comment = approvalComments[step.id] ?? "";
+
+  // For IN_PROGRESS steps, only ADMIN can edit metadata (per API logic)
+  const canEditMetadata = currentUserRole === "ADMIN";
+
+  // Fetch assignable users when metadata editing is available
+  useEffect(() => {
+    if (!canEditMetadata || !onUpdateStepMetadata) {
+      return;
+    }
+
+    if (availableUsers.length > 0 || loadingUsers) {
+      return;
+    }
+
+    setLoadingUsers(true);
+    fetch(`/api/users`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAvailableUsers(data);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load users:", err);
+      })
+      .finally(() => {
+        setLoadingUsers(false);
+      });
+  }, [availableUsers.length, canEditMetadata, loadingUsers, onUpdateStepMetadata]);
+
+  const handleMetadataUpdate = async (field: 'dueDate' | 'assignedToId' | 'priority', value: string | null) => {
+    if (!onUpdateStepMetadata) return;
+    
+    try {
+      let processedValue = value;
+      
+      // Convert date string (YYYY-MM-DD) to ISO datetime string
+      if (field === 'dueDate' && value) {
+        const date = new Date(value);
+        processedValue = date.toISOString();
+      }
+      
+      await onUpdateStepMetadata(workflow.id, step.id, { [field]: processedValue });
+    } catch (error) {
+      console.error(`Failed to update ${field}:`, error);
+    }
+  };
 
   const handleToggleChecklistItem = (item: string) => {
     onSetChecklistStates((prev) => {
@@ -841,7 +976,7 @@ function InProgressStateView({
             isLoading={isLoading}
           />
         );
-      case "APPROVAL_LAWYER":
+      case "APPROVAL":
         return (
           <ApprovalExecution
             step={step}
@@ -860,7 +995,7 @@ function InProgressStateView({
             isLoading={isLoading}
           />
         );
-      case "SIGNATURE_CLIENT":
+      case "SIGNATURE":
         return (
           <SignatureExecution
             step={step}
@@ -878,7 +1013,7 @@ function InProgressStateView({
             isLoading={isLoading}
           />
         );
-      case "PAYMENT_CLIENT":
+      case "PAYMENT":
         return (
           <PaymentExecution
             step={step}
@@ -930,6 +1065,112 @@ function InProgressStateView({
       <div className="rounded-2xl border-2 border-blue-400 bg-gradient-to-br from-blue-50 to-white p-6 shadow-lg shadow-blue-200/50">
         {renderExecutionUI()}
       </div>
+
+      {/* Step Metadata Info - Admin can edit even when IN_PROGRESS */}
+      {canEditMetadata && onUpdateStepMetadata && (
+        <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-3">
+            Step Metadata (Admin Only)
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {/* Due Date */}
+            <div className="space-y-2">
+              <label className="flex flex-col gap-2 text-xs font-semibold uppercase text-blue-700">
+                <span className="tracking-wide">Due Date</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={step.dueDate ? new Date(step.dueDate).toISOString().slice(0, 10) : ""}
+                    onChange={(e) => {
+                      const value = e.target.value || null;
+                      void handleMetadataUpdate("dueDate", value);
+                    }}
+                    className="flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 focus:border-blue-500 focus:outline-none"
+                  />
+                  {step.dueDate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleMetadataUpdate("dueDate", null);
+                      }}
+                      className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </label>
+              {step.dueDate && (
+                <div className="text-xs text-blue-600">
+                  {(() => {
+                    const dueDate = new Date(step.dueDate);
+                    const now = new Date();
+                    const diffMs = dueDate.getTime() - now.getTime();
+                    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+                    if (diffDays === 0) return "Due today";
+                    if (diffDays === 1) return "Due tomorrow";
+                    return `${diffDays} days remaining`;
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Assigned To */}
+            <div className="space-y-2">
+              <label className="flex flex-col gap-2 text-xs font-semibold uppercase text-purple-700">
+                <span className="tracking-wide">Assigned To</span>
+                <select
+                  value={step.assignedToId || ""}
+                  onChange={(e) => {
+                    const value = e.target.value || null;
+                    void handleMetadataUpdate("assignedToId", value);
+                  }}
+                  className="rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 focus:border-purple-500 focus:outline-none"
+                  disabled={loadingUsers}
+                >
+                  <option value="">Unassigned (role: {step.roleScope})</option>
+                  {loadingUsers && <option disabled>Loading users...</option>}
+                  {!loadingUsers &&
+                    availableUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                        {user.email ? ` (${user.email})` : ""}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {step.assignedTo && (
+                <div className="text-xs text-purple-600">
+                  {step.assignedTo.name || "Unknown"}
+                  {step.assignedTo.email && ` (${step.assignedTo.email})`}
+                </div>
+              )}
+            </div>
+
+            {/* Priority */}
+            <div className="space-y-2">
+              <label className="flex flex-col gap-2 text-xs font-semibold uppercase text-amber-700">
+                <span className="tracking-wide">Priority</span>
+                <select
+                  value={step.priority || "MEDIUM"}
+                  onChange={(e) => {
+                    void handleMetadataUpdate("priority", e.target.value);
+                  }}
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                </select>
+              </label>
+              <div className="text-xs text-amber-600">
+                {step.priority === "HIGH" ? "Urgent" : step.priority === "LOW" ? "Normal" : "Important"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Minimal footer metadata */}
       <div className="text-xs text-slate-500 text-center space-y-1">
@@ -976,6 +1217,13 @@ function CompletedStateView({
     const actionData = step.actionData as any;
 
     switch (step.actionType) {
+      case "APPROVAL": {
+        const approvalData =
+          step.actionData && typeof step.actionData === "object"
+            ? (step.actionData as { decision?: { approved: boolean; comment?: string; decidedAt?: string; decidedBy?: string } })
+            : null;
+        return <ApprovalViewer decision={approvalData?.decision} />;
+      }
       case "POPULATE_QUESTIONNAIRE":
         if (actionData.responseId) {
           return <QuestionnaireResponseViewer responseId={actionData.responseId} />;

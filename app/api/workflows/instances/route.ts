@@ -32,11 +32,20 @@ export const GET = withApiHandler(async (req: NextRequest, { session }) => {
       ...matterAccessFilter,
     },
     include: {
-      template: { select: { id: true, name: true } },
+      template: { select: { id: true, name: true, description: true } },
       createdBy: { select: { id: true, name: true, email: true } },
       steps: {
-        orderBy: { order: "asc" },
+        include: {
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
       },
+      dependencies: true,
     },
     orderBy: { createdAt: "desc" },
   });

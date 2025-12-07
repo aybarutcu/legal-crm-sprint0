@@ -7,7 +7,7 @@ export default defineConfig({
   timeout: 60_000,
   retries: process.env.CI ? 2 : 0,
   fullyParallel: true,
-  reporter: process.env.CI ? ["junit", { outputFile: "artifacts/playwright-report.xml" }] : "list",
+  reporter: process.env.CI ? [["junit", { outputFile: "artifacts/playwright-report.xml" }]] : [["list"]],
   use: {
     baseURL,
     trace: "on-first-retry",

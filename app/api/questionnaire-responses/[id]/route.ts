@@ -4,9 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { responseSubmitSchema } from "@/lib/validation/questionnaire";
 import { Role } from "@prisma/client";
 
-type RouteContext = {
-  params: { id: string };
-};
+type RouteContext = { id: string };
 
 // GET /api/questionnaire-responses/[id] - Get response with answers
 export const GET = withApiHandler<RouteContext>(
@@ -18,9 +16,7 @@ export const GET = withApiHandler<RouteContext>(
       include: {
         questionnaire: {
           include: {
-            questions: {
-              orderBy: { order: "asc" },
-            },
+            questions: true,
           },
         },
         respondent: {
@@ -44,7 +40,7 @@ export const GET = withApiHandler<RouteContext>(
     // Authorization: User must be respondent, or have access to the matter, or be admin/lawyer
     const canAccess =
       response.respondentId === user.id ||
-      [Role.ADMIN, Role.LAWYER].includes(user.role!) ||
+      [Role.ADMIN, Role.LAWYER].includes((user.role!) as "ADMIN" | "LAWYER") ||
       (response.matterId &&
         (await prisma.matter.findFirst({
           where: {
@@ -53,7 +49,7 @@ export const GET = withApiHandler<RouteContext>(
             OR: [
               { ownerId: user.id },
               { client: { userId: user.id } },
-              { matterTeamMemberships: { some: { userId: user.id } } },
+              { teamMembers: { some: { userId: user.id } } },
             ],
           },
         })));

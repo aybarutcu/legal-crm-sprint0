@@ -34,7 +34,7 @@ function buildPortalInviteUrl(token: string) {
 
 export const POST = withApiHandler(async (req, { session }) => {
   const inviter = session!.user!;
-  if (![Role.ADMIN, Role.LAWYER].includes(inviter.role ?? Role.LAWYER)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((inviter.role ?? Role.LAWYER) as "ADMIN" | "LAWYER")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

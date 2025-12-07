@@ -2,13 +2,14 @@ import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getMailer } from "@/lib/mail/transporter";
 import { incrementMetric } from "@/lib/metrics";
+import { TaskStatus } from "@prisma/client";
 
 const LOOKAHEAD_MINUTES = Math.max(
   Number.parseInt(process.env.TASK_REMINDER_LOOKAHEAD_MINUTES ?? "60", 10),
   5,
 );
 
-const STATUS_ELIGIBLE = ["OPEN", "IN_PROGRESS"] as const;
+const STATUS_ELIGIBLE: TaskStatus[] = ["OPEN", "IN_PROGRESS"];
 
 type TaskReminderCandidate = Awaited<
   ReturnType<(typeof prisma.task)["findMany"]>

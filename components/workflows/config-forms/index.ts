@@ -6,3 +6,6 @@ export { SignatureConfigForm } from "./SignatureConfigForm";
 export { DocumentRequestConfigForm } from "./DocumentRequestConfigForm";
 export { PaymentConfigForm } from "./PaymentConfigForm";
 export { WriteTextConfigForm } from "./WriteTextConfigForm";
+export { PopulateQuestionnaireConfigForm } from "./PopulateQuestionnaireConfigForm";
+export { AutomationEmailConfigForm } from "./AutomationEmailConfigForm";
+export { AutomationWebhookConfigForm } from "./AutomationWebhookConfigForm";

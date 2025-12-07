@@ -162,7 +162,7 @@ import { DependencyGraph } from "@/components/workflows/DependencyGraph";
 <DependencyGraph
   steps={[
     { order: 0, title: "Review", actionType: "TASK" },
-    { order: 1, title: "Collect", actionType: "REQUEST_DOC_CLIENT", dependsOn: [0] },
+    { order: 1, title: "Collect", actionType: "REQUEST_DOC", dependsOn: [0] },
   ]}
   onNodeClick={(stepOrder) => console.log("Clicked:", stepOrder)}
   highlightedStepOrders={[1]}

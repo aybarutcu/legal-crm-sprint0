@@ -1,4 +1,4 @@
-import { CheckCircle, FileText, CreditCard, Upload, UserCheck, FileEdit, FileQuestion, CheckCheck } from "lucide-react";
+import { CheckCircle, FileText, CreditCard, Upload, UserCheck, FileEdit, FileQuestion, CheckCheck, Mail, Globe } from "lucide-react";
 
 type ActionConfigDisplayProps = {
   actionType: string;
@@ -13,12 +13,14 @@ type ActionConfigDisplayProps = {
  * Supports all action types:
  * - TASK: Shows task description, time estimate, and evidence requirement
  * - CHECKLIST: Shows list of items with checkmarks
- * - APPROVAL_LAWYER: Shows approver role and message
- * - SIGNATURE_CLIENT: Shows provider and document ID
+ * - APPROVAL: Shows approver role and message
+ * - SIGNATURE: Shows provider and document ID
  * - REQUEST_DOC: Shows request text and document names
- * - PAYMENT_CLIENT: Shows amount, currency, and provider
+ * - PAYMENT: Shows amount, currency, and provider
  * - WRITE_TEXT: Shows title, description, and length requirements
  * - POPULATE_QUESTIONNAIRE: Shows questionnaire title and description
+ * - AUTOMATION_EMAIL: Shows recipients, subject, and scheduling strategy
+ * - AUTOMATION_WEBHOOK: Shows method, URL, and header count
  */
 export function ActionConfigDisplay({ 
   actionType, 
@@ -103,7 +105,7 @@ export function ActionConfigDisplay({
       );
     }
     
-    case "APPROVAL_LAWYER": {
+    case "APPROVAL": {
       const message = config.message as string;
       const approverRole = (config.approverRole as string) || "LAWYER";
       
@@ -123,7 +125,7 @@ export function ActionConfigDisplay({
       );
     }
     
-    case "SIGNATURE_CLIENT": {
+    case "SIGNATURE": {
       const provider = (config.provider as string) || "mock";
       const documentId = config.documentId as string;
       
@@ -175,7 +177,7 @@ export function ActionConfigDisplay({
       );
     }
     
-    case "PAYMENT_CLIENT": {
+    case "PAYMENT": {
       const amount = config.amount as number;
       const currency = (config.currency as string) || "USD";
       const provider = config.provider as string;
@@ -198,6 +200,64 @@ export function ActionConfigDisplay({
                 Provider: <span className="font-medium">{provider}</span>
               </div>
             )}
+          </div>
+        </div>
+      );
+    }
+    
+    case "AUTOMATION_EMAIL": {
+      const recipients = (config.recipients as string[]) || [];
+      const cc = (config.cc as string[]) || [];
+      const subjectTemplate = (config.subjectTemplate as string) || "No subject";
+      const strategy = (config.sendStrategy as string) || "IMMEDIATE";
+      const delay = config.delayMinutes as number | null;
+
+      return (
+        <div className={`flex items-start gap-3 ${variant === "compact" ? "text-xs" : "text-sm"}`}>
+          <Mail className={`${variant === "compact" ? "h-4 w-4" : "h-5 w-5"} text-sky-500 flex-shrink-0 mt-0.5`} />
+          <div className="space-y-1">
+            <div className="text-slate-700">
+              <span className="font-medium text-slate-900">Recipients:</span>{" "}
+              {recipients.length > 0 ? recipients.join(", ") : "—"}
+            </div>
+            {cc.length > 0 && (
+              <div className="text-slate-600">
+                <span className="font-medium text-slate-900">CC:</span> {cc.join(", ")}
+              </div>
+            )}
+            <div className="text-slate-700">
+              <span className="font-medium text-slate-900">Subject:</span> {subjectTemplate}
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-0.5 font-medium text-sky-700 border border-sky-200">
+                {strategy === "DELAYED" && delay ? `Delayed (${delay}m)` : "Immediate"}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    case "AUTOMATION_WEBHOOK": {
+      const url = (config.url as string) || "—";
+      const method = (config.method as string) || "POST";
+      const headers = (config.headers as Array<{ key: string; value: string }>) || [];
+      const strategy = (config.sendStrategy as string) || "IMMEDIATE";
+      const delay = config.delayMinutes as number | null;
+
+      return (
+        <div className={`flex items-start gap-3 ${variant === "compact" ? "text-xs" : "text-sm"}`}>
+          <Globe className={`${variant === "compact" ? "h-4 w-4" : "h-5 w-5"} text-indigo-500 flex-shrink-0 mt-0.5`} />
+          <div className="space-y-1">
+            <div className="text-slate-700">
+              <span className="font-medium text-slate-900">{method}</span> {url}
+            </div>
+            <div className="text-xs text-slate-500">
+              {headers.length > 0 ? `${headers.length} header${headers.length > 1 ? "s" : ""}` : "No headers"}
+            </div>
+            <div className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200">
+              {strategy === "DELAYED" && delay ? `Delayed (${delay}m)` : "Immediate"}
+            </div>
           </div>
         </div>
       );

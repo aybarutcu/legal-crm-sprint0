@@ -49,7 +49,6 @@ export const GET = withApiHandler(
           },
         },
         steps: {
-          orderBy: { order: "asc" },
           include: {
             assignedTo: {
               select: {
@@ -114,7 +113,6 @@ export const GET = withApiHandler(
 
 const stepUpdateSchema = z.object({
   id: z.string(),
-  order: z.number(),
   title: z.string(),
   actionType: z.string(),
   roleScope: z.string(),
@@ -124,12 +122,8 @@ const stepUpdateSchema = z.object({
   dueDate: z.string().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).nullable(),
   notes: z.string().nullable(),
-  dependsOn: z.array(z.string()),
-  dependencyLogic: z.string(),
   positionX: z.number().nullable().optional(),
   positionY: z.number().nullable().optional(),
-  nextStepOnTrue: z.number().nullable().optional(),
-  nextStepOnFalse: z.number().nullable().optional(),
 });
 
 const patchBodySchema = z.object({
@@ -200,6 +194,23 @@ export const PATCH = withApiHandler(
     const currentSteps = instance.steps;
     const lockedStates = ["COMPLETED", "IN_PROGRESS"];
 
+    // Separate new and existing steps based on whether they exist in DB
+    const currentStepIds = new Set(currentSteps.map((s) => s.id));
+    const existingSteps = steps.filter((step) => currentStepIds.has(step.id));
+    const newSteps = steps.filter((step) => !currentStepIds.has(step.id));
+
+    // Validate existing steps (should all exist)
+    const existingStepIds = existingSteps.map((s) => s.id);
+    const missingExistingSteps = existingStepIds.filter((id) => !currentStepIds.has(id));
+    if (missingExistingSteps.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Some steps do not belong to this workflow instance: ${missingExistingSteps.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
     for (const updatedStep of steps) {
       const currentStep = currentSteps.find((s) => s.id === updatedStep.id);
       if (currentStep && lockedStates.includes(currentStep.actionState)) {
@@ -212,8 +223,6 @@ export const PATCH = withApiHandler(
             actionType: true,
             roleScope: true,
             required: true,
-            dependsOn: true,
-            dependencyLogic: true,
           },
         });
 
@@ -222,10 +231,7 @@ export const PATCH = withApiHandler(
           (existingData.title !== updatedStep.title ||
             existingData.actionType !== updatedStep.actionType ||
             existingData.roleScope !== updatedStep.roleScope ||
-            existingData.required !== updatedStep.required ||
-            JSON.stringify(existingData.dependsOn) !==
-              JSON.stringify(updatedStep.dependsOn) ||
-            existingData.dependencyLogic !== updatedStep.dependencyLogic)
+            existingData.required !== updatedStep.required)
         ) {
           return NextResponse.json(
             {
@@ -237,37 +243,57 @@ export const PATCH = withApiHandler(
       }
     }
 
-    // Update steps in transaction
-    console.log("Updating workflow instance", {
-      instanceId: id,
-      stepIds: steps.map((step) => step.id),
-    });
+    // Create new steps
+    if (newSteps.length > 0) {
+      const createdSteps = await prisma.$transaction(
+        newSteps.map((step) =>
+          prisma.workflowInstanceStep.create({
+            data: {
+              id: step.id, // Use the provided ID
+              instanceId: id,
+              title: step.title,
+              actionType: step.actionType as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+              roleScope: step.roleScope as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+              required: step.required,
+              actionData: step.actionData as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+              assignedToId: step.assignedToId,
+              dueDate: step.dueDate ? new Date(step.dueDate) : null,
+              priority: step.priority,
+              notes: step.notes,
+              positionX: typeof step.positionX === "number" ? step.positionX : 0,
+              positionY: typeof step.positionY === "number" ? step.positionY : 100,
+            },
+          })
+        )
+      );
 
-    await prisma.$transaction(
-      steps.map((step) =>
-        prisma.workflowInstanceStep.update({
-          where: { id: step.id },
-          data: {
-            order: step.order,
-            title: step.title,
-            actionType: step.actionType as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-            roleScope: step.roleScope as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-            required: step.required,
-            actionData: step.actionData as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-            assignedToId: step.assignedToId,
-            dueDate: step.dueDate ? new Date(step.dueDate) : null,
-            priority: step.priority,
-            notes: step.notes,
-            dependsOn: step.dependsOn,
-            dependencyLogic: step.dependencyLogic as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-            positionX: typeof step.positionX === "number" ? step.positionX : 0,
-            positionY: typeof step.positionY === "number" ? step.positionY : 100,
-            nextStepOnTrue: typeof step.nextStepOnTrue === "number" ? step.nextStepOnTrue : null,
-            nextStepOnFalse: typeof step.nextStepOnFalse === "number" ? step.nextStepOnFalse : null,
-          },
-        })
-      )
-    );
+      // Since we're using the provided IDs, no temp-to-real mapping needed
+      // All references should work correctly now
+    }
+
+    // Update existing steps
+    if (existingSteps.length > 0) {
+      await prisma.$transaction(
+        existingSteps.map((step) =>
+          prisma.workflowInstanceStep.update({
+            where: { id: step.id },
+            data: {
+              title: step.title,
+              actionType: step.actionType as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+              roleScope: step.roleScope as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+              required: step.required,
+              actionData: step.actionData as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+              assignedToId: step.assignedToId,
+              dueDate: step.dueDate ? new Date(step.dueDate) : null,
+              priority: step.priority,
+              notes: step.notes,
+              positionX: typeof step.positionX === "number" ? step.positionX : 0,
+              positionY: typeof step.positionY === "number" ? step.positionY : 100,
+            },
+          })
+        )
+      );
+    }
 
     return NextResponse.json({ success: true, message: "Workflow updated successfully" });
   },

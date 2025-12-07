@@ -228,10 +228,10 @@ This is an older package. The current maintained version is `reactflow` (without
 2. **Create basic node types**
    - StartNode (workflow entry point)
    - TaskNode (TASK action)
-   - ApprovalNode (APPROVAL_LAWYER)
-   - SignatureNode (SIGNATURE_CLIENT)
-   - DocumentRequestNode (REQUEST_DOC_CLIENT)
-   - PaymentNode (PAYMENT_CLIENT)
+   - ApprovalNode (APPROVAL)
+   - SignatureNode (SIGNATURE)
+   - DocumentRequestNode (REQUEST_DOC)
+   - PaymentNode (PAYMENT)
    - ChecklistNode (CHECKLIST)
    - WriteTextNode (WRITE_TEXT)
    - QuestionnaireNode (POPULATE_QUESTIONNAIRE)
@@ -613,7 +613,7 @@ export function WorkflowCanvas() {
   );
 
   return (
-    <div className="h-[600px] border-2 border-slate-200 rounded-lg">
+    <div className="h-[800px] border-2 border-slate-200 rounded-lg">
       <ReactFlow
         nodes={nodes}
         edges={edges}

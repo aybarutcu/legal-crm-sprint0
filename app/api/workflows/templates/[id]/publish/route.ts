@@ -4,18 +4,16 @@ import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authorization";
 
-type Params = { params: { id: string } };
+type Params = { id: string };
 
-export const POST = withApiHandler(
-  async (_req: NextRequest, { session, params }: Params) => {
+export const POST = withApiHandler<Params>(
+  async (_req: NextRequest, { session, params }) => {
     await requireAdmin(session);
 
     const template = await prisma.workflowTemplate.findUnique({
-      where: { id: params.id },
+      where: { id: params!.id },
       include: {
-        steps: {
-          orderBy: { order: "asc" },
-        },
+        steps: true,
       },
     });
 
@@ -45,9 +43,7 @@ export const POST = withApiHandler(
         where: { id: template.id },
         data: { isActive: true },
         include: {
-          steps: {
-            orderBy: { order: "asc" },
-          },
+          steps: true,
         },
       });
     });

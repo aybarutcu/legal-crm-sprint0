@@ -80,14 +80,14 @@ await createThreeStepTemplate(page);
    - Role Scope: `ADMIN`
    - Config: `["Review requirements", "Verify documentation"]`
 
-2. **Step 2: APPROVAL_LAWYER**
+2. **Step 2: APPROVAL**
    - Title: "Lawyer Approval"
-   - Action Type: `APPROVAL_LAWYER`
+   - Action Type: `APPROVAL`
    - Role Scope: `LAWYER`
 
-3. **Step 3: REQUEST_DOC_CLIENT**
+3. **Step 3: REQUEST_DOC**
    - Title: "Request Client Documents"
-   - Action Type: `REQUEST_DOC_CLIENT`
+   - Action Type: `REQUEST_DOC`
    - Role Scope: `CLIENT`
 
 **UI Interactions:**
@@ -163,12 +163,12 @@ await executeChecklistStep(page);
 
 **Expected Result:**
 - Step state: READY → IN_PROGRESS → COMPLETED
-- Next step (APPROVAL_LAWYER) automatically advances to READY
+- Next step (APPROVAL) automatically advances to READY
 - Audit trail entry created
 
 ---
 
-### Step 8: Execute APPROVAL_LAWYER Step
+### Step 8: Execute APPROVAL Step
 ```typescript
 await executeApprovalStep(page);
 ```
@@ -182,12 +182,12 @@ await executeApprovalStep(page);
 
 **Expected Result:**
 - Step state: READY → IN_PROGRESS → COMPLETED
-- Next step (REQUEST_DOC_CLIENT) advances to READY
+- Next step (REQUEST_DOC) advances to READY
 - Audit trail entry created
 
 ---
 
-### Step 9: Execute REQUEST_DOC_CLIENT Step
+### Step 9: Execute REQUEST_DOC Step
 ```typescript
 await executeRequestDocStep(page);
 ```
@@ -252,7 +252,7 @@ await verifyAuditTrail(page);
 | "Create Template" button | Template creation initiation |
 | Template form fields | Name, description, steps input |
 | "Add Step" button | Adding multiple steps |
-| Action type dropdown | CHECKLIST, APPROVAL_LAWYER, REQUEST_DOC_CLIENT |
+| Action type dropdown | CHECKLIST, APPROVAL, REQUEST_DOC |
 | Role scope dropdown | ADMIN, LAWYER, CLIENT |
 | "Publish" button | Template activation |
 | "Add Workflow" button | Instance creation |
@@ -560,8 +560,8 @@ use: {
 
 ✅ **Step Execution**
 - CHECKLIST with checkboxes
-- APPROVAL_LAWYER with approve action
-- REQUEST_DOC_CLIENT with document simulation
+- APPROVAL with approve action
+- REQUEST_DOC with document simulation
 
 ✅ **State Machine**
 - PENDING → READY transitions
@@ -843,8 +843,8 @@ Gracefully handles optional UI elements.
 - [x] Test template publishing
 - [x] Test workflow instantiation
 - [x] Test CHECKLIST execution
-- [x] Test APPROVAL_LAWYER execution
-- [x] Test REQUEST_DOC_CLIENT execution
+- [x] Test APPROVAL execution
+- [x] Test REQUEST_DOC execution
 - [x] Verify audit trail
 - [x] Add state transition tests
 - [x] Add permission tests
@@ -863,7 +863,7 @@ WF-114 is **complete**! The E2E smoke test suite provides comprehensive coverage
 - **440 lines** of test code
 - **6 test cases** across 3 suites
 - **10-step** main workflow test
-- **3 action types** validated (CHECKLIST, APPROVAL_LAWYER, REQUEST_DOC_CLIENT)
+- **3 action types** validated (CHECKLIST, APPROVAL, REQUEST_DOC)
 - **Multiple state transitions** verified
 - **Role-based permissions** validated
 - **Audit trail** verification included

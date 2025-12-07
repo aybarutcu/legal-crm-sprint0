@@ -33,13 +33,13 @@ export function getStepClasses(
 
 export function defaultConfigFor(actionType: ActionType): Record<string, unknown> {
   switch (actionType) {
-    case "APPROVAL_LAWYER":
+    case "APPROVAL":
       return { approverRole: "LAWYER", message: "" };
-    case "SIGNATURE_CLIENT":
+    case "SIGNATURE":
       return { documentId: null, provider: "mock" };
     case "REQUEST_DOC":
       return { requestText: "", documentNames: [] };
-    case "PAYMENT_CLIENT":
+    case "PAYMENT":
       return { amount: 0, currency: "USD", provider: "mock" };
     case "WRITE_TEXT":
       return {
@@ -49,6 +49,33 @@ export function defaultConfigFor(actionType: ActionType): Record<string, unknown
         minLength: 0,
         maxLength: undefined,
         required: true,
+      };
+    case "POPULATE_QUESTIONNAIRE":
+      return { questionnaireId: null, title: "", description: "", dueInDays: undefined };
+    case "AUTOMATION_EMAIL":
+      return {
+        recipients: ["{{contact.email}}"],
+        cc: [],
+        subjectTemplate: "Automated update for {{matter.title}}",
+        bodyTemplate: "Hello {{contact.firstName}},\n\nWe will keep you posted.\n",
+        sendStrategy: "IMMEDIATE",
+        delayMinutes: null,
+      };
+    case "AUTOMATION_WEBHOOK":
+      return {
+        url: "https://example.com/webhooks/workflow",
+        method: "POST",
+        headers: [],
+        payloadTemplate: JSON.stringify(
+          {
+            matterId: "{{matter.id}}",
+            stepId: "{{step.id}}",
+          },
+          null,
+          2,
+        ),
+        sendStrategy: "IMMEDIATE",
+        delayMinutes: null,
       };
     case "CHECKLIST":
     default:

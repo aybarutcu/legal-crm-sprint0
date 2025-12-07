@@ -8,94 +8,88 @@
  * - Build dependency graphs for visualization
  */
 
-import type { WorkflowInstanceStep, DependencyLogic, ActionState } from "@prisma/client";
+import { WorkflowInstanceStep, WorkflowInstanceDependency, ActionState, DependencyLogic } from "@prisma/client";
 
 /**
- * Check if a step's dependencies are satisfied
+ * Check if a step's dependencies are satisfied using edge-based dependencies
  * 
  * @param step - The step to check
+ * @param dependencies - All dependencies in the workflow instance
  * @param allSteps - All steps in the workflow instance
  * @returns true if dependencies are satisfied, false otherwise
- * @throws Error if dependencies are invalid or logic not implemented
  */
 export function isDependencySatisfied(
   step: WorkflowInstanceStep,
+  dependencies: WorkflowInstanceDependency[],
   allSteps: WorkflowInstanceStep[]
 ): boolean {
+  // Find all incoming dependencies for this step
+  const incomingDeps = dependencies.filter(dep => dep.targetStepId === step.id);
+
   // No dependencies = always satisfied
-  if (!step.dependsOn || step.dependsOn.length === 0) {
+  if (incomingDeps.length === 0) {
     return true;
   }
 
-  // Find the steps this step depends on
-  const dependencySteps = allSteps.filter((s) => step.dependsOn.includes(s.id));
+  // Group dependencies by logic type
+  const allDeps = incomingDeps.filter(dep => dep.dependencyLogic === "ALL");
+  const anyDeps = incomingDeps.filter(dep => dep.dependencyLogic === "ANY");
 
-  // Validate all dependencies exist
-  if (dependencySteps.length !== step.dependsOn.length) {
-    const missingIds = step.dependsOn.filter(
-      (id) => !allSteps.find((s) => s.id === id)
-    );
-    throw new Error(
-      `Step ${step.id} has invalid dependencies: ${missingIds.join(", ")}`
-    );
+  // Check ALL dependencies (if any exist)
+  if (allDeps.length > 0) {
+    const allComplete = allDeps.every(dep => {
+      const sourceStep = allSteps.find(s => s.id === dep.sourceStepId);
+      return sourceStep?.actionState === "COMPLETED";
+    });
+    if (!allComplete) return false;
   }
 
-  // Count completed dependencies
-  const completedDeps = dependencySteps.filter(
-    (s) => s.actionState === "COMPLETED"
-  );
-
-  // Apply dependency logic
-  switch (step.dependencyLogic) {
-    case "ALL":
-      // All dependencies must be complete
-      return completedDeps.length === dependencySteps.length;
-
-    case "ANY":
-      // At least one dependency must be complete
-      return completedDeps.length > 0;
-
-    case "CUSTOM":
-      // Custom logic not implemented yet
-      throw new Error(
-        `Dependency logic "CUSTOM" is not implemented for step ${step.id}`
-      );
-
-    default:
-      throw new Error(
-        `Unknown dependency logic "${step.dependencyLogic}" for step ${step.id}`
-      );
+  // Check ANY dependencies (if any exist)
+  if (anyDeps.length > 0) {
+    const anyComplete = anyDeps.some(dep => {
+      const sourceStep = allSteps.find(s => s.id === dep.sourceStepId);
+      return sourceStep?.actionState === "COMPLETED";
+    });
+    if (!anyComplete) return false;
   }
+
+  return true;
 }
 
 /**
- * Build dependency graph for validation/visualization
+ * Build dependency graph for validation/visualization using edge-based dependencies
  * 
- * @param steps - All steps in the workflow
+ * @param dependencies - All dependencies in the workflow
  * @returns Map of step ID to array of dependency step IDs
  */
 export function getDependencyGraph(
-  steps: WorkflowInstanceStep[]
+  dependencies: WorkflowInstanceDependency[]
 ): Map<string, string[]> {
   const graph = new Map<string, string[]>();
 
-  for (const step of steps) {
-    graph.set(step.id, step.dependsOn || []);
-  }
+  // Build adjacency list: target -> [sources]
+  dependencies.forEach(dep => {
+    if (!graph.has(dep.targetStepId)) {
+      graph.set(dep.targetStepId, []);
+    }
+    graph.get(dep.targetStepId)!.push(dep.sourceStepId);
+  });
 
   return graph;
 }
 
 /**
- * Detect circular dependencies using depth-first search
+ * Detect circular dependencies using depth-first search with edge-based dependencies
  * 
+ * @param dependencies - All dependencies in the workflow
  * @param steps - All steps in the workflow
  * @returns Array of cycle descriptions (empty if no cycles)
- * 
- * Example: ["A → B → C → A", "D → E → D"]
  */
-export function detectCycles(steps: WorkflowInstanceStep[]): string[] {
-  const graph = getDependencyGraph(steps);
+export function detectCycles(
+  dependencies: WorkflowInstanceDependency[],
+  steps: WorkflowInstanceStep[]
+): string[] {
+  const graph = getDependencyGraph(dependencies);
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
   const cycles: string[] = [];
@@ -106,11 +100,11 @@ export function detectCycles(steps: WorkflowInstanceStep[]): string[] {
     stepTitles.set(step.id, step.title);
   }
 
-  function dfs(nodeId: string, path: string[]): void {
+  function dfs(stepId: string, path: string[]): void {
     // Cycle detected - node already in recursion stack
-    if (recursionStack.has(nodeId)) {
-      const cycleStart = path.indexOf(nodeId);
-      const cyclePath = path.slice(cycleStart).concat(nodeId);
+    if (recursionStack.has(stepId)) {
+      const cycleStart = path.indexOf(stepId);
+      const cyclePath = path.slice(cycleStart).concat(stepId);
       const cycleDesc = cyclePath
         .map((id) => stepTitles.get(id) || id)
         .join(" → ");
@@ -119,22 +113,22 @@ export function detectCycles(steps: WorkflowInstanceStep[]): string[] {
     }
 
     // Already fully explored this node
-    if (visited.has(nodeId)) {
+    if (visited.has(stepId)) {
       return;
     }
 
     // Mark as visited and in current path
-    visited.add(nodeId);
-    recursionStack.add(nodeId);
+    visited.add(stepId);
+    recursionStack.add(stepId);
 
-    // Explore dependencies
-    const dependencies = graph.get(nodeId) || [];
-    for (const depId of dependencies) {
-      dfs(depId, [...path, nodeId]);
+    // Explore dependencies (what this step depends on)
+    const stepDependencies = graph.get(stepId) || [];
+    for (const depId of stepDependencies) {
+      dfs(depId, [...path, stepId]);
     }
 
     // Remove from recursion stack
-    recursionStack.delete(nodeId);
+    recursionStack.delete(stepId);
   }
 
   // Check all nodes for cycles
@@ -147,45 +141,39 @@ export function detectCycles(steps: WorkflowInstanceStep[]): string[] {
   return cycles;
 }
 
+
 /**
- * Get all steps that are ready to execute (dependencies satisfied)
+ * Get steps that are ready to be executed (all dependencies satisfied)
  * 
- * @param steps - All steps in the workflow
- * @returns Array of steps that can be started
+ * @param steps - All steps in the workflow instance
+ * @param dependencies - All dependencies in the workflow instance
+ * @returns Array of steps that can be marked as READY
  */
 export function getReadySteps(
-  steps: WorkflowInstanceStep[]
+  steps: WorkflowInstanceStep[],
+  dependencies: WorkflowInstanceDependency[]
 ): WorkflowInstanceStep[] {
-  return steps.filter((step) => {
-    // Skip completed, failed, or skipped steps
-    if (["COMPLETED", "FAILED", "SKIPPED"].includes(step.actionState)) {
+  return steps.filter(step => {
+    // Skip steps that are already in progress or completed
+    if (step.actionState !== "PENDING") {
       return false;
     }
 
-    // Skip steps already in progress
-    if (step.actionState === "IN_PROGRESS") {
-      return false;
-    }
-
-    // Check if dependencies are satisfied
-    try {
-      return isDependencySatisfied(step, steps);
-    } catch (error) {
-      // If dependency check fails, step is not ready
-      console.error(`Error checking dependencies for step ${step.id}:`, error);
-      return false;
-    }
+    // Check if this step's dependencies are satisfied
+    return isDependencySatisfied(step, dependencies, steps);
   });
 }
 
 /**
  * Get steps blocked by unsatisfied dependencies
  * 
- * @param steps - All steps in the workflow
+ * @param steps - All steps in the workflow instance
+ * @param dependencies - All dependencies in the workflow instance
  * @returns Array of steps waiting on dependencies
  */
 export function getBlockedSteps(
-  steps: WorkflowInstanceStep[]
+  steps: WorkflowInstanceStep[],
+  dependencies: WorkflowInstanceDependency[]
 ): WorkflowInstanceStep[] {
   return steps.filter((step) => {
     // Only consider pending steps
@@ -195,7 +183,7 @@ export function getBlockedSteps(
 
     // Check if blocked by dependencies
     try {
-      return !isDependencySatisfied(step, steps);
+      return !isDependencySatisfied(step, dependencies, steps);
     } catch (error) {
       // If dependency check fails, consider it blocked
       console.error(`Error checking dependencies for step ${step.id}:`, error);
@@ -221,15 +209,20 @@ export interface DependencyStatus {
  * Get detailed dependency status for a step
  * 
  * @param step - The step to check
- * @param allSteps - All steps in the workflow
+ * @param dependencies - All dependencies in the workflow instance
+ * @param allSteps - All steps in the workflow instance
  * @returns Detailed dependency status information
  */
 export function getDependencyStatus(
   step: WorkflowInstanceStep,
+  dependencies: WorkflowInstanceDependency[],
   allSteps: WorkflowInstanceStep[]
 ): DependencyStatus {
+  // Find dependencies for this step
+  const stepDependencies = dependencies.filter(dep => dep.targetStepId === step.id);
+  
   // No dependencies
-  if (!step.dependsOn || step.dependsOn.length === 0) {
+  if (stepDependencies.length === 0) {
     return {
       stepId: step.id,
       stepTitle: step.title,
@@ -237,18 +230,25 @@ export function getDependencyStatus(
       dependencyCount: 0,
       completedCount: 0,
       pendingDependencies: [],
-      logic: step.dependencyLogic,
+      logic: "ALL", // Default logic when no dependencies
     };
   }
 
-  const dependencySteps = allSteps.filter((s) => step.dependsOn.includes(s.id));
+  // Get the dependency logic from the first dependency (they should all be the same for a target step)
+  const logic = stepDependencies[0].dependencyLogic;
+  
+  // Get dependency steps
+  const dependencySteps = stepDependencies.map(dep => 
+    allSteps.find(s => s.id === dep.sourceStepId)
+  ).filter(Boolean) as WorkflowInstanceStep[];
+  
   const completedDeps = dependencySteps.filter((s) => s.actionState === "COMPLETED");
   const pendingDeps = dependencySteps.filter((s) => s.actionState !== "COMPLETED");
 
   let isSatisfied = false;
   try {
-    isSatisfied = isDependencySatisfied(step, allSteps);
-  } catch (error) {
+    isSatisfied = isDependencySatisfied(step, dependencies, allSteps);
+  } catch {
     // If check fails, not satisfied
     isSatisfied = false;
   }
@@ -264,7 +264,7 @@ export function getDependencyStatus(
       title: s.title,
       state: s.actionState,
     })),
-    logic: step.dependencyLogic,
+    logic,
   };
 }
 
@@ -272,45 +272,38 @@ export function getDependencyStatus(
  * Validate workflow dependencies before creation
  * 
  * @param steps - All steps in the workflow template/instance
+ * @param dependencies - All dependencies in the workflow
  * @returns Validation result with errors
  */
 export function validateWorkflowDependencies(
-  steps: WorkflowInstanceStep[] | Array<{ id: string; dependsOn: string[] }>
+  steps: WorkflowInstanceStep[],
+  dependencies: WorkflowInstanceDependency[]
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  // Convert to format needed for cycle detection
-  const stepsForValidation = steps.map((s) => ({
-    id: s.id,
-    title: "title" in s ? s.title : s.id,
-    dependsOn: s.dependsOn || [],
-  })) as WorkflowInstanceStep[];
-
   // Check for cycles
-  const cycles = detectCycles(stepsForValidation);
+  const cycles = detectCycles(dependencies, steps);
   if (cycles.length > 0) {
     errors.push(...cycles.map((cycle) => `Circular dependency detected: ${cycle}`));
   }
 
   // Check for self-dependencies
-  for (const step of steps) {
-    if (step.dependsOn && step.dependsOn.includes(step.id)) {
-      const title = "title" in step ? step.title : step.id;
+  for (const dep of dependencies) {
+    if (dep.sourceStepId === dep.targetStepId) {
+      const step = steps.find(s => s.id === dep.sourceStepId);
+      const title = step ? step.title : dep.sourceStepId;
       errors.push(`Step "${title}" cannot depend on itself`);
     }
   }
 
   // Check for invalid dependency references
   const stepIds = new Set(steps.map((s) => s.id));
-  for (const step of steps) {
-    if (step.dependsOn) {
-      const invalidDeps = step.dependsOn.filter((depId) => !stepIds.has(depId));
-      if (invalidDeps.length > 0) {
-        const title = "title" in step ? step.title : step.id;
-        errors.push(
-          `Step "${title}" has invalid dependencies: ${invalidDeps.join(", ")}`
-        );
-      }
+  for (const dep of dependencies) {
+    if (!stepIds.has(dep.sourceStepId)) {
+      errors.push(`Dependency references invalid source step: ${dep.sourceStepId}`);
+    }
+    if (!stepIds.has(dep.targetStepId)) {
+      errors.push(`Dependency references invalid target step: ${dep.targetStepId}`);
     }
   }
 

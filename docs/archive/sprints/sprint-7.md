@@ -20,7 +20,7 @@
   - `workflow_instances(id, templateId, matterId, templateVersion, createdById, status, createdAt)`
   - `workflow_instance_steps(id, instanceId, templateStepId, order, title, actionType, roleScope, actionState, actionData JSONB, assignedToId?, startedAt?, completedAt?, updatedAt)`
 - Enums:
-  - `actionType ∈ { APPROVAL_LAWYER, SIGNATURE_CLIENT, REQUEST_DOC_CLIENT, PAYMENT_CLIENT, CHECKLIST }`
+  - `actionType ∈ { APPROVAL, SIGNATURE, REQUEST_DOC, PAYMENT, CHECKLIST }`
   - `roleScope ∈ { ADMIN, LAWYER, PARALEGAL, CLIENT }`
   - `workflow_instances.status ∈ { DRAFT, ACTIVE, PAUSED, COMPLETED, CANCELED }`
   - `workflow_instance_steps.actionState ∈ { PENDING, READY, IN_PROGRESS, BLOCKED, COMPLETED, FAILED, SKIPPED }`
@@ -110,10 +110,10 @@ export interface IActionHandler<TConfig = unknown, TData = unknown> {
 
 ## Action Handlers (EPIC F)
 - ✅ Implement handler skeletons under `lib/workflows/handlers/*`:
-  - **APPROVAL_LAWYER** – config `{ approverRole?, message? }`; complete payload `{ approved: boolean, comment?: string }`.
-  - **SIGNATURE_CLIENT** – config `{ documentId, provider? }`; start generates mock signature session ID.
-  - **REQUEST_DOC_CLIENT** – config `{ requestText, acceptedTypes? }`; start opens doc request stub.
-  - **PAYMENT_CLIENT** – config `{ amount, currency, provider? }`; start creates mock payment intent.
+  - **APPROVAL** – config `{ approverRole?, message? }`; complete payload `{ approved: boolean, comment?: string }`.
+  - **SIGNATURE** – config `{ documentId, provider? }`; start generates mock signature session ID.
+  - **REQUEST_DOC** – config `{ requestText, acceptedTypes? }`; start opens doc request stub.
+  - **PAYMENT** – config `{ amount, currency, provider? }`; start creates mock payment intent.
   - **CHECKLIST** – minimal config; immediate start/complete path.
 - ✅ Each handler validates config (Zod), updates step state/data, and maintains step history; external integrations mocked for now.
 
@@ -137,7 +137,7 @@ export interface IActionHandler<TConfig = unknown, TData = unknown> {
   - Instance editing by admin/owner succeeds; others receive 403.
   - Checklist execution transitions next step to `READY`.
 - E2E smoke (Playwright):
-  - Create template with 3 steps → instantiate → run through CHECKLIST → APPROVAL_LAWYER → REQUEST_DOC_CLIENT (simulate upload stub).
+  - Create template with 3 steps → instantiate → run through CHECKLIST → APPROVAL → REQUEST_DOC (simulate upload stub).
   - Verify audit trail entries and notifications triggered.
 
 ## Milestones & Timeline

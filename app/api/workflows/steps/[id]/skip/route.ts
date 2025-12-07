@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { assertMatterAccess } from "@/lib/authorization";
+import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
 import "@/lib/workflows";
 import {
   getWorkflowStepOrThrow,
@@ -38,7 +38,11 @@ export const POST = withApiHandler<{ id: string }>(
       const row = await getWorkflowStepOrThrow(tx, params.id);
       const step = toStepWithTemplate(row);
 
-      await assertMatterAccess(user, step.instance.matterId);
+      if (step.instance.matterId) {
+        await assertMatterAccess(user, step.instance.matterId);
+      } else if (step.instance.contactId) {
+        await assertContactAccess(user, step.instance.contactId);
+      }
 
       const latest = await tx.workflowInstanceStep.findUnique({
         where: { id: step.id },

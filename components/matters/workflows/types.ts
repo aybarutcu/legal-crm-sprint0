@@ -1,3 +1,6 @@
+import type { NotificationPolicy } from "@/lib/workflows/notification-policy";
+import type { WorkflowInstanceDependency } from "@prisma/client";
+
 export type ActionState =
   | "PENDING"
   | "READY"
@@ -9,19 +12,20 @@ export type ActionState =
 
 export type ActionType =
   | "CHECKLIST"
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
   | "REQUEST_DOC"
-  | "PAYMENT_CLIENT"
+  | "PAYMENT"
   | "WRITE_TEXT"
   | "POPULATE_QUESTIONNAIRE"
-  | "TASK";
+  | "TASK"
+  | "AUTOMATION_EMAIL"
+  | "AUTOMATION_WEBHOOK";
 
 export type RoleScope = "ADMIN" | "LAWYER" | "PARALEGAL" | "CLIENT";
 
 export type WorkflowInstanceStep = {
   id: string;
-  order: number;
   title: string;
   actionType: ActionType;
   roleScope: RoleScope;
@@ -35,11 +39,11 @@ export type WorkflowInstanceStep = {
   notes: string | null;
   startedAt: string | null;
   completedAt: string | null;
-  dependsOn?: string[];
   positionX?: number;
   positionY?: number;
-  nextStepOnTrue?: number | null;
-  nextStepOnFalse?: number | null;
+  notificationPolicies?: NotificationPolicy[];
+  automationLog?: unknown;
+  notificationLog?: unknown;
 };
 
 export type WorkflowInstance = {
@@ -48,8 +52,11 @@ export type WorkflowInstance = {
   createdAt: string;
   createdBy: { name: string | null; email: string | null } | null;
   template: {
+    id: string;
     name: string;
-  };
+    description: string | null;
+  } | null;
   templateVersion?: number;
   steps: WorkflowInstanceStep[];
+  dependencies?: WorkflowInstanceDependency[];
 };

@@ -117,7 +117,7 @@ export async function isMatterTeamMember(matterId: string, userId: string): Prom
     },
   });
 
-  return matter?.ownerId === userId || (matter?.teamMembers && matter.teamMembers.length > 0);
+  return matter?.ownerId === userId || Boolean(matter?.teamMembers && matter.teamMembers.length > 0);
 }
 
 /**

@@ -78,7 +78,15 @@ if (
 
 declare module "next-auth" {
   interface Session {
-    user?: Session["user"] & { id: string; role?: Role; status?: UserStatus; isActive?: boolean };
+    user?: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+      role?: Role;
+      status?: UserStatus;
+      isActive?: boolean;
+    };
   }
 
   interface User {

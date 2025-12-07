@@ -49,10 +49,10 @@ function renderStepExecutionUI(step: WorkflowInstanceStep) {
   
   switch (step.actionType) {
     case "CHECKLIST": return renderChecklistExecution(step, config);
-    case "APPROVAL_LAWYER": return renderApprovalExecution(step, config);
-    case "SIGNATURE_CLIENT": return renderSignatureExecution(step, config);
-    case "REQUEST_DOC_CLIENT": return renderDocumentRequestExecution(step, config);
-    case "PAYMENT_CLIENT": return renderPaymentExecution(step, config);
+    case "APPROVAL": return renderApprovalExecution(step, config);
+    case "SIGNATURE": return renderSignatureExecution(step, config);
+    case "REQUEST_DOC": return renderDocumentRequestExecution(step, config);
+    case "PAYMENT": return renderPaymentExecution(step, config);
     default: return null;
   }
 }
@@ -93,7 +93,7 @@ function renderStepExecutionUI(step: WorkflowInstanceStep) {
 
 ### 3. Lawyer Approval Execution
 
-**Action Type**: `APPROVAL_LAWYER`
+**Action Type**: `APPROVAL`
 
 **Visual Theme**: Purple border (`border-purple-200`), light purple background (`bg-purple-50/50`)
 
@@ -128,7 +128,7 @@ function renderStepExecutionUI(step: WorkflowInstanceStep) {
 
 ### 4. Signature Execution
 
-**Action Type**: `SIGNATURE_CLIENT`
+**Action Type**: `SIGNATURE`
 
 **Visual Theme**: Indigo border (`border-indigo-200`), light indigo background (`bg-indigo-50/50`)
 
@@ -162,7 +162,7 @@ function renderStepExecutionUI(step: WorkflowInstanceStep) {
 
 ### 5. Document Request Execution
 
-**Action Type**: `REQUEST_DOC_CLIENT`
+**Action Type**: `REQUEST_DOC`
 
 **Visual Theme**: Orange border (`border-orange-200`), light orange background (`bg-orange-50/50`)
 
@@ -197,7 +197,7 @@ function renderStepExecutionUI(step: WorkflowInstanceStep) {
 
 ### 6. Payment Execution
 
-**Action Type**: `PAYMENT_CLIENT`
+**Action Type**: `PAYMENT`
 
 **Visual Theme**: Green border (`border-green-200`), light green background (`bg-green-50/50`)
 
@@ -465,7 +465,7 @@ async execute(context: WorkflowContext, step: WorkflowInstanceStep) {
 ### Approval Template
 ```json
 {
-  "actionType": "APPROVAL_LAWYER",
+  "actionType": "APPROVAL",
   "actionData": {
     "config": {
       "message": "Dava dilekçesini inceleyin ve onaylayın"
@@ -477,7 +477,7 @@ async execute(context: WorkflowContext, step: WorkflowInstanceStep) {
 ### Document Request Template
 ```json
 {
-  "actionType": "REQUEST_DOC_CLIENT",
+  "actionType": "REQUEST_DOC",
   "actionData": {
     "config": {
       "requestText": "Nüfus cüzdanı fotokopisini yükleyin",
@@ -490,7 +490,7 @@ async execute(context: WorkflowContext, step: WorkflowInstanceStep) {
 ### Signature Template
 ```json
 {
-  "actionType": "SIGNATURE_CLIENT",
+  "actionType": "SIGNATURE",
   "actionData": {
     "config": {
       "documentId": "doc_123",
@@ -503,7 +503,7 @@ async execute(context: WorkflowContext, step: WorkflowInstanceStep) {
 ### Payment Template
 ```json
 {
-  "actionType": "PAYMENT_CLIENT",
+  "actionType": "PAYMENT",
   "actionData": {
     "config": {
       "amount": 5000.00,
@@ -616,7 +616,7 @@ Each workflow displays a "Geçmiş" button in the header showing complete workfl
 - **Lines Added**: ~950 lines
 - **Functions Created**: 8 (renderStepExecutionUI + 5 action-specific renderers + 2 execution log renderers)
 - **State Variables Added**: 4 (checklistStates, approvalComments, documentFiles, hoveredStep)
-- **Action Types Supported**: 5 (CHECKLIST, APPROVAL_LAWYER, SIGNATURE_CLIENT, REQUEST_DOC_CLIENT, PAYMENT_CLIENT)
+- **Action Types Supported**: 5 (CHECKLIST, APPROVAL, SIGNATURE, REQUEST_DOC, PAYMENT)
 - **Color Themes**: 5 (Blue, Purple, Indigo, Orange, Green)
 - **Interactive Elements**: Checkboxes, textareas, file inputs, multiple button types, hover popups
 - **Visual Indicators**: 2 state icons (✓ completed, ⊘ skipped), 4 border colors, 2 execution log icons

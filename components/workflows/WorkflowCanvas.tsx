@@ -16,33 +16,44 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { ActionType, Role } from "@prisma/client";
+import { ActionType } from "./config-forms/ActionConfigForm";
+import { Role } from "@prisma/client";
 import { StepNode } from "./nodes/StepNode";
 import { NodePalette } from "./NodePalette";
 import { StepPropertyPanel } from "./StepPropertyPanel";
+import type { NotificationPolicy } from "@/lib/workflows/notification-policy";
+import { createStepId } from "@/components/workflows/create-step-id";
 
 // WorkflowStep interface matching our validation schema
 export interface WorkflowStep {
-  id?: string;
-  order: number;
+  id: string;
   title: string;
   actionType: ActionType;
   roleScope: Role;
   required?: boolean;
   actionConfig?: Record<string, unknown> | unknown[];
-  dependsOn?: number[];
-  dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
-  conditionType?: string;
-  conditionConfig?: unknown;
   positionX?: number;
   positionY?: number;
-  nextStepOnTrue?: number | null;
-  nextStepOnFalse?: number | null;
+  notificationPolicies?: NotificationPolicy[];
+  order?: number;
+  dependsOn?: number[];
+  dependencyLogic?: "ALL" | "ANY" | "CUSTOM";
+}
+
+export interface WorkflowDependency {
+  id: string;
+  sourceStepId: string;
+  targetStepId: string;
+  dependencyType: "DEPENDS_ON" | "TRIGGERS" | "IF_TRUE_BRANCH" | "IF_FALSE_BRANCH";
+  dependencyLogic: "ALL" | "ANY" | "CUSTOM";
+  conditionType?: "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
+  conditionConfig?: Record<string, unknown>;
 }
 
 interface WorkflowCanvasProps {
   steps: WorkflowStep[];
-  onChange: (steps: WorkflowStep[]) => void;
+  dependencies?: WorkflowDependency[];
+  onChange: (steps: WorkflowStep[], dependencies?: WorkflowDependency[]) => void;
   onValidate?: (validation: { valid: boolean; errors: string[] }) => void;
   readOnly?: boolean;
 }
@@ -61,110 +72,85 @@ const defaultEdgeOptions = {
 
 export function WorkflowCanvas({
   steps,
+  dependencies = [],
   onChange,
   onValidate,
   readOnly = false,
 }: WorkflowCanvasProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Initialize nodes and edges from steps
-  const initialNodes = useMemo(() => stepsToNodes(steps), []);
-  const initialEdges = useMemo(() => stepsToEdges(steps), []);
+  // Initialize nodes and edges from steps and dependencies
+  const initialNodes = useMemo(() => stepsToNodes(steps, dependencies || [], selectedNodeId), [steps, dependencies, selectedNodeId]);
+  const initialEdges = useMemo(() => dependenciesToEdges(dependencies), [dependencies]);
 
   // Internal state for visual positioning (ReactFlow needs this for dragging)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Sync when steps change from parent (preserve node positions)
+  // Sync when steps or dependencies change from parent (simplified)
   useEffect(() => {
-    const newNodes = stepsToNodes(steps);
-    const newEdges = stepsToEdges(steps);
-    
-    // Preserve positions from current nodes
-    const updatedNodes = newNodes.map(newNode => {
-      const existingNode = nodes.find(n => n.id === newNode.id);
-      if (existingNode) {
-        return {
-          ...newNode,
-          position: existingNode.position, // Keep the visual position
-        };
-      }
-      return newNode;
-    });
-    
-    setNodes(updatedNodes);
-    setEdges(newEdges);
-  }, [steps, setNodes, setEdges]);
+    setNodes(stepsToNodes(steps, dependencies, selectedNodeId));
+    setEdges(dependenciesToEdges(dependencies));
+  }, [steps, dependencies, selectedNodeId, setNodes, setEdges]);
 
   // Validate current workflow
   const validation = useMemo(() => {
-    const result = validateStepDependencies(steps);
-    if (onValidate) {
-      onValidate(result);
+    if (!onValidate) return { valid: true, errors: [] };
+    return validateWorkflowDependencies(steps, dependencies);
+  }, [steps, dependencies, onValidate]);
+
+  // Call onValidate when validation changes
+  useEffect(() => {
+    if (onValidate && validation) {
+      onValidate(validation);
     }
-    return result;
-  }, [steps, onValidate]);
+  }, [validation, onValidate]);
 
   // Handle new connections (dependencies)
   const onConnect = useCallback(
     (connection: Connection) => {
       if (readOnly) return;
 
-      const sourceOrder = getStepOrderById(steps, connection.source!);
-      const targetOrder = getStepOrderById(steps, connection.target!);
+      const sourceId = connection.source;
+      const targetId = connection.target;
+      if (!sourceId || !targetId) return;
 
-      if (sourceOrder === undefined || targetOrder === undefined) return;
+      const sourceStep = steps.find((step) => step.id === sourceId);
+      const targetStep = steps.find((step) => step.id === targetId);
 
-      const sourceHandle = connection.sourceHandle ?? "next";
-
-      if (sourceHandle === "approve" || sourceHandle === "reject") {
-        if (sourceOrder === targetOrder) {
-          console.error("Cannot create branch to the same step");
-          return;
-        }
-
-        const updatedSteps = steps.map((step) => {
-          if (step.order !== sourceOrder) return step;
-          if (sourceHandle === "approve") {
-            return { ...step, nextStepOnTrue: targetOrder };
-          }
-          return { ...step, nextStepOnFalse: targetOrder };
-        });
-
-        onChange(updatedSteps);
+      if (!sourceStep || !targetStep) {
+        console.error("Unable to locate source or target step for connection");
         return;
       }
 
-      // Only default handle supports dependency connections
-      const validationResult = isValidConnection(
-        connection,
-        steps,
-        sourceOrder,
-        targetOrder
+      if (sourceId === targetId) {
+        console.error("Cannot create connection to the same step");
+        return;
+      }
+
+      // Check if dependency already exists
+      const existingDep = dependencies.find(
+        (dep) => dep.sourceStepId === sourceId && dep.targetStepId === targetId
       );
 
-      if (!validationResult.valid) {
-        console.error(`Cannot create connection: ${validationResult.error}`);
+      if (existingDep) {
+        console.warn("Dependency already exists");
         return;
       }
 
-      const updatedSteps = steps.map((step) => {
-        if (step.order === targetOrder) {
-          const existing = step.dependsOn || [];
-          if (existing.includes(sourceOrder)) {
-            return step;
-          }
-          return {
-            ...step,
-            dependsOn: [...existing, sourceOrder],
-          };
-        }
-        return step;
-      });
+      // Create new dependency
+      const newDependency: WorkflowDependency = {
+        id: `dep_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        sourceStepId: sourceId,
+        targetStepId: targetId,
+        dependencyType: "DEPENDS_ON",
+        dependencyLogic: "ALL", // Default to ALL for new connections
+      };
 
-      onChange(updatedSteps);
+      const updatedDependencies = [...dependencies, newDependency];
+      onChange(steps, updatedDependencies);
     },
-    [steps, onChange, readOnly]
+    [steps, dependencies, onChange, readOnly]
   );
 
   // Handle node selection
@@ -182,11 +168,8 @@ export function WorkflowCanvas({
     (_event: React.MouseEvent, node: Node) => {
       if (readOnly) return;
 
-      const stepOrder = getStepOrderById(steps, node.id);
-      if (stepOrder === undefined) return;
-
       const updatedSteps = steps.map((step) => {
-        if (step.order === stepOrder) {
+        if (step.id === node.id) {
           return {
             ...step,
             positionX: node.position.x,
@@ -196,9 +179,9 @@ export function WorkflowCanvas({
         return step;
       });
 
-      onChange(updatedSteps);
+      onChange(updatedSteps, dependencies);
     },
-    [steps, onChange, readOnly]
+    [steps, dependencies, onChange, readOnly]
   );
 
   // Handle edge deletion
@@ -206,112 +189,50 @@ export function WorkflowCanvas({
     (deletedEdges: Edge[]) => {
       if (readOnly) return;
 
-      let updatedSteps = steps;
+      const updatedDependencies = dependencies.filter(dep => 
+        !deletedEdges.some(edge => edge.id === `${dep.sourceStepId}-${dep.targetStepId}`)
+      );
 
-      deletedEdges.forEach((edge) => {
-        const branchCase = edge.data?.branchCase as "approve" | "reject" | undefined;
-
-        if (branchCase) {
-          const sourceOrder = getStepOrderById(updatedSteps, edge.source);
-          const targetOrder = getStepOrderById(updatedSteps, edge.target);
-
-          if (sourceOrder === undefined) {
-            return;
-          }
-
-          updatedSteps = updatedSteps.map((step) => {
-            if (step.order !== sourceOrder) return step;
-            if (branchCase === "approve") {
-              if (typeof targetOrder === "number" && step.nextStepOnTrue !== targetOrder) {
-                return step;
-              }
-              return { ...step, nextStepOnTrue: null };
-            }
-            if (branchCase === "reject") {
-              if (typeof targetOrder === "number" && step.nextStepOnFalse !== targetOrder) {
-                return step;
-              }
-              return { ...step, nextStepOnFalse: null };
-            }
-            return step;
-          });
-
-          return;
-        }
-
-        const sourceOrder = getStepOrderById(updatedSteps, edge.source);
-        const targetOrder = getStepOrderById(updatedSteps, edge.target);
-
-        if (sourceOrder === undefined || targetOrder === undefined) return;
-
-        updatedSteps = updatedSteps.map((step) => {
-          if (step.order === targetOrder) {
-            return {
-              ...step,
-              dependsOn: step.dependsOn?.filter((o) => o !== sourceOrder) || [],
-            };
-          }
-          return step;
-        });
-      });
-
-      if (updatedSteps !== steps) {
-        onChange(updatedSteps);
-      }
+      onChange(steps, updatedDependencies);
     },
-    [steps, onChange, readOnly]
+    [steps, dependencies, onChange, readOnly]
   );
 
   // Get selected step
   const selectedStep = useMemo(() => {
     if (!selectedNodeId) return null;
-    return steps.find((s) => (s.id || `step-${s.order}`) === selectedNodeId);
+    return steps.find((s) => s.id === selectedNodeId);
   }, [selectedNodeId, steps]);
 
   // Handle step property updates
   const handleStepUpdate = useCallback(
     (updatedStep: WorkflowStep) => {
       const updatedSteps = steps.map((step) =>
-        step.order === updatedStep.order ? updatedStep : step
+        step.id === updatedStep.id ? updatedStep : step
       );
-      onChange(updatedSteps);
+      onChange(updatedSteps, dependencies);
     },
-    [steps, onChange]
+    [steps, dependencies, onChange]
   );
 
   // Handle step deletion
   const handleStepDelete = useCallback(
-    (stepOrder: number) => {
-      // Remove step
-      const updatedSteps = steps.filter((s) => s.order !== stepOrder);
+    (stepId: string) => {
+      const filtered = steps.filter((step) => step.id !== stepId);
 
-      // Remove dependencies pointing to deleted step
-      updatedSteps.forEach((step) => {
-        if (step.dependsOn?.includes(stepOrder)) {
-          step.dependsOn = step.dependsOn.filter((o) => o !== stepOrder);
-        }
-        if (step.nextStepOnTrue === stepOrder) {
-          step.nextStepOnTrue = null;
-        }
-        if (step.nextStepOnFalse === stepOrder) {
-          step.nextStepOnFalse = null;
-        }
-      });
+      // Remove all dependencies that reference the deleted step
+      const filteredDependencies = (dependencies || []).filter(
+        (dep) => dep.sourceStepId !== stepId && dep.targetStepId !== stepId
+      );
 
-      // Recalculate orders
-      const reordered = updatedSteps.map((step, index) => ({
-        ...step,
-        order: index,
-      }));
-
-      onChange(reordered);
+      onChange(filtered, filteredDependencies);
       setSelectedNodeId(null);
     },
-    [steps, onChange]
+    [steps, dependencies, onChange]
   );
 
   return (
-    <div className="relative w-full h-[calc(100vh-320px)] min-h-[600px] border rounded-lg bg-gray-50">
+    <div className="relative w-full h-full min-h-[600px] border rounded-lg bg-gray-50">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -327,6 +248,8 @@ export function WorkflowCanvas({
         minZoom={0.2}
         maxZoom={2}
         defaultEdgeOptions={defaultEdgeOptions}
+        selectNodesOnDrag={false}
+        selectionKeyCode={null}
       >
         <Controls />
         <MiniMap zoomable pannable />
@@ -374,7 +297,10 @@ export function WorkflowCanvas({
       {selectedStep && !readOnly && (
         <StepPropertyPanel
           step={selectedStep}
+          allSteps={steps}
+          dependencies={dependencies}
           onUpdate={handleStepUpdate}
+          onUpdateDependencies={(updatedDependencies) => onChange(steps, updatedDependencies)}
           onDelete={handleStepDelete}
           onClose={() => setSelectedNodeId(null)}
         />
@@ -385,42 +311,42 @@ export function WorkflowCanvas({
   // Helper: Add node from palette
   function handleAddNodeFromPalette(actionType: ActionType) {
     const newStep: WorkflowStep = {
-      id: `temp-${Date.now()}`,
+      id: createStepId(),
       title: `New ${actionType.replace(/_/g, " ")} Step`,
       actionType,
       roleScope: actionType.includes("CLIENT") ? Role.CLIENT : Role.LAWYER,
       required: true,
       actionConfig: {},
-      order: steps.length,
-      dependsOn: [],
-      dependencyLogic: "ALL",
-      nextStepOnTrue: null,
-      nextStepOnFalse: null,
+      notificationPolicies: [],
     };
 
-    onChange([...steps, newStep]);
+    onChange([...steps, newStep], dependencies);
   }
 }
 
 // Helper: Convert steps to React Flow nodes
-function stepsToNodes(steps: WorkflowStep[]): Node[] {
-  const nodes = steps.map((step) => {
+function stepsToNodes(steps: WorkflowStep[], dependencies: WorkflowDependency[], selectedNodeId?: string | null): Node[] {
+  const nodes = steps.map((step, index) => {
+    const dependencyCount = dependencies.filter(dep => dep.targetStepId === step.id).length;
+    const dependencyLogic = dependencies.find(dep => dep.targetStepId === step.id)?.dependencyLogic || "ALL";
+
     const position = { 
-      x: step.positionX ?? step.order * 300 + 50, // Use saved position or default
+      x: step.positionX ?? index * 300 + 50, // Use saved position or default based on index
       y: step.positionY ?? 100 
     };
 
     return {
-      id: step.id || `step-${step.order}`,
+      id: step.id,
       type: "stepNode",
       position,
+      selected: step.id === selectedNodeId,
       data: {
         step,
         label: step.title,
         actionType: step.actionType,
         roleScope: step.roleScope,
-        dependencyCount: step.dependsOn?.length || 0,
-        dependencyLogic: step.dependencyLogic,
+        dependencyCount,
+        dependencyLogic,
       },
     };
   });
@@ -428,133 +354,44 @@ function stepsToNodes(steps: WorkflowStep[]): Node[] {
   return nodes;
 }
 
-// Helper: Convert steps to React Flow edges
-function stepsToEdges(steps: WorkflowStep[]): Edge[] {
-  const edges: Edge[] = [];
-
-  steps.forEach((step) => {
-    step.dependsOn?.forEach((depOrder) => {
-      const depStep = steps.find((s) => s.order === depOrder);
-      if (depStep) {
-        const sourceId = depStep.id || `step-${depStep.order}`;
-        const targetId = step.id || `step-${step.order}`;
-
-        edges.push({
-          id: `${sourceId}-${targetId}`,
-          source: sourceId,
-          sourceHandle: "next",
-          target: targetId,
-          type: "smoothstep",
-          animated: false,
-          style: { strokeWidth: 3 }, // Thicker arrows
-          markerEnd: { type: MarkerType.ArrowClosed },
-        });
-      }
-    });
-
-    if (typeof step.nextStepOnTrue === "number") {
-      const target = steps.find((s) => s.order === step.nextStepOnTrue);
-      if (target) {
-        const sourceId = step.id || `step-${step.order}`;
-        const targetId = target.id || `step-${target.order}`;
-        edges.push({
-          id: `${sourceId}-approve-${targetId}`,
-          source: sourceId,
-          sourceHandle: "approve",
-          target: targetId,
-          type: "smoothstep",
-          animated: false,
-          label: "Approve",
-          style: { stroke: "#10b981", strokeWidth: 2 },
-          data: { branchCase: "approve" },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
-        });
-      }
-    }
-
-    if (typeof step.nextStepOnFalse === "number") {
-      const target = steps.find((s) => s.order === step.nextStepOnFalse);
-      if (target) {
-        const sourceId = step.id || `step-${step.order}`;
-        const targetId = target.id || `step-${target.order}`;
-        edges.push({
-          id: `${sourceId}-reject-${targetId}`,
-          source: sourceId,
-          sourceHandle: "reject",
-          target: targetId,
-          type: "smoothstep",
-          animated: false,
-          label: "Reject",
-          style: { stroke: "#ef4444", strokeWidth: 2 },
-          data: { branchCase: "reject" },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#ef4444" },
-        });
-      }
-    }
-  });
-
-  return edges;
+// Helper: Convert dependencies to React Flow edges
+function dependenciesToEdges(dependencies: WorkflowDependency[]): Edge[] {
+  return dependencies.map((dep) => ({
+    id: `${dep.sourceStepId}-${dep.targetStepId}`,
+    source: dep.sourceStepId,
+    target: dep.targetStepId,
+    type: "smoothstep",
+    label: dep.dependencyLogic,
+    markerEnd: { type: MarkerType.ArrowClosed },
+    data: { dependency: dep },
+  }));
 }
 
-// Helper: Get step order by node ID
-function getStepOrderById(
+// Helper: Validate workflow dependencies
+function validateWorkflowDependencies(
   steps: WorkflowStep[],
-  nodeId: string
-): number | undefined {
-  const step = steps.find((s) => (s.id || `step-${s.order}`) === nodeId);
-  return step?.order;
-}
+  dependencies: WorkflowDependency[]
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const stepIds = new Set(steps.map((step) => step.id));
 
-// Helper: Validate connection before creating
-function isValidConnection(
-  connection: Connection,
-  steps: WorkflowStep[],
-  sourceOrder: number,
-  targetOrder: number
-): { valid: boolean; error?: string } {
-  // No self-dependencies
-  if (sourceOrder === targetOrder) {
-    return { valid: false, error: "Step cannot depend on itself" };
+  // Check for invalid dependencies
+  for (const dep of dependencies) {
+    if (!stepIds.has(dep.sourceStepId)) {
+      errors.push(`Dependency references unknown source step: ${dep.sourceStepId}`);
+    }
+    if (!stepIds.has(dep.targetStepId)) {
+      errors.push(`Dependency references unknown target step: ${dep.targetStepId}`);
+    }
+    if (dep.sourceStepId === dep.targetStepId) {
+      const step = steps.find(s => s.id === dep.sourceStepId);
+      errors.push(`Step "${step?.title || dep.sourceStepId}" cannot depend on itself`);
+    }
   }
 
   // Check for cycles
-  const testSteps = steps.map((step) => {
-    if (step.order === targetOrder) {
-      return {
-        ...step,
-        dependsOn: [...(step.dependsOn || []), sourceOrder],
-      };
-    }
-    return step;
-  });
-
-  const validation = validateStepDependencies(testSteps);
-
-  if (!validation.valid) {
-    return { valid: false, error: validation.errors[0] };
-  }
-
-  return { valid: true };
-}
-
-// Helper: Validate step dependencies for cycles
-function validateStepDependencies(
-  steps: WorkflowStep[]
-): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  // Check for self-dependencies
-  for (const step of steps) {
-    if (step.dependsOn?.includes(step.order)) {
-      errors.push(`Step "${step.title}" cannot depend on itself`);
-    }
-  }
-
-  // Check for cycles using DFS
-  const cycles = detectCyclesInSteps(steps);
-  if (cycles.length > 0) {
-    errors.push(...cycles);
-  }
+  const cycles = detectCyclesInDependencies(dependencies, steps);
+  errors.push(...cycles);
 
   return {
     valid: errors.length === 0,
@@ -562,47 +399,56 @@ function validateStepDependencies(
   };
 }
 
-// Helper: Detect cycles in step dependencies
-function detectCyclesInSteps(steps: WorkflowStep[]): string[] {
+// Helper: Detect cycles in dependency graph
+function detectCyclesInDependencies(
+  dependencies: WorkflowDependency[],
+  steps: WorkflowStep[]
+): string[] {
   const errors: string[] = [];
-  const visited = new Set<number>();
-  const recStack = new Set<number>();
+  const visited = new Set<string>();
+  const recStack = new Set<string>();
+  const adjacency = new Map<string, string[]>();
 
-  function dfs(order: number, path: number[]): boolean {
-    if (recStack.has(order)) {
-      // Cycle detected
-      const cycleStart = path.indexOf(order);
-      const cyclePath = path.slice(cycleStart).concat(order);
-      const cycleStr = cyclePath
-        .map((o) => `Step ${o + 1}`)
+  // Build adjacency list from dependencies
+  dependencies.forEach((dep) => {
+    if (!adjacency.has(dep.targetStepId)) {
+      adjacency.set(dep.targetStepId, []);
+    }
+    adjacency.get(dep.targetStepId)!.push(dep.sourceStepId);
+  });
+
+  function dfs(stepId: string, path: string[]): boolean {
+    if (recStack.has(stepId)) {
+      const cycleStart = path.indexOf(stepId);
+      const cyclePath = path.slice(cycleStart).concat(stepId);
+      const titles = cyclePath
+        .map((id) => steps.find((s) => s.id === id)?.title ?? id)
         .join(" → ");
-      errors.push(`Circular dependency detected: ${cycleStr}`);
+      errors.push(`Circular dependency detected: ${titles}`);
       return true;
     }
 
-    if (visited.has(order)) {
+    if (visited.has(stepId)) {
       return false;
     }
 
-    visited.add(order);
-    recStack.add(order);
+    visited.add(stepId);
+    recStack.add(stepId);
 
-    const step = steps.find((s) => s.order === order);
-    if (step?.dependsOn) {
-      for (const depOrder of step.dependsOn) {
-        if (dfs(depOrder, [...path, order])) {
-          return true;
-        }
+    const deps = adjacency.get(stepId) ?? [];
+    for (const dep of deps) {
+      if (dfs(dep, [...path, stepId])) {
+        return true;
       }
     }
 
-    recStack.delete(order);
+    recStack.delete(stepId);
     return false;
   }
 
   for (const step of steps) {
-    if (!visited.has(step.order)) {
-      dfs(step.order, []);
+    if (!visited.has(step.id)) {
+      dfs(step.id, []);
     }
   }
 

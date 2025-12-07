@@ -1,11 +1,9 @@
-import { ActionState, Role, WorkflowInstance } from "@prisma/client";
+import { ActionState, Role, WorkflowInstance, WorkflowInstanceDependency } from "@prisma/client";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { actionRegistry } from "./registry";
 import { ActionHandlerError } from "./errors";
 import { assertTransition, isTerminal } from "./state-machine";
 import { WorkflowMetrics, createWorkflowSpan } from "./observability";
-import { ConditionEvaluator } from "./conditions";
-import type { ConditionConfig } from "./conditions/types";
 import { getReadySteps } from "./dependency-resolver";
 import type {
   ActionEvent,
@@ -13,17 +11,6 @@ import type {
   WorkflowInstanceStepWithTemplate,
   WorkflowRuntimeContext,
 } from "./types";
-
-// TODO: Remove once Prisma generates ConditionType enum
-type ConditionType = "ALWAYS" | "IF_TRUE" | "IF_FALSE" | "SWITCH";
-
-// Extended type with conditional fields (until Prisma regenerates types)
-type WorkflowInstanceStepWithConditions = WorkflowInstanceStepWithTemplate & {
-  conditionType?: ConditionType | null;
-  conditionConfig?: Prisma.JsonValue | null;
-  nextStepOnTrue?: number | null;
-  nextStepOnFalse?: number | null;
-};
 
 type JsonValue = Prisma.JsonValue;
 type JsonObject = Prisma.JsonObject;
@@ -35,7 +22,7 @@ type ActionHistoryEntry = {
   at: string;
   by?: string;
   event: string;
-  payload?: unknown;
+  payload?: JsonValue;
 };
 
 function isJsonObject(value: JsonValue): value is JsonObject {
@@ -281,7 +268,7 @@ export async function completeWorkflowStep({
       at: now.toISOString(),
       by: actor?.id,
       event: resultState === ActionState.COMPLETED ? "COMPLETED" : `STATE_${resultState}`,
-      payload,
+      payload: payload ? cloneJson(payload as JsonValue) : undefined,
     });
 
     // Get context updates from handler
@@ -298,7 +285,22 @@ export async function completeWorkflowStep({
       const cycleTime = now.getTime() - step.startedAt.getTime();
       WorkflowMetrics.recordCycleTime(step.actionType, cycleTime);
     }
-    
+    if (resultState === ActionState.COMPLETED) {
+      const branchDecision = inferBranchDecision(payload, context.data);
+      await resolveBranchingTransitions({
+        tx,
+        instance,
+        completedStep: step,
+        decision: branchDecision,
+        now,
+      });
+    }
+
+    if (resultState === ActionState.COMPLETED) {
+      const { notifyStepCompleted } = await import("./notifications");
+      await notifyStepCompleted(tx, step.id);
+    }
+
     span.end(true);
     return resultState;
   } catch (error) {
@@ -309,6 +311,324 @@ export async function completeWorkflowStep({
       span.end(false);
     }
     throw error;
+  }
+}
+
+type BranchDefinition = {
+  targetStepId: string;
+  condition?: string;
+  label?: string;
+};
+
+const TRUE_BRANCH_VALUES = new Set(["true", "yes", "approved", "success", "pass"]);
+const FALSE_BRANCH_VALUES = new Set(["false", "no", "rejected", "reject", "fail", "denied"]);
+
+function inferBranchDecision(payload: unknown, actionData: unknown): boolean | undefined {
+  if (typeof payload === "boolean") {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+
+    const directBooleanKeys: Array<keyof typeof record> = ["approved", "branchDecision", "result"];
+    for (const key of directBooleanKeys) {
+      const value = record[key];
+      if (typeof value === "boolean") {
+        return value;
+      }
+    }
+
+    const nestedDecision = record.decision;
+    if (nestedDecision && typeof nestedDecision === "object") {
+      const approved = (nestedDecision as Record<string, unknown>).approved;
+      if (typeof approved === "boolean") {
+        return approved;
+      }
+    }
+  }
+
+  if (actionData && typeof actionData === "object") {
+    const record = actionData as Record<string, unknown>;
+
+    const directCandidates = [record.branchDecision, record.approved];
+    for (const candidate of directCandidates) {
+      if (typeof candidate === "boolean") {
+        return candidate;
+      }
+    }
+
+    const nested = record.decision;
+    if (nested && typeof nested === "object") {
+      const approved = (nested as Record<string, unknown>).approved;
+      if (typeof approved === "boolean") {
+        return approved;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+async function resolveBranchingTransitions({
+  tx,
+  instance,
+  completedStep,
+  decision,
+  now,
+}: {
+  tx: PrismaClient | Prisma.TransactionClient;
+  instance: WorkflowInstance;
+  completedStep: WorkflowInstanceStepWithTemplate;
+  decision?: boolean;
+  now: Date;
+}): Promise<void> {
+  const branches = extractBranchDefinitions(completedStep);
+  if (branches.length === 0) {
+    return;
+  }
+
+  const normalized = branches.map((branch) => ({
+    ...branch,
+    condition: branch.condition?.toString().trim().toLowerCase(),
+  }));
+
+  const trueBranches = normalized.filter(
+    (branch) => branch.condition && TRUE_BRANCH_VALUES.has(branch.condition),
+  );
+  const falseBranches = normalized.filter(
+    (branch) => branch.condition && FALSE_BRANCH_VALUES.has(branch.condition),
+  );
+  const neutralBranches = normalized.filter(
+    (branch) =>
+      !branch.condition ||
+      (!TRUE_BRANCH_VALUES.has(branch.condition) && !FALSE_BRANCH_VALUES.has(branch.condition)),
+  );
+
+  let chosen: (typeof normalized)[number] | undefined;
+
+  if (decision === true) {
+    chosen = trueBranches[0] ?? neutralBranches[0];
+  } else if (decision === false) {
+    chosen = falseBranches[0] ?? neutralBranches[0];
+  } else if (neutralBranches.length === 1 && normalized.length === 1) {
+    chosen = neutralBranches[0];
+  } else if (normalized.length === 1) {
+    chosen = normalized[0];
+  } else {
+    // Without a decision we cannot safely choose among multiple branches
+    return;
+  }
+
+  if (!chosen) {
+    return;
+  }
+
+  if (chosen.targetStepId !== completedStep.id) {
+    await activateBranchTarget({
+      tx,
+      instanceId: instance.id,
+      sourceStepId: completedStep.id,
+      targetStepId: chosen.targetStepId,
+      now,
+    });
+  }
+
+  if (typeof decision === "boolean") {
+    for (const branch of normalized) {
+      if (branch === chosen) {
+        continue;
+      }
+      if (branch.targetStepId === completedStep.id) {
+        continue;
+      }
+
+      const reasonParts = [branch.label, branch.condition].filter(Boolean);
+      const skipReason = reasonParts.length > 0
+        ? `Skipped by branch (${reasonParts.join(" / ")})`
+        : "Skipped by branch selection";
+
+      await skipBranchTarget({
+        tx,
+        instanceId: instance.id,
+        sourceStepId: completedStep.id,
+        targetStepId: branch.targetStepId,
+        now,
+        reason: skipReason,
+      });
+    }
+  }
+}
+
+function extractBranchDefinitions(step: WorkflowInstanceStepWithTemplate): BranchDefinition[] {
+  const definitions: BranchDefinition[] = [];
+  const seen = new Set<string>();
+
+  const pushBranch = (target: unknown, condition?: unknown, label?: unknown) => {
+    if (typeof target !== "string" || target.trim().length === 0) {
+      return;
+    }
+    const key = `${target}|${condition ?? ""}|${label ?? ""}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    definitions.push({
+      targetStepId: target,
+      condition:
+        typeof condition === "string"
+          ? condition
+          : typeof condition === "boolean"
+            ? condition.toString()
+            : undefined,
+      label: typeof label === "string" ? label : undefined,
+    });
+  };
+
+  const stepWithBranches = step as unknown as { branches?: unknown };
+  const templateWithBranches = step.templateStep as unknown as { branches?: unknown } | null;
+  const branchSources = [stepWithBranches?.branches, templateWithBranches?.branches];
+
+  for (const source of branchSources) {
+    if (!Array.isArray(source)) {
+      continue;
+    }
+    for (const branch of source) {
+      if (!branch || typeof branch !== "object") {
+        continue;
+      }
+      const record = branch as Record<string, unknown>;
+      const target =
+        record.targetStepId ?? record.targetId ?? record.target ?? record.targetStep;
+      const condition = record.condition ?? record.when;
+      const label = record.label ?? record.name;
+      pushBranch(target, condition, label);
+    }
+  }
+
+  return definitions;
+}
+
+async function activateBranchTarget({
+  tx,
+  instanceId,
+  sourceStepId: _sourceStepId,
+  targetStepId,
+  now,
+}: {
+  tx: PrismaClient | Prisma.TransactionClient;
+  instanceId: string;
+  sourceStepId: string;
+  targetStepId: string;
+  now: Date;
+}): Promise<void> {
+  const target = await tx.workflowInstanceStep.findUnique({
+    where: { id: targetStepId },
+    select: {
+      id: true,
+      instanceId: true,
+      actionState: true,
+      actionType: true,
+    },
+  });
+
+  if (!target || target.instanceId !== instanceId) {
+    return;
+  }
+
+  // TODO: Update dependency logic to use WorkflowInstanceDependency table
+  // For now, just transition eligible states to READY
+  const eligibleStates = new Set<ActionState>([
+    ActionState.PENDING,
+    ActionState.BLOCKED,
+    ActionState.SKIPPED,
+  ]);
+  const canTransition = eligibleStates.has(target.actionState);
+
+  if (!canTransition) {
+    return;
+  }
+
+  const updateData: Prisma.WorkflowInstanceStepUpdateInput = {
+    actionState: ActionState.READY,
+    updatedAt: now,
+  };
+
+  const previousState = target.actionState;
+  await tx.workflowInstanceStep.update({
+    where: { id: target.id },
+    data: updateData,
+  });
+
+  if (canTransition && previousState !== ActionState.READY) {
+    WorkflowMetrics.recordStepAdvanced(target.actionType);
+    WorkflowMetrics.recordTransition(target.actionType, previousState, ActionState.READY);
+    const { notifyStepReady } = await import("./notifications");
+    await notifyStepReady(tx, target.id);
+  }
+}
+
+async function skipBranchTarget({
+  tx,
+  instanceId,
+  sourceStepId: _sourceStepId,
+  targetStepId,
+  now,
+  reason,
+}: {
+  tx: PrismaClient | Prisma.TransactionClient;
+  instanceId: string;
+  sourceStepId: string;
+  targetStepId: string;
+  now: Date;
+  reason?: string;
+}): Promise<void> {
+  const target = await tx.workflowInstanceStep.findUnique({
+    where: { id: targetStepId },
+    select: {
+      id: true,
+      instanceId: true,
+      actionState: true,
+      actionType: true,
+      notes: true,
+    },
+  });
+
+  if (!target || target.instanceId !== instanceId) {
+    return;
+  }
+
+  // TODO: Update dependency logic to use WorkflowInstanceDependency table
+  // For now, just skip eligible states
+  const isSkippable = !(target.actionState === ActionState.COMPLETED || target.actionState === ActionState.SKIPPED || target.actionState === ActionState.FAILED);
+  const shouldUpdateNotes = Boolean(
+    reason && (!target.notes || target.notes.trim().length === 0),
+  );
+
+  if (!isSkippable && !shouldUpdateNotes) {
+    return;
+  }
+
+  const updateData: Prisma.WorkflowInstanceStepUpdateInput = {
+    updatedAt: now,
+  };
+
+  const previousState = target.actionState;
+  if (isSkippable) {
+    updateData.actionState = ActionState.SKIPPED;
+  }
+
+  if (shouldUpdateNotes && reason) {
+    updateData.notes = reason;
+  }
+
+  await tx.workflowInstanceStep.update({
+    where: { id: target.id },
+    data: updateData,
+  });
+
+  if (isSkippable && previousState !== ActionState.SKIPPED) {
+    WorkflowMetrics.recordTransition(target.actionType, previousState, ActionState.SKIPPED);
   }
 }
 
@@ -362,6 +682,10 @@ export async function failWorkflowStep({
     // Record metrics
     WorkflowMetrics.recordTransition(step.actionType, step.actionState, resultState);
     WorkflowMetrics.recordHandlerDuration(step.actionType, "fail", handlerDuration);
+    if (resultState === ActionState.FAILED) {
+      const { notifyStepFailed } = await import("./notifications");
+      await notifyStepFailed(tx, step.id);
+    }
     
     span.end(true);
     return resultState;
@@ -487,7 +811,7 @@ export async function applyEventToWorkflowStep({
     at: now.toISOString(),
     by: actor?.id,
     event: `EVENT_${event.type}`,
-    payload: event.payload,
+    payload: event.payload ? cloneJson(event.payload as JsonValue) : undefined,
   });
 
   // Get context updates from handler
@@ -529,132 +853,49 @@ export async function determineNextSteps({
   });
 
   try {
-    // Get all steps for this instance, ordered
+    // Get all steps and dependencies for this instance
     const steps = await tx.workflowInstanceStep.findMany({
       where: { instanceId: instance.id },
-      orderBy: { order: "asc" },
       include: {
         templateStep: true,
         instance: true,
       },
     });
 
-    let activatedCount = 0;
-    const stepModels = steps.map(toStepWithTemplate) as WorkflowInstanceStepWithConditions[];
+    const dependencies = await tx.workflowInstanceDependency.findMany({
+      where: { instanceId: instance.id },
+    });
 
-    // Build evaluation context (for conditional logic evaluation)
-    const evalContext: WorkflowRuntimeContext = {
-      tx,
-      instance,
-      step: completedStep ?? stepModels[0],
-      actor: undefined,
-      config: {},
-      data: {},
-      now,
-      context: isJsonObject(instance.contextData ?? null)
-        ? (instance.contextData as Record<string, unknown>)
-        : {},
-      updateContext: () => {
-        // No-op for evaluation context
-      },
-    };
+    let activatedCount = 0;
+    const stepModels = steps.map(toStepWithTemplate);
 
     // ⭐ NEW: Use dependency resolver to find steps that are ready
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const readySteps = getReadySteps(stepModels as any);
+    let readySteps = getReadySteps(stepModels, dependencies);
 
-    // Activate each ready step (check conditions and update state)
+    // Activate each ready step
     for (const step of readySteps) {
       // Only activate if currently PENDING
       if (step.actionState !== ActionState.PENDING) {
         continue;
       }
 
-      // Check if this step has a condition
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const conditionType: ConditionType = (step as any).conditionType ?? "ALWAYS";
+      // Activate the step
+      await tx.workflowInstanceStep.update({
+        where: { id: step.id },
+        data: {
+          actionState: ActionState.READY,
+          updatedAt: now,
+        },
+      });
+      activatedCount++;
 
-      if (conditionType === "ALWAYS" || !conditionType) {
-        // No condition - activate immediately
-        await tx.workflowInstanceStep.update({
-          where: { id: step.id },
-          data: {
-            actionState: ActionState.READY,
-            updatedAt: now,
-          },
-        });
-        activatedCount++;
+      // Record metrics
+      WorkflowMetrics.recordStepAdvanced(step.actionType);
+      WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.READY);
 
-        // Record metrics
-        WorkflowMetrics.recordStepAdvanced(step.actionType);
-        WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.READY);
-
-        // Send notification
-        const { notifyStepReady } = await import("./notifications");
-        await notifyStepReady(tx, step.id);
-      } else if (conditionType === "IF_TRUE" || conditionType === "IF_FALSE") {
-        // Has a condition - evaluate it
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!(step as any).conditionConfig) {
-          console.warn(
-            `Step ${step.id} has conditionType ${conditionType} but no conditionConfig`,
-          );
-          continue;
-        }
-
-        // Evaluate the condition
-        const result = ConditionEvaluator.evaluate(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (step as any).conditionConfig as unknown as ConditionConfig,
-          evalContext,
-        );
-
-        if (!result.success) {
-          console.error(
-            `Failed to evaluate condition for step ${step.id}: ${result.error}`,
-          );
-          continue;
-        }
-
-        // Determine if this step should be activated or skipped
-        const shouldActivate =
-          (conditionType === "IF_TRUE" && result.value === true) ||
-          (conditionType === "IF_FALSE" && result.value === false);
-
-        if (shouldActivate) {
-          // Activate the step
-          await tx.workflowInstanceStep.update({
-            where: { id: step.id },
-            data: {
-              actionState: ActionState.READY,
-              updatedAt: now,
-            },
-          });
-          activatedCount++;
-
-          // Record metrics
-          WorkflowMetrics.recordStepAdvanced(step.actionType);
-          WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.READY);
-
-          // Send notification
-          const { notifyStepReady } = await import("./notifications");
-          await notifyStepReady(tx, step.id);
-        } else {
-          // Skip the step (condition not met)
-          await tx.workflowInstanceStep.update({
-            where: { id: step.id },
-            data: {
-              actionState: ActionState.SKIPPED,
-              notes: `Skipped: Condition not met (${conditionType}, evaluated to ${result.value})`,
-              updatedAt: now,
-            },
-          });
-
-          // Record metrics for skipped step
-          WorkflowMetrics.recordTransition(step.actionType, ActionState.PENDING, ActionState.SKIPPED);
-        }
-      }
-      // Note: SWITCH type will be implemented in future enhancement
+      // Send notification
+      const { notifyStepReady } = await import("./notifications");
+      await notifyStepReady(tx, step.id);
     }
 
     span.end(true);

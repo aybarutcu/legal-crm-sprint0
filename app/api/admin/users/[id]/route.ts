@@ -11,7 +11,7 @@ type Params = {
 
 export const PATCH = withApiHandler<Params>(async (req, { params, session }) => {
   const actor = session!.user!;
-  if (![Role.ADMIN, Role.LAWYER].includes(actor.role ?? Role.LAWYER)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((actor.role ?? Role.LAWYER) as "ADMIN" | "LAWYER")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

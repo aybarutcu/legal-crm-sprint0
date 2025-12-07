@@ -26,10 +26,17 @@ export function MatterDocumentsSection({
   onViewDocument,
   highlightedDocumentIds = [],
 }: MatterDocumentsSectionProps) {
+  // Debug: Log document tags
+  console.log("Documents with tags:", documents.map(d => ({ 
+    filename: d.filename, 
+    tags: d.tags,
+    workflowStepId: d.workflowStepId 
+  })));
+  
   return (
     <div className="lg:col-span-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-900">Documents</h3>
+        <h3 className="text-lg font-semibold text-slate-900">Documentsss</h3>
         <button
           type="button"
           onClick={onUploadClick}
@@ -58,21 +65,24 @@ export function MatterDocumentsSection({
                 <DocumentTypeIcon mimeType={doc.mime} />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-slate-900 truncate text-xs">
-                    {/* Show tag name (requested document name) if available and linked to workflow */}
-                    {doc.workflowStepId && doc.tags && doc.tags.length > 0 
-                      ? doc.tags[0] 
+                    {/* Show tags as title if available, otherwise filename */}
+                    {doc.tags && doc.tags.length > 0 
+                      ? doc.tags.join(", ") 
                       : doc.filename}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    <div>{formatFileSize(doc.size)}</div>
-                    {/* Show actual filename as secondary info if tag is displayed */}
-                    {doc.workflowStepId && doc.tags && doc.tags.length > 0 && (
-                      <div className="truncate text-[10px] italic">
-                        {doc.filename}
+                  <div className="text-xs text-slate-500 mt-0.5 space-y-0.5">
+                    {/* Show filename as subtext if tags are used as title */}
+                    {doc.tags && doc.tags.length > 0 && (
+                      <div className="truncate text-[10px] text-slate-400">
+                        📎 {doc.filename}
                       </div>
                     )}
-                    <div className="truncate">
-                      {doc.uploader.name || doc.uploader.email}
+                    <div className="flex items-center gap-2">
+                      <span>{formatFileSize(doc.size)}</span>
+                      <span>•</span>
+                      <span className="truncate">
+                        {doc.uploader.name || doc.uploader.email}
+                      </span>
                     </div>
                     <div>{dateFormatter.format(new Date(doc.createdAt))}</div>
                   </div>

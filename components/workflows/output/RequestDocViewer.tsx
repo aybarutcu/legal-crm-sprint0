@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, Clock, FileUp } from "lucide-react";
+import { DocumentViewer } from "./DocumentViewer";
 
 interface DocumentUploadStatus {
   documentName: string;
@@ -23,10 +24,39 @@ interface RequestDocViewerProps {
 
 export function RequestDocViewer({ config, data }: RequestDocViewerProps) {
   const requestText = config.requestText || "";
-  const documentNames = config.documentNames || [];
   const documentsStatus = data.documentsStatus || [];
   const allDocumentsUploaded = data.allDocumentsUploaded || false;
 
+  // Extract uploaded document IDs
+  const uploadedDocumentIds = documentsStatus
+    .filter((status) => status.uploaded && status.documentId)
+    .map((status) => status.documentId!);
+
+  console.log('[RequestDocViewer] Rendering with:', {
+    documentsStatus,
+    uploadedDocumentIds,
+    allDocumentsUploaded
+  });
+
+  // If documents are uploaded, show the DocumentViewer
+  if (uploadedDocumentIds.length > 0) {
+    return (
+      <div className="space-y-4">
+        {requestText && (
+          <div className="rounded-lg border border-green-200 bg-green-50/50 p-3 text-sm text-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <FileUp className="h-4 w-4 text-green-600" />
+              <span className="font-medium text-green-900">Request</span>
+            </div>
+            {requestText}
+          </div>
+        )}
+        <DocumentViewer documentIds={uploadedDocumentIds} />
+      </div>
+    );
+  }
+
+  // Fallback: Show status list (shouldn't happen for COMPLETED steps)
   return (
     <div className="rounded-lg border-2 border-green-200 bg-green-50/50 p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -48,53 +78,50 @@ export function RequestDocViewer({ config, data }: RequestDocViewerProps) {
         </div>
       )}
 
-      {documentNames.length > 0 && (
-        <div className="space-y-2">
-          {documentNames.map((name, index) => {
-            const status = documentsStatus.find((d) => d.documentName === name);
-            const isUploaded = status?.uploaded ?? false;
+      <div className="space-y-2">
+        {documentsStatus.map((status, index) => {
+          const isUploaded = status.uploaded ?? false;
 
-            return (
-              <div
-                key={index}
-                className={`flex items-center justify-between rounded-lg border p-3 ${
-                  isUploaded
-                    ? "border-emerald-200 bg-emerald-50"
-                    : "border-slate-200 bg-white"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {isUploaded ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <Clock className="h-4 w-4 text-slate-400" />
-                  )}
-                  <span className={`text-sm font-medium ${
-                    isUploaded ? "text-emerald-900" : "text-slate-700"
-                  }`}>
-                    {name}
-                  </span>
-                </div>
-
-                {isUploaded && status?.uploadedAt && (
-                  <span className="text-xs text-emerald-600">
-                    {new Date(status.uploadedAt).toLocaleDateString("tr-TR", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
+          return (
+            <div
+              key={index}
+              className={`flex items-center justify-between rounded-lg border p-3 ${
+                isUploaded
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {isUploaded ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Clock className="h-4 w-4 text-slate-400" />
                 )}
-
-                {!isUploaded && (
-                  <span className="text-xs text-slate-500">Pending</span>
-                )}
+                <span className={`text-sm font-medium ${
+                  isUploaded ? "text-emerald-900" : "text-slate-700"
+                }`}>
+                  {status.documentName}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              {isUploaded && status.uploadedAt && (
+                <span className="text-xs text-emerald-600">
+                  {new Date(status.uploadedAt).toLocaleDateString("tr-TR", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              )}
+
+              {!isUploaded && (
+                <span className="text-xs text-slate-500">Pending</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

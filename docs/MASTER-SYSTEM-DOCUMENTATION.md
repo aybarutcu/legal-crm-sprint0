@@ -194,10 +194,10 @@ legal-crm-sprint0/
 - AI-powered workflow generation
 
 **Workflow Action Types**
-1. **APPROVAL_LAWYER**: Internal approval by lawyer
-2. **SIGNATURE_CLIENT**: Client e-signature request
-3. **REQUEST_DOC_CLIENT**: Document request from client
-4. **PAYMENT_CLIENT**: Payment request from client
+1. **APPROVAL**: Internal approval by lawyer
+2. **SIGNATURE**: Client e-signature request
+3. **REQUEST_DOC**: Document request from client
+4. **PAYMENT**: Payment request from client
 5. **CHECKLIST**: Multi-item checklist tasks
 6. **WRITE_TEXT**: Text writing/input with rich text support (NEW)
 
@@ -384,10 +384,10 @@ model WorkflowInstanceStep {
 }
 
 enum ActionType {
-  APPROVAL_LAWYER
-  SIGNATURE_CLIENT
-  REQUEST_DOC_CLIENT
-  PAYMENT_CLIENT
+  APPROVAL
+  SIGNATURE
+  REQUEST_DOC
+  PAYMENT
   CHECKLIST
   WRITE_TEXT
 }
@@ -618,22 +618,22 @@ interface IActionHandler<TConfig, TData> {
 
 #### Available Handlers
 
-1. **APPROVAL_LAWYER**
+1. **APPROVAL**
    - Config: `{ approverRole?, reason? }`
    - Internal approval by lawyers
    - Can approve or reject with comments
 
-2. **SIGNATURE_CLIENT**
+2. **SIGNATURE**
    - Config: `{ documentId, signatureType?, instructions? }`
    - Client e-signature request
    - Links to document
 
-3. **REQUEST_DOC_CLIENT**
+3. **REQUEST_DOC**
    - Config: `{ documentName, description?, required?, acceptedTypes? }`
    - Request document upload from client
    - Validates file types
 
-4. **PAYMENT_CLIENT**
+4. **PAYMENT**
    - Config: `{ amount, currency?, description?, dueDate? }`
    - Payment request from client
    - Amount tracking
@@ -791,7 +791,7 @@ const template = {
     {
       order: 2,
       title: "Request Corporate Documents",
-      actionType: "REQUEST_DOC_CLIENT",
+      actionType: "REQUEST_DOC",
       conditionType: "IF_TRUE",
       conditionConfig: {
         field: "contactType",
@@ -805,7 +805,7 @@ const template = {
     {
       order: 3,
       title: "Individual ID Verification",
-      actionType: "REQUEST_DOC_CLIENT",
+      actionType: "REQUEST_DOC",
       conditionType: "IF_FALSE",
       conditionConfig: {
         field: "contactType",
@@ -819,7 +819,7 @@ const template = {
     {
       order: 4,
       title: "Manual Review",
-      actionType: "APPROVAL_LAWYER",
+      actionType: "APPROVAL",
       conditionType: "IF_FALSE",
       conditionConfig: {
         field: "isPreApproved",
@@ -831,7 +831,7 @@ const template = {
     {
       order: 5,
       title: "Payment Collection",
-      actionType: "PAYMENT_CLIENT",
+      actionType: "PAYMENT",
       conditionType: "IF_TRUE",
       conditionConfig: {
         operator: "AND",
@@ -970,22 +970,63 @@ POST `/api/agent/workflow/parse`
 
 ### Storage Architecture
 
-- **Backend**: AWS S3
+- **Backend**: AWS S3 / MinIO
 - **Access**: Presigned URLs for secure downloads
-- **Uploads**: Direct to S3 via presigned POST
-- **Versioning**: Supported through parent-child relationship
+- **Uploads**: Direct to S3 via presigned PUT
+- **Versioning**: Based on displayName + folder location
+
+### Document Versioning System
+
+#### Version Identifiers
+Documents are versioned based on:
+1. **displayName**: Primary identifier (required, user-defined)
+2. **folderId**: Folder location (optional, but recommended)
+3. **matterId**: Auto-populated if uploaded to matter folder (optional)
+4. **contactId**: Auto-populated if uploaded to contact folder (optional)
+
+**Key Rule**: Two documents with the same `displayName` in the same folder (or root if no folder) are considered versions of each other.
+
+#### Version Chain Structure
+- **Version 1** (original): `id: "abc123"`, `parentDocumentId: null`, `version: 1`, `displayName: "Contract"`
+- **Version 2**: `id: "def456"`, `parentDocumentId: "abc123"`, `version: 2`, `displayName: "Contract"`
+- **Version 3**: `id: "ghi789"`, `parentDocumentId: "abc123"`, `version: 3`, `displayName: "Contract"`
+
+All versions link to the first version via `parentDocumentId`.
+
+#### Version Metadata Inheritance
+When creating a new version, the following fields are inherited from the previous version:
+- `displayName` (must match for versioning)
+- `tags` (copied from previous version)
+- `folderId` (must match for versioning)
+- `matterId` (must match for versioning)
+- `contactId` (must match for versioning)
+- `accessScope` (inherited)
+- `accessMetadata` (inherited)
+
+**Note**: `filename` (actual file name) can be different between versions and is NOT used as a version identifier.
+
+#### Upload Conflict Detection
+When uploading a document:
+1. System checks for existing documents with same `displayName` in same folder
+2. If match found, user is prompted: "A document with this name already exists. Create new version?"
+3. User can choose:
+   - **New Version**: Links to existing document via `parentDocumentId`
+   - **New Document**: Creates independent document with different `displayName`
 
 ### File Operations
 
 #### Upload Flow
-1. Client requests presigned upload URL
-2. Server generates presigned POST URL
-3. Client uploads directly to S3
-4. Client notifies server of upload completion
-5. Server creates document record
+1. User selects file and sets `displayName`, `tags`, `accessScope`
+2. System checks for name conflicts in target folder
+3. If conflict: Prompt for version vs new document
+4. Client requests presigned upload URL from `/api/uploads`
+5. Server generates presigned PUT URL with storage key
+6. Client uploads directly to S3 using PUT
+7. Client calls `/api/documents` to create document record
+8. Server validates upload and creates record with appropriate version number
 
 #### Download Flow
-1. Client requests document
+1. Client requests document via `/api/documents/{id}/download`
 2. Server checks permissions
 3. Server generates presigned GET URL (15 min expiry)
 4. Client downloads from S3
@@ -997,10 +1038,16 @@ POST `/api/agent/workflow/parse`
 4. Hard delete via manual cleanup script
 
 ### Document Types
-- **Matter Documents**: General case files
-- **Signature Documents**: Require client signature
-- **Evidence**: Special handling
-- **Client Uploaded**: Via portal or workflow
+- **Matter Documents**: Linked to cases via `matterId`
+- **Contact Documents**: Linked to contacts via `contactId`
+- **Workflow Documents**: Linked to workflow steps via `workflowStepId`
+- **Client Uploaded**: Via portal or workflow actions
+
+### Master Folders
+Master folders are auto-created for matters and contacts:
+- `/Matters/{Matter Title}` - Created when document uploaded with `matterId`
+- `/Contacts/{Contact Name}` - Created when document uploaded with `contactId`
+- These folders auto-sync when matter/contact names change
 
 ---
 

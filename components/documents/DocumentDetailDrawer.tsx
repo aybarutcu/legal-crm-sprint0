@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DocumentListItem } from "@/components/documents/types";
+import { EditDocumentDialog } from "@/components/documents/EditDocumentDialog";
+import { DocumentAccessScope } from "@prisma/client";
+import { Edit } from "lucide-react";
 
 type DocumentDetailDrawerProps = {
   documentId: string | null;
@@ -29,11 +32,48 @@ export function DocumentDetailDrawer({
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadUrlRef = useRef<string | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [versions, setVersions] = useState<DocumentListItem[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [matters, setMatters] = useState<Array<{ id: string; title: string }>>([]);
+  const [contacts, setContacts] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
   useEffect(() => {
     setDocument(initialDocument ?? null);
     setTagsInput(initialDocument ? initialDocument.tags.join(", ") : "");
   }, [initialDocument?.id]);
+
+  // Load matters and contacts for edit dialog
+  useEffect(() => {
+    if (!documentId) return;
+    
+    const loadOptions = async () => {
+      setLoadingOptions(true);
+      try {
+        const [mattersRes, contactsRes] = await Promise.all([
+          fetch("/api/matters"),
+          fetch("/api/contacts"),
+        ]);
+        
+        if (mattersRes.ok) {
+          const mattersData = await mattersRes.json();
+          setMatters(mattersData.matters || []);
+        }
+        
+        if (contactsRes.ok) {
+          const contactsData = await contactsRes.json();
+          setContacts(contactsData.contacts || []);
+        }
+      } catch (err) {
+        console.error("Failed to load options:", err);
+      } finally {
+        setLoadingOptions(false);
+      }
+    };
+    
+    loadOptions();
+  }, [documentId]);
 
   useEffect(() => {
     setDownloadUrl(null);
@@ -48,7 +88,8 @@ export function DocumentDetailDrawer({
 
   const loadDownloadUrl = useCallback(
     async (force = false) => {
-      if (!documentId) throw new Error("Doküman bulunamadı.");
+      const targetId = document?.id || documentId;
+      if (!targetId) throw new Error("Doküman bulunamadı.");
       if (!force && downloadUrlRef.current) {
         return downloadUrlRef.current;
       }
@@ -56,7 +97,7 @@ export function DocumentDetailDrawer({
       setDownloadLoading(true);
       setDownloadError(null);
       try {
-        const response = await fetch(`/api/documents/${documentId}/download`);
+        const response = await fetch(`/api/documents/${targetId}/download`);
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
           throw new Error(payload.error ?? "İndirme bağlantısı oluşturulamadı.");
@@ -76,13 +117,14 @@ export function DocumentDetailDrawer({
         setDownloadLoading(false);
       }
     },
-    [documentId],
+    [documentId, document?.id],
   );
 
   useEffect(() => {
     if (!documentId) {
       setDocument(null);
       setError(null);
+      setVersions([]);
       return;
     }
 
@@ -102,6 +144,7 @@ export function DocumentDetailDrawer({
         const nextDocument: DocumentListItem = {
           id: payload.id,
           filename: payload.filename,
+          displayName: payload.displayName,
           mime: payload.mime,
           size: payload.size,
           version: payload.version,
@@ -110,6 +153,8 @@ export function DocumentDetailDrawer({
           hash: payload.hash ?? null,
           createdAt: payload.createdAt,
           signedAt: payload.signedAt ?? null,
+          workflowStepId: payload.workflowStepId ?? null,
+          folderId: payload.folderId ?? null,
           matter: payload.matter
             ? { id: payload.matter.id, title: payload.matter.title }
             : null,
@@ -127,7 +172,8 @@ export function DocumentDetailDrawer({
         if (isPreviewableMime(nextDocument.mime)) {
           loadDownloadUrl().catch(() => { });
         }
-        onUpdated(nextDocument);
+        // Fetch versions
+        fetchVersions(documentId);
       } catch (err) {
         if (!active) return;
         if (err instanceof Error && err.name === "AbortError") return;
@@ -141,12 +187,30 @@ export function DocumentDetailDrawer({
       }
     }
 
+    async function fetchVersions(docId: string) {
+      setLoadingVersions(true);
+      try {
+        const response = await fetch(`/api/documents/${docId}/versions`);
+        if (response.ok) {
+          const data = await response.json();
+          if (active) {
+            setVersions(data.versions || []);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load versions", err);
+      } finally {
+        if (active) setLoadingVersions(false);
+      }
+    }
+
     fetchDetail();
 
     return () => {
       active = false;
     };
-  }, [documentId, isPreviewableMime, loadDownloadUrl, onUpdated]);
+  }, [documentId, isPreviewableMime, loadDownloadUrl]);
+  // Removed onUpdated from dependencies - it should only be called on actual updates, not fetches
 
   const previewContent = useMemo(() => {
     if (!document) return null;
@@ -263,6 +327,57 @@ export function DocumentDetailDrawer({
     }
   };
 
+  const handleDocumentUpdated = async (newDocumentId?: string) => {
+    // If a new version was created, switch to viewing it
+    const targetDocId = newDocumentId || documentId;
+    if (!targetDocId) return;
+    
+    try {
+      const response = await fetch(`/api/documents/${targetDocId}`);
+      if (!response.ok) {
+        throw new Error("Doküman detayları alınamadı.");
+      }
+      const payload = await response.json();
+      const nextDocument: DocumentListItem = {
+        id: payload.id,
+        filename: payload.filename,
+        displayName: payload.displayName,
+        mime: payload.mime,
+        size: payload.size,
+        version: payload.version,
+        tags: payload.tags ?? [],
+        storageKey: payload.storageKey,
+        hash: payload.hash ?? null,
+        createdAt: payload.createdAt,
+        signedAt: payload.signedAt ?? null,
+        workflowStepId: payload.workflowStepId ?? null,
+        matter: payload.matter
+          ? { id: payload.matter.id, title: payload.matter.title }
+          : null,
+        contact: payload.contact
+          ? {
+            id: payload.contact.id,
+            firstName: payload.contact.firstName,
+            lastName: payload.contact.lastName,
+          }
+          : null,
+        uploader: payload.uploader,
+      };
+      setDocument(nextDocument);
+      setTagsInput(nextDocument.tags.join(", "));
+      onUpdated(nextDocument);
+      
+      // Reload versions
+      const versionsRes = await fetch(`/api/documents/${targetDocId}/versions`);
+      if (versionsRes.ok) {
+        const data = await versionsRes.json();
+        setVersions(data.versions || []);
+      }
+    } catch (err) {
+      console.error("Failed to refresh document:", err);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <button
@@ -273,21 +388,33 @@ export function DocumentDetailDrawer({
       />
       <div className="relative h-full w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
+          <div className="flex-1">
             <h3 className="text-lg font-semibold text-slate-900">
-              {document?.filename ?? "Doküman"}
+              {document?.displayName || document?.filename || "Doküman"}
             </h3>
             <p className="text-xs uppercase tracking-widest text-slate-400">
               Doküman Detayı
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-100"
-          >
-            Kapat
-          </button>
+          <div className="flex items-center gap-2">
+            {document && (
+              <button
+                type="button"
+                onClick={() => setShowEditDialog(true)}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                <Edit className="h-4 w-4" />
+                Düzenle
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              Kapat
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6 px-6 py-6">
@@ -315,6 +442,12 @@ export function DocumentDetailDrawer({
                     <dt className="font-medium text-slate-500">Dosya adı</dt>
                     <dd>{document.filename}</dd>
                   </div>
+                  {document.displayName && (
+                    <div className="flex justify-between">
+                      <dt className="font-medium text-slate-500">Display Name</dt>
+                      <dd>{document.displayName}</dd>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <dt className="font-medium text-slate-500">MIME</dt>
                     <dd>{document.mime}</dd>
@@ -360,42 +493,69 @@ export function DocumentDetailDrawer({
                 </dl>
               </div>
 
-              <div>
-                <h4 className="text-sm font-semibold text-slate-700">
-                  Etiketler
-                </h4>
-                <div className="mt-3 space-y-3">
-                  <input
-                    value={tagsInput}
-                    onChange={(event) => setTagsInput(event.target.value)}
-                    placeholder="kanit,imza"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-accent focus:outline-none"
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    {document.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                    {document.tags.length === 0 ? (
-                      <span className="text-xs text-slate-400">
-                        Etiket bulunmuyor.
-                      </span>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSaveTags}
-                    disabled={savingTags}
-                    className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {savingTags ? "Kaydediliyor..." : "Etiketleri Kaydet"}
-                  </button>
+              {/* Versions Section - Read-only with download buttons */}
+              {versions.length > 1 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    Versiyonlar ({versions.length})
+                  </h4>
+                  {loadingVersions ? (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      Versiyonlar yükleniyor...
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {versions.map((ver) => (
+                        <div
+                          key={ver.id}
+                          className={`flex items-center justify-between rounded-lg border p-3 ${
+                            ver.id === document.id
+                              ? "border-blue-300 bg-blue-50"
+                              : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded font-mono">
+                                v{ver.version}
+                              </span>
+                              {ver.id === document.id && (
+                                <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded font-medium">
+                                  Şu anki
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {formatDate(ver.createdAt)} • {ver.uploader.name || ver.uploader.email}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-400">
+                              {formatBytes(ver.size)}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch(`/api/documents/${ver.id}/download`);
+                                  if (!response.ok) throw new Error("İndirme bağlantısı alınamadı.");
+                                  const payload: { getUrl: string } = await response.json();
+                                  window.open(payload.getUrl, "_blank", "noopener,noreferrer");
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "İndirme başarısız.");
+                                }
+                              }}
+                              className="text-xs px-3 py-1.5 border border-slate-300 rounded hover:bg-slate-100 transition"
+                            >
+                              İndir
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               <div className="flex gap-3">
                 <button
@@ -421,6 +581,31 @@ export function DocumentDetailDrawer({
           ) : null}
         </div>
       </div>
+
+      {/* Edit Document Dialog */}
+      {document && (
+        <EditDocumentDialog
+          isOpen={showEditDialog}
+          onClose={() => setShowEditDialog(false)}
+          document={{
+            id: document.id,
+            filename: document.filename,
+            displayName: document.displayName || null,
+            mimeType: document.mime,
+            size: document.size,
+            version: document.version,
+            matterId: document.matter?.id,
+            contactId: document.contact?.id,
+            folderId: document.folderId,
+            accessScope: (document as any).accessScope || "PUBLIC",
+            accessMetadata: (document as any).accessMetadata,
+            tags: document.tags || [],
+          }}
+          matters={matters}
+          contacts={contacts}
+          onSave={handleDocumentUpdated}
+        />
+      )}
     </div>
   );
 }

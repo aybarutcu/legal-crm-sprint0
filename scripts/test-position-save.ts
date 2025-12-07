@@ -36,9 +36,6 @@ async function testPositionPersistence() {
               roleScope: "LAWYER",
               required: true,
               actionConfig: { description: "Test task 1" },
-              order: 0,
-              conditionType: "ALWAYS",
-              dependencyLogic: "ALL",
               positionX: 100,
               positionY: 200,
             },
@@ -48,9 +45,6 @@ async function testPositionPersistence() {
               roleScope: "LAWYER",
               required: true,
               actionConfig: { description: "Test task 2" },
-              order: 1,
-              conditionType: "ALWAYS",
-              dependencyLogic: "ALL",
               positionX: 450.5,
               positionY: 300.75,
             },
@@ -59,7 +53,7 @@ async function testPositionPersistence() {
       },
       include: {
         steps: {
-          orderBy: { order: "asc" },
+          orderBy: { createdAt: "asc" },
         },
       },
     });
@@ -80,7 +74,7 @@ async function testPositionPersistence() {
       where: { id: template.id },
       include: {
         steps: {
-          orderBy: { order: "asc" },
+          orderBy: { createdAt: "asc" },
         },
       },
     });

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { TemplateGroup } from "@/components/workflows/TemplateGroup";
 import type { WorkflowTemplate } from "@/components/workflows/types";
 
@@ -25,7 +26,7 @@ export function WorkflowTemplatesClient() {
 
   // Filter and sort templates
   const filteredTemplates = templates.filter((template) => {
-    const matchesSearch = 
+    const matchesSearch =
       searchQuery === "" ||
       template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (template.description?.toLowerCase() || "").includes(searchQuery.toLowerCase());
@@ -76,13 +77,13 @@ export function WorkflowTemplatesClient() {
         throw new Error("Failed to fetch templates");
       }
       const data = (await response.json()) as WorkflowTemplate[];
-      
+
       setTemplates(
         data.map((template) => ({
           ...template,
           steps: template.steps
             .slice()
-            .sort((a, b) => a.order - b.order),
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         }))
       );
     } catch (err) {
@@ -94,11 +95,24 @@ export function WorkflowTemplatesClient() {
   }
 
   function startNewVersion(template: WorkflowTemplate) {
-    router.push(`/workflows/templates/new?sourceId=${template.id}`);
+    router.push(`/workflows/templates/new?sourceId=${template.id}&mode=version`);
+  }
+
+  function duplicateTemplate(template: WorkflowTemplate) {
+    router.push(`/workflows/templates/new?sourceId=${template.id}&mode=duplicate`);
   }
 
   async function deleteTemplate(id: string) {
-    if (!window.confirm("Are you sure you want to delete this template?")) {
+    // Find the template to check if it has instances
+    const template = templates.find(t => t.id === id);
+    const instanceCount = template?._count?.instances ?? 0;
+    const hasInstances = instanceCount > 0;
+    
+    const confirmMessage = hasInstances
+      ? `This template is being used by ${instanceCount} matter${instanceCount === 1 ? '' : 's'}.\n\nNote: You can only archive templates with completed or cancelled workflows. If you have active workflows, complete or cancel them first.\n\nAre you sure you want to archive this template?`
+      : "Are you sure you want to delete this template?";
+    
+    if (!window.confirm(confirmMessage)) {
       return;
     }
     setIsDeleting(id);
@@ -107,12 +121,13 @@ export function WorkflowTemplatesClient() {
         method: "DELETE",
       });
       if (!response.ok) {
-        throw new Error("Failed to delete template");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || `Failed to ${hasInstances ? 'archive' : 'delete'} template`);
       }
       await fetchTemplates();
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Failed to delete template");
+      setError(err instanceof Error ? err.message : `Failed to ${hasInstances ? 'archive' : 'delete'} template`);
     } finally {
       setIsDeleting(null);
     }
@@ -146,12 +161,22 @@ export function WorkflowTemplatesClient() {
             Create reusable workflow templates with visual canvas editor
           </p>
         </div>
-        <Link
-          href="/workflows/templates/new"
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 shadow-md hover:shadow-lg transition-all"
-        >
-          + New Template
-        </Link>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/workflows/ai"
+            className="inline-flex items-center justify-center rounded-lg gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white hover:from-emerald-700 hover:to-teal-700 shadow-lg hover:shadow-xl transition-all"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI ile Oluştur
+          </Link>
+          <Link
+            href="/workflows/templates/new"
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 shadow-md hover:shadow-lg transition-all"
+          >
+            + New Template
+          </Link>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -237,6 +262,7 @@ export function WorkflowTemplatesClient() {
               name={name}
               versions={versions}
               startNewVersion={startNewVersion}
+              duplicateTemplate={duplicateTemplate}
               publishTemplate={publishTemplate}
               deleteTemplate={deleteTemplate}
               isDeleting={isDeleting}

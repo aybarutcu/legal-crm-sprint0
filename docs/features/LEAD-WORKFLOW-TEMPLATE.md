@@ -29,7 +29,7 @@ A comprehensive 7-step workflow template designed specifically for managing the 
 ---
 
 ### Step 1: Conflict Check Approval
-**Action Type**: `APPROVAL_LAWYER`  
+**Action Type**: `APPROVAL`  
 **Role**: `LAWYER`  
 **Purpose**: Review conflict check results and approve proceeding with intake
 
@@ -44,7 +44,7 @@ A comprehensive 7-step workflow template designed specifically for managing the 
 ---
 
 ### Step 2: Request Initial Documents from Client
-**Action Type**: `REQUEST_DOC_CLIENT`  
+**Action Type**: `REQUEST_DOC`  
 **Role**: `CLIENT`  
 **Purpose**: Collect essential documents from the potential client
 
@@ -81,7 +81,7 @@ Please upload the following documents to begin your case evaluation:
 ---
 
 ### Step 4: Engagement Letter Signature
-**Action Type**: `SIGNATURE_CLIENT`  
+**Action Type**: `SIGNATURE`  
 **Role**: `CLIENT`  
 **Purpose**: Obtain client signature on engagement letter
 
@@ -96,7 +96,7 @@ Please upload the following documents to begin your case evaluation:
 ---
 
 ### Step 5: Collect Retainer Payment
-**Action Type**: `PAYMENT_CLIENT`  
+**Action Type**: `PAYMENT`  
 **Role**: `CLIENT`  
 **Purpose**: Collect initial retainer payment to secure services
 

@@ -130,10 +130,10 @@ const clientParties = matter.parties.filter(p =>
 ```
 
 **Action Type Labels:**
-- `APPROVAL_LAWYER` → "Avukat Onayı"
-- `SIGNATURE_CLIENT` → "Müvekkil İmzası"
-- `REQUEST_DOC_CLIENT` → "Doküman Talebi"
-- `PAYMENT_CLIENT` → "Ödeme"
+- `APPROVAL` → "Avukat Onayı"
+- `SIGNATURE` → "Müvekkil İmzası"
+- `REQUEST_DOC` → "Doküman Talebi"
+- `PAYMENT` → "Ödeme"
 - `CHECKLIST` → "Kontrol Listesi"
 
 ---

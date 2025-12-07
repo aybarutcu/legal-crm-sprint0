@@ -118,7 +118,6 @@ export function ContactInfoSection({ contact, currentUserRole, onRefresh }: Cont
           country: contact.country,
           preferredLanguage: contact.preferredLanguage,
           source: contact.source,
-          notes: contact.notes,
           tags: contact.tags,
         }}
         open={editDialogOpen}

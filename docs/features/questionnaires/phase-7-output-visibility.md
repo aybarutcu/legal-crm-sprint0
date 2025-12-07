@@ -223,7 +223,7 @@ const renderStepOutputUI = () => {
       }
       return null;
 
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       if (data.documentId) {
         return <DocumentViewer documentIds={[data.documentId]} />;
       }

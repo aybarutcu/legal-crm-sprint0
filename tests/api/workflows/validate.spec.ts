@@ -30,7 +30,7 @@ describe("POST /api/workflows/validate", () => {
         {
           order: 1,
           title: "Step 2",
-          actionType: ActionType.APPROVAL_LAWYER,
+          actionType: ActionType.APPROVAL,
           roleScope: Role.LAWYER,
         },
       ],
@@ -117,7 +117,7 @@ describe("POST /api/workflows/validate", () => {
         {
           order: 3,
           title: "Join Point",
-          actionType: ActionType.APPROVAL_LAWYER,
+          actionType: ActionType.APPROVAL,
           roleScope: Role.LAWYER,
           dependsOn: [1, 2], // Waits for both branches
         },

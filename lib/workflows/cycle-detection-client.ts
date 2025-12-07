@@ -4,14 +4,14 @@
  */
 
 export interface StepDependency {
-  order: number;
-  dependsOn?: number[];
+  id: string;
+  dependsOn?: string[];
 }
 
 export interface CycleDetectionResult {
   hasCycles: boolean;
-  cycles: Array<{ from: number; to: number }>;
-  affectedSteps: Set<number>;
+  cycles: Array<{ from: string; to: string }>;
+  affectedSteps: Set<string>;
   description?: string;
 }
 
@@ -23,7 +23,7 @@ export function detectCycles(steps: StepDependency[]): CycleDetectionResult {
   const result: CycleDetectionResult = {
     hasCycles: false,
     cycles: [],
-    affectedSteps: new Set<number>(),
+    affectedSteps: new Set<string>(),
   };
 
   if (steps.length === 0) {
@@ -31,27 +31,27 @@ export function detectCycles(steps: StepDependency[]): CycleDetectionResult {
   }
 
   // Build adjacency list
-  const graph = new Map<number, number[]>();
+  const graph = new Map<string, string[]>();
   steps.forEach((step) => {
-    if (!graph.has(step.order)) {
-      graph.set(step.order, []);
+    if (!graph.has(step.id)) {
+      graph.set(step.id, []);
     }
     if (step.dependsOn && step.dependsOn.length > 0) {
-      step.dependsOn.forEach((depOrder) => {
-        if (!graph.has(depOrder)) {
-          graph.set(depOrder, []);
+      step.dependsOn.forEach((depId) => {
+        if (!graph.has(depId)) {
+          graph.set(depId, []);
         }
-        graph.get(depOrder)!.push(step.order);
+        graph.get(depId)!.push(step.id);
       });
     }
   });
 
   // DFS with cycle detection
-  const visited = new Set<number>();
-  const recStack = new Set<number>();
+  const visited = new Set<string>();
+  const recStack = new Set<string>();
   const cycleEdges = new Set<string>();
 
-  function dfs(node: number, path: number[]): void {
+  function dfs(node: string, path: string[]): void {
     visited.add(node);
     recStack.add(node);
 
@@ -83,14 +83,14 @@ export function detectCycles(steps: StepDependency[]): CycleDetectionResult {
 
   // Run DFS from all nodes
   steps.forEach((step) => {
-    if (!visited.has(step.order)) {
-      dfs(step.order, []);
+    if (!visited.has(step.id)) {
+      dfs(step.id, []);
     }
   });
 
   // Convert edge strings to result format
   cycleEdges.forEach((edgeStr) => {
-    const [from, to] = edgeStr.split("-").map(Number);
+    const [from, to] = edgeStr.split("-");
     result.cycles.push({ from, to });
   });
 
@@ -98,7 +98,7 @@ export function detectCycles(steps: StepDependency[]): CycleDetectionResult {
 
   if (result.hasCycles) {
     const cycleSteps = Array.from(result.affectedSteps)
-      .sort((a, b) => a - b)
+      .sort()
       .join(", ");
     result.description = `Circular dependency detected involving steps: ${cycleSteps}`;
   }
@@ -112,7 +112,7 @@ export function detectCycles(steps: StepDependency[]): CycleDetectionResult {
 export interface ValidationError {
   field: string;
   message: string;
-  stepOrder?: number;
+  stepId?: string;
 }
 
 export function validateStepDependencies(
@@ -126,11 +126,11 @@ export function validateStepDependencies(
     }
 
     // Check for self-dependency
-    if (step.dependsOn.includes(step.order)) {
+    if (step.dependsOn.includes(step.id)) {
       errors.push({
-        field: `steps[${step.order}].dependsOn`,
+        field: `steps[${step.id}].dependsOn`,
         message: "Step cannot depend on itself",
-        stepOrder: step.order,
+        stepId: step.id,
       });
     }
 
@@ -138,34 +138,25 @@ export function validateStepDependencies(
     const uniqueDeps = new Set(step.dependsOn);
     if (uniqueDeps.size !== step.dependsOn.length) {
       errors.push({
-        field: `steps[${step.order}].dependsOn`,
+        field: `steps[${step.id}].dependsOn`,
         message: "Duplicate dependencies detected",
-        stepOrder: step.order,
+        stepId: step.id,
       });
     }
 
     // Check for invalid references (steps that don't exist)
-    const validOrders = new Set(steps.map((s) => s.order));
-    step.dependsOn.forEach((depOrder) => {
-      if (!validOrders.has(depOrder)) {
+    const validIds = new Set(steps.map((s) => s.id));
+    step.dependsOn.forEach((depId) => {
+      if (!validIds.has(depId)) {
         errors.push({
-          field: `steps[${step.order}].dependsOn`,
-          message: `Invalid dependency reference: Step ${depOrder} does not exist`,
-          stepOrder: step.order,
+          field: `steps[${step.id}].dependsOn`,
+          message: `Invalid dependency reference: Step ${depId} does not exist`,
+          stepId: step.id,
         });
       }
     });
 
-    // Check for forward dependencies (can only depend on previous steps by order)
-    step.dependsOn.forEach((depOrder) => {
-      if (depOrder >= step.order) {
-        errors.push({
-          field: `steps[${step.order}].dependsOn`,
-          message: `Cannot depend on future step: Step ${depOrder}`,
-          stepOrder: step.order,
-        });
-      }
-    });
+    // Note: Forward dependency check removed since we now use stable IDs instead of order-based dependencies
   });
 
   // Check for cycles
@@ -184,41 +175,21 @@ export function validateStepDependencies(
  * Get human-readable description of dependency structure
  */
 export function describeDependencies(steps: StepDependency[]): string {
-  const parallelGroups: { [key: number]: number[] } = {};
-
-  // Find parallel execution groups (steps with same dependencies)
-  steps.forEach((step) => {
-    if (step.dependsOn && step.dependsOn.length > 0) {
-      const depsKey = step.dependsOn.sort().join(",");
-      const key = parseInt(depsKey.split(",")[0]);
-      if (!parallelGroups[key]) {
-        parallelGroups[key] = [];
-      }
-      parallelGroups[key].push(step.order);
-    }
-  });
-
   const descriptions: string[] = [];
 
-  Object.entries(parallelGroups).forEach(([, group]) => {
-    if (group.length > 1) {
-      descriptions.push(
-        `Steps ${group.join(", ")} execute in parallel (fork pattern)`
-      );
-    }
-  });
-
-  // Find convergence points (steps that depend on multiple parallel steps)
+  // Describe each step's dependencies
   steps.forEach((step) => {
-    if (step.dependsOn && step.dependsOn.length > 1) {
+    if (step.dependsOn && step.dependsOn.length > 0) {
       descriptions.push(
-        `Step ${step.order} waits for steps ${step.dependsOn.join(", ")} (join pattern)`
+        `Step ${step.id} depends on: ${step.dependsOn.join(", ")}`
       );
+    } else {
+      descriptions.push(`Step ${step.id} has no dependencies`);
     }
   });
 
   if (descriptions.length === 0) {
-    return "Sequential execution (no parallelism)";
+    return "No steps defined";
   }
 
   return descriptions.join(" • ");

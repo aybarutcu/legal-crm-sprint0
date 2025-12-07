@@ -9,7 +9,7 @@ Successfully implemented comprehensive role-based access control (RBAC) for work
 ### 1. Enhanced Action Handlers with Role Validation ✅
 
 **Files Modified**:
-- `lib/workflows/handlers/approval-lawyer.ts`
+- `lib/workflows/handlers/approval.ts`
 - `lib/workflows/handlers/checklist.ts`
 - `lib/workflows/handlers/signature-client.ts`
 - `lib/workflows/handlers/request-doc-client.ts`
@@ -133,7 +133,7 @@ Response: Updated WorkflowInstanceStep
 - ✅ Admin override verification
 - ✅ Role mismatch rejection (lawyer can't do client tasks)
 - ✅ Missing actor handling
-- ✅ Each action type (APPROVAL_LAWYER, SIGNATURE_CLIENT, etc.)
+- ✅ Each action type (APPROVAL, SIGNATURE, etc.)
 
 ### 6. Complete Documentation ✅
 
@@ -194,10 +194,10 @@ Response: Updated WorkflowInstanceStep
 
 | Action Type | Who Can Perform | RoleScope | Use Case |
 |-------------|----------------|-----------|----------|
-| APPROVAL_LAWYER | ADMIN, LAWYER | LAWYER | Legal decisions, case approvals |
-| SIGNATURE_CLIENT | ADMIN, CLIENT | CLIENT | Contract signing, agreements |
-| REQUEST_DOC_CLIENT | ADMIN, CLIENT | CLIENT | KYC documents, evidence upload |
-| PAYMENT_CLIENT | ADMIN, CLIENT | CLIENT | Fee payments, retainers |
+| APPROVAL | ADMIN, LAWYER | LAWYER | Legal decisions, case approvals |
+| SIGNATURE | ADMIN, CLIENT | CLIENT | Contract signing, agreements |
+| REQUEST_DOC | ADMIN, CLIENT | CLIENT | KYC documents, evidence upload |
+| PAYMENT | ADMIN, CLIENT | CLIENT | Fee payments, retainers |
 | CHECKLIST | Any (based on roleScope) | Any | Task lists, verification steps |
 
 ---
@@ -244,7 +244,7 @@ All actions logged to `actionData.history`:
 ```json
 {
   "title": "Review Client Agreement",
-  "actionType": "APPROVAL_LAWYER",
+  "actionType": "APPROVAL",
   "roleScope": "LAWYER",
   "required": true
 }
@@ -262,7 +262,7 @@ All actions logged to `actionData.history`:
 ```json
 {
   "title": "Sign Retainer Agreement",
-  "actionType": "SIGNATURE_CLIENT",
+  "actionType": "SIGNATURE",
   "roleScope": "CLIENT",
   "required": true
 }

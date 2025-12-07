@@ -9,7 +9,7 @@ export type SessionUser = {
 const baseInclude = {
   matter: { select: { id: true, title: true, ownerId: true } },
   assignee: { select: { id: true, name: true, email: true } },
-  checklists: { orderBy: { order: "asc" } },
+  checklists: true,
   links: true,
 } satisfies Prisma.TaskInclude;
 
@@ -23,9 +23,7 @@ export async function requireTask<TInclude extends IncludeParam>(
 ) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    include: (include ?? baseInclude) as TInclude extends undefined
-      ? typeof baseInclude
-      : TInclude,
+    include: (include ?? baseInclude) as any,
   });
 
   if (!task) {

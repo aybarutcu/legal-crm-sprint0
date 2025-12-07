@@ -12,7 +12,7 @@ Successfully eliminated all raw JSON configuration displays across the applicati
 **Purpose**: Shared component for displaying workflow action configurations with icons, color-coding, and proper formatting.
 
 **Features**:
-- Supports all 5 action types (CHECKLIST, APPROVAL_LAWYER, SIGNATURE_CLIENT, REQUEST_DOC_CLIENT, PAYMENT_CLIENT)
+- Supports all 5 action types (CHECKLIST, APPROVAL, SIGNATURE, REQUEST_DOC, PAYMENT)
 - Two size variants: "default" and "compact"
 - Icon-based display with color-coding
 - Handles empty states gracefully
@@ -79,7 +79,7 @@ Successfully eliminated all raw JSON configuration displays across the applicati
 }
 ```
 
-### 2. APPROVAL_LAWYER (👤 icon - blue)
+### 2. APPROVAL (👤 icon - blue)
 ```
 👤 Approver: LAWYER
    "Discovery planını onayla veya düzenle iste."
@@ -93,7 +93,7 @@ Successfully eliminated all raw JSON configuration displays across the applicati
 }
 ```
 
-### 3. SIGNATURE_CLIENT (📄 icon - purple)
+### 3. SIGNATURE (📄 icon - purple)
 ```
 📄 Provider: DocuSign
    Document: doc_abc123
@@ -107,7 +107,7 @@ Successfully eliminated all raw JSON configuration displays across the applicati
 }
 ```
 
-### 4. REQUEST_DOC_CLIENT (📤 icon - orange)
+### 4. REQUEST_DOC (📤 icon - orange)
 ```
 📤 Please upload your identification document
    [PDF] [JPG] [PNG]
@@ -121,7 +121,7 @@ Successfully eliminated all raw JSON configuration displays across the applicati
 }
 ```
 
-### 5. PAYMENT_CLIENT (💳 icon - green)
+### 5. PAYMENT (💳 icon - green)
 ```
 💳 Amount: $5,000.00
    Provider: Stripe
@@ -220,10 +220,10 @@ Unknown action type: [type]
 | Action Type | Icon Color | Text Accent |
 |------------|-----------|-------------|
 | CHECKLIST | slate-400 | slate-700 |
-| APPROVAL_LAWYER | blue-500 | blue-600 |
-| SIGNATURE_CLIENT | purple-500 | purple-600 |
-| REQUEST_DOC_CLIENT | orange-500 | orange-700 |
-| PAYMENT_CLIENT | green-500 | green-600 |
+| APPROVAL | blue-500 | blue-600 |
+| SIGNATURE | purple-500 | purple-600 |
+| REQUEST_DOC | orange-500 | orange-700 |
+| PAYMENT | green-500 | green-600 |
 
 ## Usage Example
 
@@ -322,7 +322,7 @@ For any other components displaying workflow actions:
 ### Component Props
 ```typescript
 type ActionConfigDisplayProps = {
-  actionType: string;           // CHECKLIST, APPROVAL_LAWYER, etc.
+  actionType: string;           // CHECKLIST, APPROVAL, etc.
   config: Record<string, unknown>;  // Action configuration object
   variant?: "compact" | "default";  // Size variant (default: "default")
 };
@@ -330,10 +330,10 @@ type ActionConfigDisplayProps = {
 
 ### Supported Action Types
 - `CHECKLIST`: Displays list of items with checkmarks
-- `APPROVAL_LAWYER`: Displays approver role and message
-- `SIGNATURE_CLIENT`: Displays provider and document ID
-- `REQUEST_DOC_CLIENT`: Displays request text and accepted file types
-- `PAYMENT_CLIENT`: Displays formatted amount and provider
+- `APPROVAL`: Displays approver role and message
+- `SIGNATURE`: Displays provider and document ID
+- `REQUEST_DOC`: Displays request text and accepted file types
+- `PAYMENT`: Displays formatted amount and provider
 
 ## Success Metrics
 

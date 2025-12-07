@@ -8,7 +8,7 @@ const baseStep = {
   templateStepId: null,
   order: 0,
   title: "Approval",
-  actionType: ActionType.APPROVAL_LAWYER,
+  actionType: ActionType.APPROVAL,
   roleScope: RoleScope.LAWYER,
   required: true,
   actionState: ActionState.READY,

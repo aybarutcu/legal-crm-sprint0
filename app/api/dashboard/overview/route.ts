@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { withApiHandler } from "@/lib/api-handler";
+import { TaskStatus } from "@prisma/client";
 
 type OverviewParams = { ownerId?: string };
 
@@ -19,7 +20,7 @@ export const GET = withApiHandler<OverviewParams>(
 
     const activeTaskWhere = {
       assigneeId: ownerId,
-      status: { in: ["OPEN", "IN_PROGRESS"] as const },
+      status: { in: [TaskStatus.OPEN, TaskStatus.IN_PROGRESS] },
     };
 
     const [events, tasks, documents, openMatters, matters, upcomingTaskCount, overdueTaskCount] = await Promise.all([

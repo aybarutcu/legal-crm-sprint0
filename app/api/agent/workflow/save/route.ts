@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     const nextVersion = (max._max.version ?? 0) + 1;
 
     const created = await prisma.$transaction(async (tx) => {
+        // Create the template with steps
         const template = await tx.workflowTemplate.create({
             data: {
                 name: draft.name,
@@ -38,18 +39,63 @@ export async function POST(req: NextRequest) {
                 version: nextVersion,
                 isActive: draft.isActive ?? false,
                 steps: {
-                    create: normalizedSteps.map(s => ({
-                        order: s.order,
+                    create: normalizedSteps.map((s, index) => ({
+                        // Don't set id here - let Prisma generate it
                         title: s.title,
                         actionType: s.actionType,
                         roleScope: s.roleScope,
                         required: s.required ?? true,
                         actionConfig: s.actionConfig ?? {},
+                        notificationPolicies: s.notificationPolicies ?? [],
+                        positionX: s.positionX ?? index * 350 + 50,
+                        positionY: s.positionY ?? 100,
                     }))
                 }
             },
             include: { steps: true }
         });
+
+        // Create ID mapping from AI-generated IDs to database IDs
+        const stepIdMap = new Map<string, string>();
+        normalizedSteps.forEach((draftStep, index) => {
+            const dbStep = template.steps[index];
+            if (draftStep.id && dbStep) {
+                stepIdMap.set(draftStep.id, dbStep.id);
+            }
+        });
+
+        // Create dependencies with mapped IDs
+        if (draft.dependencies && draft.dependencies.length > 0) {
+            const mappedDependencies = draft.dependencies
+                .map(dep => {
+                    const mappedSourceId = stepIdMap.get(dep.sourceStepId);
+                    const mappedTargetId = stepIdMap.get(dep.targetStepId);
+                    
+                    // Only create dependency if both IDs are found
+                    if (!mappedSourceId || !mappedTargetId) {
+                        console.warn(`Skipping dependency: source=${dep.sourceStepId} -> target=${dep.targetStepId} (mapping failed)`);
+                        return null;
+                    }
+                    
+                    return {
+                        templateId: template.id,
+                        sourceStepId: mappedSourceId,
+                        targetStepId: mappedTargetId,
+                        dependencyType: dep.dependencyType,
+                        dependencyLogic: dep.dependencyLogic,
+                        conditionType: dep.conditionType,
+                        conditionConfig: dep.conditionConfig ?? undefined,
+                    };
+                })
+                .filter(dep => dep !== null);
+
+            if (mappedDependencies.length > 0) {
+                await tx.workflowTemplateDependency.createMany({
+                    data: mappedDependencies as any[],
+                });
+            }
+        }
+
         return template;
     });
 

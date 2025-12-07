@@ -12,10 +12,10 @@ Successfully integrated the WRITE_TEXT workflow action into all workflow creatio
 ```typescript
 export type ActionType =
   | "CHECKLIST"
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
-  | "PAYMENT_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
+  | "REQUEST_DOC"
+  | "PAYMENT"
   | "WRITE_TEXT";  // NEW
 ```
 
@@ -50,10 +50,10 @@ case "WRITE_TEXT":
 ```html
 <select id="step-action-type">
   <option value="CHECKLIST">Checklist</option>
-  <option value="APPROVAL_LAWYER">Lawyer Approval</option>
-  <option value="SIGNATURE_CLIENT">Client Signature</option>
-  <option value="REQUEST_DOC_CLIENT">Request Document from Client</option>
-  <option value="PAYMENT_CLIENT">Client Payment</option>
+  <option value="APPROVAL">Lawyer Approval</option>
+  <option value="SIGNATURE">Client Signature</option>
+  <option value="REQUEST_DOC">Request Document from Client</option>
+  <option value="PAYMENT">Client Payment</option>
   <option value="WRITE_TEXT">Write Text</option>  <!-- NEW -->
 </select>
 ```
@@ -67,10 +67,10 @@ case "WRITE_TEXT":
 
 ```typescript
 type ActionType =
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
-  | "PAYMENT_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
+  | "REQUEST_DOC"
+  | "PAYMENT"
   | "CHECKLIST"
   | "WRITE_TEXT";  // NEW
 ```
@@ -89,10 +89,10 @@ type ActionType =
 ```typescript
 const ACTION_TYPES = [
   { value: "CHECKLIST", label: "Checklist" },
-  { value: "APPROVAL_LAWYER", label: "Lawyer Approval" },
-  { value: "SIGNATURE_CLIENT", label: "Client Signature" },
-  { value: "REQUEST_DOC_CLIENT", label: "Request Documents" },
-  { value: "PAYMENT_CLIENT", label: "Client Payment" },
+  { value: "APPROVAL", label: "Lawyer Approval" },
+  { value: "SIGNATURE", label: "Client Signature" },
+  { value: "REQUEST_DOC", label: "Request Documents" },
+  { value: "PAYMENT", label: "Client Payment" },
   { value: "WRITE_TEXT", label: "Write Text" },  // NEW
 ] as const;
 ```

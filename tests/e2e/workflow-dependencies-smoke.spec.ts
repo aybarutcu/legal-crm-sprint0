@@ -94,21 +94,21 @@ test.describe("Workflow Dependencies - Smoke Tests", () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           steps: [
-            { 
-              order: 0, 
+            {
+              id: 'step-1',
               title: 'Step 1',
               actionType: 'TASK',
               roleScope: 'LAWYER',
-              dependsOn: [], 
-              dependencyLogic: 'ALL' 
+              dependsOn: [],
+              dependencyLogic: 'ALL'
             },
-            { 
-              order: 1, 
+            {
+              id: 'step-2',
               title: 'Step 2',
               actionType: 'TASK',
               roleScope: 'LAWYER',
-              dependsOn: [0], 
-              dependencyLogic: 'ALL' 
+              dependsOn: ['step-1'],
+              dependencyLogic: 'ALL'
             }
           ]
         })
@@ -135,21 +135,21 @@ test.describe("Workflow Dependencies - Smoke Tests", () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           steps: [
-            { 
-              order: 0, 
+            {
+              id: 'step-1',
               title: 'Step 1',
               actionType: 'TASK',
               roleScope: 'LAWYER',
-              dependsOn: [1], 
-              dependencyLogic: 'ALL' 
+              dependsOn: ['step-2'],
+              dependencyLogic: 'ALL'
             },
-            { 
-              order: 1, 
+            {
+              id: 'step-2',
               title: 'Step 2',
               actionType: 'TASK',
               roleScope: 'LAWYER',
-              dependsOn: [0], 
-              dependencyLogic: 'ALL' 
+              dependsOn: ['step-1'],
+              dependencyLogic: 'ALL'
             }
           ]
         })

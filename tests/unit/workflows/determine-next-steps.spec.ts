@@ -52,7 +52,7 @@ const createMockStep = (overrides: any = {}) => ({
   templateStepId: null,
   order: 1,
   title: "Test Step",
-  actionType: ActionType.APPROVAL_LAWYER,
+  actionType: ActionType.APPROVAL,
   roleScope: RoleScope.LAWYER,
   required: true,
   actionState: ActionState.PENDING,
@@ -63,11 +63,6 @@ const createMockStep = (overrides: any = {}) => ({
   notes: null,
   startedAt: null,
   completedAt: null,
-  conditionType: null,
-  conditionConfig: null,
-  nextStepOnTrue: null,
-  nextStepOnFalse: null,
-  // Add dependency fields for P0.2
   dependsOn: overrides.order > 1 ? [`step-${overrides.order - 1}`] : [], // Implicit sequential dependency
   dependencyLogic: "ALL",
   createdAt: new Date(),

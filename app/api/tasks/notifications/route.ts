@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 
-const TASK_ENTITY_TYPES = ["Task", "TaskChecklist", "TaskLink"] as const;
+const TASK_ENTITY_TYPES = ["Task", "TaskChecklist", "TaskLink"];
 
 export const GET = withApiHandler(async (_req: NextRequest) => {
   const logs = await prisma.auditLog.findMany({

@@ -166,13 +166,13 @@ Returns organized metrics with summary statistics.
 1. **Main E2E Test** (10 steps):
    - Login as admin
    - Navigate to templates
-   - Create 3-step template (CHECKLIST → APPROVAL_LAWYER → REQUEST_DOC_CLIENT)
+   - Create 3-step template (CHECKLIST → APPROVAL → REQUEST_DOC)
    - Publish template
    - Find test matter
    - Instantiate workflow
    - Execute CHECKLIST step
-   - Execute APPROVAL_LAWYER step
-   - Execute REQUEST_DOC_CLIENT step
+   - Execute APPROVAL step
+   - Execute REQUEST_DOC step
    - Verify audit trail
 
 2. **Additional Tests**:
@@ -474,7 +474,7 @@ Sprint 7 delivered a **production-ready workflow engine** with:
 
 ### ✅ Complete Feature Set
 - Full workflow lifecycle management
-- 5 action types (CHECKLIST, APPROVAL_LAWYER, SIGNATURE_CLIENT, REQUEST_DOC_CLIENT, PAYMENT_CLIENT)
+- 5 action types (CHECKLIST, APPROVAL, SIGNATURE, REQUEST_DOC, PAYMENT)
 - Role-based permissions (ADMIN, LAWYER, PARALEGAL, CLIENT)
 - State machine with 8 states
 - Audit trail tracking

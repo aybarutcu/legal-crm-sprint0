@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export const GET = withApiHandler(async (req, { session }) => {
   const actor = session!.user!;
-  if (![Role.ADMIN, Role.LAWYER].includes(actor.role ?? Role.LAWYER)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((actor.role ?? Role.LAWYER) as "ADMIN" | "LAWYER")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -16,8 +17,8 @@ export const GET = withApiHandler(async (req, { session }) => {
     ...(search
       ? {
           OR: [
-            { email: { contains: search, mode: "insensitive" } },
-            { name: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
+            { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
           ],
         }
       : {}),

@@ -89,10 +89,10 @@ Webhooks:   External event handling (prepared)
 **Current:**
 ```typescript
 enum ActionType {
-  APPROVAL_LAWYER        // ✅
-  SIGNATURE_CLIENT       // ✅
-  REQUEST_DOC_CLIENT     // ✅
-  PAYMENT_CLIENT         // ✅
+  APPROVAL        // ✅
+  SIGNATURE       // ✅
+  REQUEST_DOC     // ✅
+  PAYMENT         // ✅
   CHECKLIST              // ✅
 }
 ```
@@ -213,10 +213,10 @@ Step 3: Send contract → Rollback: Void contract
 ```typescript
 enum ActionType {
   // Existing
-  APPROVAL_LAWYER,
-  SIGNATURE_CLIENT,
-  REQUEST_DOC_CLIENT,
-  PAYMENT_CLIENT,
+  APPROVAL,
+  SIGNATURE,
+  REQUEST_DOC,
+  PAYMENT,
   CHECKLIST,
   
   // NEW - Essential
@@ -449,8 +449,8 @@ export const STANDARD_TEMPLATES = {
     name: "New Client Onboarding",
     steps: [
       { title: "Send engagement letter", actionType: "SEND_EMAIL" },
-      { title: "Client signature", actionType: "SIGNATURE_CLIENT" },
-      { title: "Request retainer payment", actionType: "PAYMENT_CLIENT" },
+      { title: "Client signature", actionType: "SIGNATURE" },
+      { title: "Request retainer payment", actionType: "PAYMENT" },
       { title: "Create case folder", actionType: "GENERATE_DOCUMENT" },
       { title: "Schedule kickoff meeting", actionType: "SCHEDULE_EVENT" }
     ]
@@ -460,7 +460,7 @@ export const STANDARD_TEMPLATES = {
     name: "Court Filing Process",
     steps: [
       { title: "Prepare filing documents", actionType: "GENERATE_DOCUMENT" },
-      { title: "Lawyer review", actionType: "APPROVAL_LAWYER" },
+      { title: "Lawyer review", actionType: "APPROVAL" },
       { title: "Client approval", actionType: "APPROVAL_CLIENT" },
       { title: "File with court", actionType: "COURT_FILING" },
       { title: "Wait for court response", actionType: "DEADLINE_WAIT" }
@@ -472,9 +472,9 @@ export const STANDARD_TEMPLATES = {
     steps: [
       { title: "Send discovery requests", actionType: "SEND_EMAIL" },
       { title: "Wait for response (30 days)", actionType: "DEADLINE_WAIT" },
-      { title: "Review documents", actionType: "REQUEST_DOC_CLIENT" },
+      { title: "Review documents", actionType: "REQUEST_DOC" },
       { title: "Paralegal checklist", actionType: "CHECKLIST" },
-      { title: "Lawyer approval", actionType: "APPROVAL_LAWYER" }
+      { title: "Lawyer approval", actionType: "APPROVAL" }
     ]
   }
 };

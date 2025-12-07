@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { assertMatterAccess } from "@/lib/authorization";
 import { addMatterTeamMember, getMatterTeamMembers, removeMatterTeamMember } from "@/lib/matter-team";
+import { recordAuditLog } from "@/lib/audit";
+import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { Role } from "@prisma/client";
 
@@ -51,6 +53,27 @@ export const POST = withApiHandler<{ id: string }>(
       addedBy: user.id,
     });
 
+    // Get user details for audit log
+    const addedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true, role: true },
+    });
+
+    // Record audit log
+    await recordAuditLog({
+      actorId: user.id,
+      action: "matter.team.add",
+      entityType: "MatterTeamMember",
+      entityId: member.id,
+      metadata: {
+        matterId,
+        userId,
+        role: member.role,
+        userName: addedUser?.name || addedUser?.email || "Unknown",
+        userEmail: addedUser?.email,
+      },
+    });
+
     return NextResponse.json(member, { status: 201 });
   },
 );
@@ -79,7 +102,34 @@ export const DELETE = withApiHandler<{ id: string }>(
     const body = await req.json();
     const { userId } = deleteMemberSchema.parse(body);
 
+    // Get member details before deletion for audit log
+    const memberToRemove = await prisma.matterTeamMember.findFirst({
+      where: { matterId, userId },
+      include: {
+        user: {
+          select: { name: true, email: true, role: true },
+        },
+      },
+    });
+
     await removeMatterTeamMember({ matterId, userId });
+
+    // Record audit log
+    if (memberToRemove) {
+      await recordAuditLog({
+        actorId: user.id,
+        action: "matter.team.remove",
+        entityType: "MatterTeamMember",
+        entityId: memberToRemove.id,
+        metadata: {
+          matterId,
+          userId,
+          role: memberToRemove.role,
+          userName: memberToRemove.user.name || memberToRemove.user.email || "Unknown",
+          userEmail: memberToRemove.user.email,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true });
   },

@@ -12,10 +12,12 @@ type RequestDocConfig = z.infer<typeof configSchema>;
 
 // Track which documents have been uploaded
 type DocumentUploadStatus = {
+  requestId: string; // Unique ID for this document request
   documentName: string; // e.g., "Copy of ID"
   uploaded: boolean;
-  documentId?: string; // ID of the uploaded document
+  documentId?: string; // ID of the uploaded document (latest version)
   uploadedAt?: string; // ISO timestamp
+  version?: number; // Current version number
 };
 
 type RequestDocData = {
@@ -55,12 +57,14 @@ export class RequestDocActionHandler
   }
 
   async start(ctx: WorkflowRuntimeContext<RequestDocConfig, RequestDocData>): Promise<ActionState> {
-    // Initialize tracking for each requested document
+    // Initialize tracking for each requested document with unique IDs
     const documentNames = ctx.config.documentNames || [];
     ctx.data.status = "IN_PROGRESS";
     ctx.data.documentsStatus = documentNames.map((name) => ({
+      requestId: `${ctx.step.id}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, // Unique ID per request
       documentName: name,
       uploaded: false,
+      version: 0,
     }));
     ctx.data.allDocumentsUploaded = false;
 
@@ -96,27 +100,28 @@ export class RequestDocActionHandler
 
   /**
    * Mark a specific document as uploaded.
-   * This is called when a document with matching tag and workflowStepId is created.
+   * This is called when a document with matching requestId is created.
    */
   markDocumentUploaded(
     ctx: WorkflowRuntimeContext<RequestDocConfig, RequestDocData>,
-    documentName: string,
+    requestId: string,
     documentId: string,
   ): boolean {
     if (!ctx.data.documentsStatus) {
       return false;
     }
 
-    // Find the document status entry
-    const docStatus = ctx.data.documentsStatus.find((d) => d.documentName === documentName);
+    // Find the document status entry by requestId
+    const docStatus = ctx.data.documentsStatus.find((d) => d.requestId === requestId);
     if (!docStatus) {
       return false;
     }
 
-    // Mark as uploaded
+    // Increment version and mark as uploaded
     docStatus.uploaded = true;
     docStatus.documentId = documentId;
     docStatus.uploadedAt = ctx.now.toISOString();
+    docStatus.version = (docStatus.version || 0) + 1;
 
     // Check if all documents are now uploaded
     const allUploaded = ctx.data.documentsStatus.every((d) => d.uploaded);
@@ -142,16 +147,16 @@ export class RequestDocActionHandler
     event: import("../types").ActionEvent,
   ): ActionState | null {
     if (event.type === "DOCUMENT_UPLOADED") {
-      // Extract documentName and documentId from event payload
+      // Extract requestId and documentId from event payload
       if (typeof event.payload === "object" && event.payload !== null) {
-        const { documentName, documentId } = event.payload as {
-          documentName?: string;
+        const { requestId, documentId } = event.payload as {
+          requestId?: string;
           documentId?: string;
         };
 
-        if (documentName && documentId) {
+        if (requestId && documentId) {
           // Mark the document as uploaded
-          const allUploaded = this.markDocumentUploaded(ctx, documentName, documentId);
+          const allUploaded = this.markDocumentUploaded(ctx, requestId, documentId);
 
           // If all documents are uploaded, automatically complete the step
           if (allUploaded) {

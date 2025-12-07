@@ -87,9 +87,54 @@ export const PATCH = withApiHandler<ContactParams>(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const updated = await prisma.contact.update({
-      where: { id: params!.id },
-      data: update,
+    // Use transaction to update contact and sync folder name atomically
+    const updated = await prisma.$transaction(async (tx) => {
+      // Update contact
+      const contact = await tx.contact.update({
+        where: { id: params!.id },
+        data: update,
+      });
+
+      // If firstName or lastName changed, sync contact's root folder name
+      if ((update.firstName || update.lastName) && 
+          (update.firstName !== existing.firstName || update.lastName !== existing.lastName)) {
+        
+        // Find contact's root folder
+        const contactFolder = await tx.documentFolder.findFirst({
+          where: {
+            contactId: params!.id,
+            parentFolderId: { not: null }, // Has a parent (not orphaned)
+            deletedAt: null,
+          },
+        });
+
+        if (contactFolder) {
+          const newFirstName = update.firstName ?? existing.firstName;
+          const newLastName = update.lastName ?? existing.lastName;
+          const newName = `${newFirstName} ${newLastName}`.trim();
+          const oldName = `${existing.firstName} ${existing.lastName}`.trim();
+          
+          await tx.documentFolder.update({
+            where: { id: contactFolder.id },
+            data: { name: newName },
+          });
+
+          await recordAuditLog({
+            actorId: userId,
+            action: "folder.name_synced",
+            entityType: "folder",
+            entityId: contactFolder.id,
+            metadata: {
+              oldName: oldName,
+              newName: newName,
+              reason: "contact_name_changed",
+              contactId: params!.id,
+            },
+          });
+        }
+      }
+
+      return contact;
     });
 
     await recordAuditLog({

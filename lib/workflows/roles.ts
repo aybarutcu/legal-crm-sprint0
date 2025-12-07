@@ -62,6 +62,42 @@ export async function loadWorkflowActorSnapshot(
   };
 }
 
+export async function loadContactWorkflowActorSnapshot(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  contactId: string,
+): Promise<WorkflowActorSnapshot> {
+  const [admins, contact] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: Role.ADMIN, isActive: true },
+      select: { id: true },
+    }),
+    prisma.contact.findUnique({
+      where: { id: contactId },
+      select: {
+        ownerId: true,
+        owner: { select: { id: true, role: true } },
+        userId: true,
+        user: { select: { id: true, role: true } },
+      },
+    }),
+  ]);
+
+  const lawyerIds = new Set<string>();
+  const paralegalIds = new Set<string>();
+
+  // Add owner if they are a lawyer
+  if (contact?.owner && contact.owner.role === Role.LAWYER) {
+    lawyerIds.add(contact.owner.id);
+  }
+
+  return {
+    admins: admins.map((user) => user.id),
+    lawyers: Array.from(lawyerIds),
+    paralegals: Array.from(paralegalIds),
+    clients: dedupe([contact?.userId ?? null]),
+  };
+}
+
 export function resolveEligibleActorIds(
   roleScope: RoleScope,
   snapshot: WorkflowActorSnapshot,

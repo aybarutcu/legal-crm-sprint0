@@ -96,7 +96,7 @@ Single source of truth for configuration forms. Changes propagate to all usage p
 ┌─────────────────────────────────────────┐
 │ Action Configuration                    │
 ├─────────────────────────────────────────┤
-│ PAYMENT_CLIENT:                         │
+│ PAYMENT:                         │
 │                                         │
 │ Ödeme Tutarı                            │
 │ ┌───────────┐                           │
@@ -114,7 +114,7 @@ Single source of truth for configuration forms. Changes propagate to all usage p
 │ └─────────────────────────────────────┘ │
 └─────────────────────────────────────────┘
 
-REQUEST_DOC_CLIENT:
+REQUEST_DOC:
 ┌─────────────────────────────────────────┐
 │ Belge Talep Mesajı *                    │
 │ ┌─────────────────────────────────────┐ │
@@ -145,10 +145,10 @@ REQUEST_DOC_CLIENT:
 3. **Other Action Types**
    - Use ActionConfigForm wrapper
    - ActionConfigForm internally routes to correct specific form:
-     - APPROVAL_LAWYER → ApprovalConfigForm
-     - SIGNATURE_CLIENT → SignatureConfigForm
-     - REQUEST_DOC_CLIENT → DocumentRequestConfigForm
-     - PAYMENT_CLIENT → PaymentConfigForm
+     - APPROVAL → ApprovalConfigForm
+     - SIGNATURE → SignatureConfigForm
+     - REQUEST_DOC → DocumentRequestConfigForm
+     - PAYMENT → PaymentConfigForm
 
 4. **Data Flow**
    ```
@@ -184,10 +184,10 @@ REQUEST_DOC_CLIENT:
 - [ ] ⏳ Save template
 - [ ] ⏳ Edit template and verify config loads
 - [ ] ⏳ Test all action types:
-  - [ ] APPROVAL_LAWYER
-  - [ ] SIGNATURE_CLIENT
-  - [ ] REQUEST_DOC_CLIENT
-  - [ ] PAYMENT_CLIENT
+  - [ ] APPROVAL
+  - [ ] SIGNATURE
+  - [ ] REQUEST_DOC
+  - [ ] PAYMENT
   - [ ] CHECKLIST (should still use ChecklistBuilder)
 - [ ] ⏳ Create workflow instance from template
 - [ ] ⏳ Verify config carries over correctly

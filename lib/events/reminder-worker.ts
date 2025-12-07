@@ -21,6 +21,9 @@ async function runReminderJob() {
 
 export function ensureReminderWorker() {
   if (process.env.NODE_ENV === "test") return;
+  // Don't start workers during build time
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+  if (typeof window !== "undefined") return; // Don't run in browser
   if (globalWorkers.__legalCrmReminderWorker) return;
 
   void runReminderJob();

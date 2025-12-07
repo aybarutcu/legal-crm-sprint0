@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import {
   CONTACT_PAGE_SIZE,
   contactQuerySchema,
@@ -52,9 +53,9 @@ export default async function ContactsPage({
     ...(q
       ? {
           OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
+            { firstName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { lastName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+            { email: { contains: q, mode: Prisma.QueryMode.insensitive } },
           ],
         }
       : {}),
@@ -74,7 +75,7 @@ export default async function ContactsPage({
       include: {
         owner: { select: { id: true, name: true, email: true } },
       },
-    }),
+    }) as any,
     prisma.contact.count({ where }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
@@ -82,7 +83,7 @@ export default async function ContactsPage({
     }),
   ]);
 
-  const contactsSerialized: ContactListItem[] = contacts.map((contact) => ({
+  const contactsSerialized: ContactListItem[] = contacts.map((contact: any) => ({
     id: contact.id,
     firstName: contact.firstName,
     lastName: contact.lastName,

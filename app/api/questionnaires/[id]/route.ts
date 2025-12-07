@@ -4,9 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { questionnaireUpdateSchema } from "@/lib/validation/questionnaire";
 import { Role } from "@prisma/client";
 
-type RouteContext = {
-  params: { id: string };
-};
+type RouteContext = { id: string };
 
 // GET /api/questionnaires/[id] - Get single questionnaire
 export const GET = withApiHandler<RouteContext>(
@@ -14,7 +12,7 @@ export const GET = withApiHandler<RouteContext>(
     const user = session!.user!;
 
     // Only ADMIN/LAWYER can view questionnaires
-    if (![Role.ADMIN, Role.LAWYER].includes(user.role!)) {
+    if (![Role.ADMIN, Role.LAWYER].includes((user.role!) as "ADMIN" | "LAWYER")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -50,7 +48,7 @@ export const PATCH = withApiHandler<RouteContext>(
     const user = session!.user!;
 
     // Only ADMIN/LAWYER can update questionnaires
-    if (![Role.ADMIN, Role.LAWYER].includes(user.role!)) {
+    if (![Role.ADMIN, Role.LAWYER].includes((user.role!) as "ADMIN" | "LAWYER")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -150,8 +148,8 @@ export const PATCH = withApiHandler<RouteContext>(
             required: q.required ?? true,
             placeholder: q.placeholder ?? null,
             helpText: q.helpText ?? null,
-            options: q.options ? q.options : null,
-            validation: q.validation ? q.validation : null,
+            options: q.options ? q.options : undefined,
+            validation: q.validation ? q.validation : undefined,
           };
 
           if (q.id && !q.id.startsWith("temp-")) {
@@ -213,7 +211,7 @@ export const DELETE = withApiHandler<RouteContext>(
     const user = session!.user!;
 
     // Only ADMIN/LAWYER can delete questionnaires
-    if (![Role.ADMIN, Role.LAWYER].includes(user.role!)) {
+    if (![Role.ADMIN, Role.LAWYER].includes((user.role!) as "ADMIN" | "LAWYER")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

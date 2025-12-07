@@ -73,7 +73,7 @@ Görev tamamlandı                    15.10.2025 15:20
 
 **Example**: `3 madde tamamlandı`
 
-### Lawyer Approval (APPROVAL_LAWYER)
+### Lawyer Approval (APPROVAL)
 
 **Completion Details**: Shows approval/rejection status and optional comment
 
@@ -86,7 +86,7 @@ Görev tamamlandı                    15.10.2025 15:20
 - `✓ Onaylandı: "Dilekçe uygun görülmüştür"`
 - `✗ Reddedildi: "Eksik belgeler var"`
 
-### Document Request (REQUEST_DOC_CLIENT)
+### Document Request (REQUEST_DOC)
 
 **Completion Details**: Shows uploaded document filename
 
@@ -94,7 +94,7 @@ Görev tamamlandı                    15.10.2025 15:20
 
 **Example**: `Belge yüklendi: nufus_cuzdani.pdf`
 
-### Signature (SIGNATURE_CLIENT)
+### Signature (SIGNATURE)
 
 **Completion Details**: Shows signed document ID
 
@@ -102,7 +102,7 @@ Görev tamamlandı                    15.10.2025 15:20
 
 **Example**: `Belge imzalandı: doc_clz123abc`
 
-### Payment (PAYMENT_CLIENT)
+### Payment (PAYMENT)
 
 **Completion Details**: Shows payment amount and currency
 

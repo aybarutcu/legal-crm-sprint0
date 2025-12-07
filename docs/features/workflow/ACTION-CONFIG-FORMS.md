@@ -189,10 +189,10 @@ Replaced the raw JSON textarea editor with user-friendly, action-specific config
 
 **Supported Action Types:**
 - `CHECKLIST` → ChecklistConfigForm
-- `APPROVAL_LAWYER` → ApprovalConfigForm
-- `SIGNATURE_CLIENT` → SignatureConfigForm
-- `REQUEST_DOC_CLIENT` → DocumentRequestConfigForm
-- `PAYMENT_CLIENT` → PaymentConfigForm
+- `APPROVAL` → ApprovalConfigForm
+- `SIGNATURE` → SignatureConfigForm
+- `REQUEST_DOC` → DocumentRequestConfigForm
+- `PAYMENT` → PaymentConfigForm
 
 ## User Experience Improvements
 
@@ -248,7 +248,7 @@ const [stepFormValues, setStepFormValues] = useState({
 
 // Form receives parsed object, returns updated object
 <ActionConfigForm
-  actionType="PAYMENT_CLIENT"
+  actionType="PAYMENT"
   config={JSON.parse(stepFormValues.actionConfig)}
   onChange={(newConfig) => {
     // Parent re-serializes to JSON
@@ -336,7 +336,7 @@ Forms validate inputs before calling `onChange`:
 5. ✅ Verify config: `{"items": ["Item 1", "Item 3"]}`
 
 **Scenario 2: Configure Payment**
-1. Open step form, select PAYMENT_CLIENT
+1. Open step form, select PAYMENT
 2. Enter amount: 1500
 3. Select currency: TRY
 4. ✅ Preview shows: "₺1.500,00"
@@ -346,7 +346,7 @@ Forms validate inputs before calling `onChange`:
 **Scenario 3: Switch Action Types**
 1. Open step form, select CHECKLIST
 2. Add items
-3. Switch to PAYMENT_CLIENT
+3. Switch to PAYMENT
 4. ✅ Form changes to payment form
 5. ✅ Previous config discarded (expected)
 

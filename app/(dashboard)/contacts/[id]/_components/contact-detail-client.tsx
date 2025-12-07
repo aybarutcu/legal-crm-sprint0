@@ -38,6 +38,7 @@ type ContactWithRelations = Contact & {
     id: string;
     status: string;
     createdAt: Date;
+    updatedAt?: Date;
     template: {
       id: string;
       name: string;
@@ -46,16 +47,26 @@ type ContactWithRelations = Contact & {
     steps: Array<{
       id: string;
       title: string;
-      order: number;
       actionType: string;
       actionState: string;
+      actionData: Record<string, unknown> | null;
       roleScope: string;
-      dueDate: Date | null;
-      assignedTo: {
-        id: string;
-        name: string | null;
-        email: string;
-      } | null;
+      required: boolean;
+      assignedToId: string | null;
+      startedAt: Date | null;
+      completedAt: Date | null;
+      positionX: number | null;
+      positionY: number | null;
+      order?: number;
+    }>;
+    dependencies: Array<{
+      id: string;
+      sourceStepId: string;
+      targetStepId: string;
+      dependencyType: string;
+      dependencyLogic: string;
+      conditionType: string | null;
+      conditionConfig: Record<string, unknown> | null;
     }>;
   }>;
 };
@@ -175,7 +186,7 @@ export function ContactDetailClient({
       {selectedTab === "workflows" && isLead && (
         <ContactWorkflowsSection
           contactId={contact.id}
-          workflows={contact.workflowInstances || []}
+          workflows={contact.workflowInstances as any || []}
           currentUserRole={currentUserRole as Role}
           canManageWorkflows={canManageWorkflows}
           onRefresh={() => router.refresh()}

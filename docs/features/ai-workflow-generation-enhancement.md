@@ -32,10 +32,10 @@ Completely rewrote the AI system prompt for the workflow generation API endpoint
 Added missing action types to Zod enum:
 ```typescript
 export const ActionType = z.enum([
-  "APPROVAL_LAWYER",
-  "SIGNATURE_CLIENT",
-  "REQUEST_DOC_CLIENT",
-  "PAYMENT_CLIENT",
+  "APPROVAL",
+  "SIGNATURE",
+  "REQUEST_DOC",
+  "PAYMENT",
   "CHECKLIST",
   "WRITE_TEXT",           // Added
   "POPULATE_QUESTIONNAIRE", // Added
@@ -54,20 +54,20 @@ Added rendering support for new action types:
 
 | Action Type | Purpose | roleScope | Required Config |
 |------------|---------|-----------|-----------------|
-| **APPROVAL_LAWYER** | Internal approval by lawyer/admin | LAWYER, ADMIN | `approverRole`, `message` |
-| **SIGNATURE_CLIENT** | Client e-signature request | CLIENT | `documentId`, `provider` |
-| **REQUEST_DOC_CLIENT** | Request document upload | CLIENT | `requestText`, `acceptedFileTypes` |
-| **PAYMENT_CLIENT** | Payment collection | CLIENT | `amount`, `currency`, `provider` |
+| **APPROVAL** | Internal approval by lawyer/admin | LAWYER, ADMIN | `approverRole`, `message` |
+| **SIGNATURE** | Client e-signature request | CLIENT | `documentId`, `provider` |
+| **REQUEST_DOC** | Request document upload | CLIENT | `requestText`, `acceptedFileTypes` |
+| **PAYMENT** | Payment collection | CLIENT | `amount`, `currency`, `provider` |
 | **CHECKLIST** | Multi-item task list | LAWYER, PARALEGAL, ADMIN | `items` (array) |
 | **WRITE_TEXT** | Rich text input | LAWYER, PARALEGAL, CLIENT | `title`, `description`, `minLength`, `maxLength` |
 | **POPULATE_QUESTIONNAIRE** | Dynamic questionnaire | CLIENT, LAWYER, PARALEGAL | `questionnaireId`, `title`, `description`, `dueInDays` |
 
 ### Detailed Action Configs
 
-#### 1. APPROVAL_LAWYER
+#### 1. APPROVAL
 ```json
 {
-  "actionType": "APPROVAL_LAWYER",
+  "actionType": "APPROVAL",
   "roleScope": "LAWYER",
   "actionConfig": {
     "approverRole": "LAWYER",     // or "ADMIN"
@@ -78,10 +78,10 @@ Added rendering support for new action types:
 
 **Use Cases**: Case acceptance, strategy approval, document review sign-off
 
-#### 2. SIGNATURE_CLIENT
+#### 2. SIGNATURE
 ```json
 {
-  "actionType": "SIGNATURE_CLIENT",
+  "actionType": "SIGNATURE",
   "roleScope": "CLIENT",
   "actionConfig": {
     "documentId": "doc_123",      // null if not created yet
@@ -92,10 +92,10 @@ Added rendering support for new action types:
 
 **Use Cases**: Representation agreements, settlement agreements, consent forms
 
-#### 3. REQUEST_DOC_CLIENT
+#### 3. REQUEST_DOC
 ```json
 {
-  "actionType": "REQUEST_DOC_CLIENT",
+  "actionType": "REQUEST_DOC",
   "roleScope": "CLIENT",
   "actionConfig": {
     "requestText": "Please upload your ID and proof of address",
@@ -106,10 +106,10 @@ Added rendering support for new action types:
 
 **Use Cases**: ID verification, evidence collection, document submission
 
-#### 4. PAYMENT_CLIENT
+#### 4. PAYMENT
 ```json
 {
-  "actionType": "PAYMENT_CLIENT",
+  "actionType": "PAYMENT",
   "roleScope": "CLIENT",
   "actionConfig": {
     "amount": 1000,               // In smallest currency unit
@@ -184,10 +184,10 @@ Added rendering support for new action types:
 
 | Keywords | Maps To |
 |----------|---------|
-| "approval", "review", "sign off", "authorize" | APPROVAL_LAWYER |
-| "sign", "signature", "e-sign", "esign" | SIGNATURE_CLIENT |
-| "upload", "provide documents", "send files", "attach" | REQUEST_DOC_CLIENT |
-| "payment", "pay", "retainer", "fee", "charge" | PAYMENT_CLIENT |
+| "approval", "review", "sign off", "authorize" | APPROVAL |
+| "sign", "signature", "e-sign", "esign" | SIGNATURE |
+| "upload", "provide documents", "send files", "attach" | REQUEST_DOC |
+| "payment", "pay", "retainer", "fee", "charge" | PAYMENT |
 | "checklist", "tasks", "verify", "complete steps" | CHECKLIST |
 | "write", "draft", "compose", "prepare document" | WRITE_TEXT |
 | "questionnaire", "form", "intake form", "survey" | POPULATE_QUESTIONNAIRE |
@@ -230,7 +230,7 @@ client pays $1000 retainer, paralegal does intake checklist"
     {
       "order": 0,
       "title": "Lawyer Approval",
-      "actionType": "APPROVAL_LAWYER",
+      "actionType": "APPROVAL",
       "roleScope": "LAWYER",
       "required": true,
       "actionConfig": {
@@ -241,7 +241,7 @@ client pays $1000 retainer, paralegal does intake checklist"
     {
       "order": 1,
       "title": "Client Signs Contract",
-      "actionType": "SIGNATURE_CLIENT",
+      "actionType": "SIGNATURE",
       "roleScope": "CLIENT",
       "required": true,
       "actionConfig": {
@@ -251,7 +251,7 @@ client pays $1000 retainer, paralegal does intake checklist"
     {
       "order": 2,
       "title": "Retainer Payment",
-      "actionType": "PAYMENT_CLIENT",
+      "actionType": "PAYMENT",
       "roleScope": "CLIENT",
       "required": true,
       "actionConfig": {
@@ -296,7 +296,7 @@ client pays $1000 retainer, paralegal does intake checklist"
     {
       "order": 0,
       "title": "Kimlik ve Adres Belgesi Yükleme",
-      "actionType": "REQUEST_DOC_CLIENT",
+      "actionType": "REQUEST_DOC",
       "roleScope": "CLIENT",
       "required": true,
       "actionConfig": {
@@ -307,7 +307,7 @@ client pays $1000 retainer, paralegal does intake checklist"
     {
       "order": 1,
       "title": "Avans Ödemesi",
-      "actionType": "PAYMENT_CLIENT",
+      "actionType": "PAYMENT",
       "roleScope": "CLIENT",
       "required": true,
       "actionConfig": {
@@ -422,13 +422,13 @@ client pays $1000 retainer, paralegal does intake checklist"
 1. **Simple Onboarding** ✅
    ```
    Input: "lawyer approves, client signs, client pays $500"
-   Expected: 3 steps (APPROVAL_LAWYER, SIGNATURE_CLIENT, PAYMENT_CLIENT)
+   Expected: 3 steps (APPROVAL, SIGNATURE, PAYMENT)
    ```
 
 2. **Document Collection** ✅
    ```
    Input: "client uploads ID and proof of address"
-   Expected: REQUEST_DOC_CLIENT with detailed requestText
+   Expected: REQUEST_DOC with detailed requestText
    ```
 
 3. **Complex Workflow** ✅

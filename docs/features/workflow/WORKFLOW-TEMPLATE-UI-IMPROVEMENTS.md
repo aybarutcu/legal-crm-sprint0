@@ -38,7 +38,7 @@ Handles 5 action types with custom UI for each:
 <CheckCircle icon /> Item title
 ```
 
-##### 2. **APPROVAL_LAWYER**
+##### 2. **APPROVAL**
 - 👤 UserCheck icon in blue
 - Shows approver role prominently
 - Displays approval message in italics
@@ -49,7 +49,7 @@ Approver: LAWYER
 "Discovery planını onayla veya düzenleme iste."
 ```
 
-##### 3. **SIGNATURE_CLIENT**
+##### 3. **SIGNATURE**
 - 📄 FileText icon in purple
 - Shows signature provider
 - Displays document ID in monospace font
@@ -60,7 +60,7 @@ Provider: mock
 Document: cmgs5iopz001tk72p46ene9mb
 ```
 
-##### 4. **REQUEST_DOC_CLIENT**
+##### 4. **REQUEST_DOC**
 - 📤 Upload icon in orange
 - Shows request text description
 - Displays accepted file types as badges
@@ -71,7 +71,7 @@ Request text here
 [PDF] [DOCX] [JPG]  (as badges)
 ```
 
-##### 5. **PAYMENT_CLIENT**
+##### 5. **PAYMENT**
 - 💳 CreditCard icon in green
 - Shows formatted currency amount (e.g., $5,000.00)
 - Displays payment provider

@@ -7,8 +7,8 @@ import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 
 export interface DependencyGraphWithValidationProps {
   steps: WorkflowStepData[];
-  onNodeClick?: (stepOrder: number) => void;
-  highlightedStepOrders?: number[];
+  onNodeClick?: (stepId: string) => void;
+  highlightedStepIds?: string[];
   className?: string;
   height?: number;
   showValidation?: boolean;
@@ -17,7 +17,7 @@ export interface DependencyGraphWithValidationProps {
 export function DependencyGraphWithValidation({
   steps,
   onNodeClick,
-  highlightedStepOrders = [],
+  highlightedStepIds = [],
   className = "",
   height = 600,
   showValidation = true,
@@ -42,29 +42,11 @@ export function DependencyGraphWithValidation({
       (sum, s) => sum + (s.dependsOn?.length || 0),
       0
     );
-    const parallelSteps = new Set<number>();
-
-    // Find steps that can run in parallel
-    steps.forEach((step) => {
-      if (step.dependsOn && step.dependsOn.length > 0) {
-        steps.forEach((otherStep) => {
-          if (
-            step.order !== otherStep.order &&
-            otherStep.dependsOn &&
-            JSON.stringify(step.dependsOn) === JSON.stringify(otherStep.dependsOn)
-          ) {
-            parallelSteps.add(step.order);
-            parallelSteps.add(otherStep.order);
-          }
-        });
-      }
-    });
 
     return {
       totalSteps,
       stepsWithDeps,
       totalDeps,
-      parallelSteps: parallelSteps.size,
       avgDepsPerStep: stepsWithDeps > 0 ? (totalDeps / stepsWithDeps).toFixed(1) : "0",
     };
   }, [steps]);
@@ -90,9 +72,9 @@ export function DependencyGraphWithValidation({
                     <li key={idx} className="flex items-start gap-2">
                       <span className="text-red-500 mt-0.5">•</span>
                       <span>
-                        {error.stepOrder !== undefined && (
+                        {error.stepId !== undefined && (
                           <span className="font-medium">
-                            Step {error.stepOrder}:{" "}
+                            Step {error.stepId}:{" "}
                           </span>
                         )}
                         {error.message}
@@ -138,9 +120,9 @@ export function DependencyGraphWithValidation({
                 </div>
                 <div>
                   <div className="text-blue-600 font-medium">
-                    {stats.parallelSteps}
+                    {stats.totalDeps}
                   </div>
-                  <div className="text-blue-700">Parallel Steps</div>
+                  <div className="text-blue-700">Total Dependencies</div>
                 </div>
                 <div>
                   <div className="text-blue-600 font-medium">
@@ -158,7 +140,7 @@ export function DependencyGraphWithValidation({
       <DependencyGraph
         steps={steps}
         onNodeClick={onNodeClick}
-        highlightedStepOrders={highlightedStepOrders}
+        highlightedStepIds={highlightedStepIds}
         cycleEdges={cycleResult.cycles}
         height={height}
       />

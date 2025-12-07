@@ -6,5 +6,6 @@ export { DocumentRequestExecution } from "./DocumentRequestExecution";
 export { PaymentExecution } from "./PaymentExecution";
 export { WriteTextExecution } from "./WriteTextExecution";
 export { PopulateQuestionnaireExecution } from "./PopulateQuestionnaireExecution";
+export { AutomationExecution } from "./AutomationExecution";
 export { StepExecutionLog } from "./StepExecutionLog";
 export { WorkflowExecutionLog } from "./WorkflowExecutionLog";

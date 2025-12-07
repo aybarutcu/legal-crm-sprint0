@@ -20,7 +20,7 @@ export default async function MatterDetailPage({
     where: { id },
     include: {
       client: {
-        select: { id: true, firstName: true, lastName: true, email: true },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
       },
       owner: {
         select: { id: true, name: true, email: true },
@@ -53,6 +53,7 @@ export default async function MatterDetailPage({
       firstName: matter.client.firstName,
       lastName: matter.client.lastName,
       email: matter.client.email,
+      phone: matter.client.phone,
     },
     owner: matter.owner
       ? {
@@ -79,7 +80,7 @@ export default async function MatterDetailPage({
     email: contact.email,
   }));
 
-  return <MatterDetailClient matter={detail} contacts={contactOptions} currentUserRole={session.user.role} />;
+  return <MatterDetailClient matter={detail} contacts={contactOptions} currentUserRole={session.user.role} currentUserId={session.user.id} />;
 }
 
 export const dynamic = "force-dynamic";

@@ -83,9 +83,9 @@ Phase 7 adds **inline output visibility** for all completed workflow steps on th
 ### Supported Action Types
 - ✅ `POPULATE_QUESTIONNAIRE` → QuestionnaireResponseViewer
 - ✅ `WRITE_TEXT` → WriteTextViewer  
-- ✅ `REQUEST_DOC_CLIENT` → DocumentViewer
+- ✅ `REQUEST_DOC` → DocumentViewer
 - ✅ `CHECKLIST` → ChecklistViewer
-- ⏸️ `APPROVAL_LAWYER`, `SIGNATURE_CLIENT`, `PAYMENT_CLIENT` → No output needed
+- ⏸️ `APPROVAL`, `SIGNATURE`, `PAYMENT` → No output needed
 
 ---
 
@@ -145,7 +145,7 @@ const renderStepOutputUI = () => {
       return <QuestionnaireResponseViewer responseId={data.responseId} />;
     case "WRITE_TEXT":
       return <WriteTextViewer content={data.content} />;
-    case "REQUEST_DOC_CLIENT":
+    case "REQUEST_DOC":
       return <DocumentViewer documentIds={[data.documentId]} />;
     case "CHECKLIST":
       return <ChecklistViewer items={checklistItems} />;

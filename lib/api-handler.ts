@@ -66,7 +66,7 @@ export function withApiHandler<TParams = unknown>(
 ) {
   return async function wrapped(
     req: NextRequest,
-    context: { params?: TParams | Promise<TParams> },
+    context: { params: Promise<TParams> },
   ) {
     const start = performance.now();
     const ip = getClientIp(req);
@@ -117,17 +117,9 @@ export function withApiHandler<TParams = unknown>(
     }
 
     try {
-      const paramsValue = context.params as
-        | TParams
-        | Promise<TParams>
-        | undefined;
-      const resolvedParams =
-        paramsValue && typeof (paramsValue as unknown as Promise<TParams>).then === "function"
-          ? await (paramsValue as Promise<TParams>)
-          : paramsValue;
+      const resolvedParams = await context.params;
 
       const response = await handler(req, {
-        ...context,
         session,
         params: resolvedParams,
       });

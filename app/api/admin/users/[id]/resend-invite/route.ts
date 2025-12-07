@@ -22,7 +22,7 @@ function buildPortalInviteUrl(token: string) {
 
 export const POST = withApiHandler<Params>(async (_req, { params, session }) => {
   const actor = session!.user!;
-  if (![Role.ADMIN, Role.LAWYER].includes(actor.role ?? Role.LAWYER)) {
+  if (![Role.ADMIN, Role.LAWYER].includes((actor.role ?? Role.LAWYER) as "ADMIN" | "LAWYER")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

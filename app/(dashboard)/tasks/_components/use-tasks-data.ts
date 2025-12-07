@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import useSWR from "swr";
-import addDays from "date-fns/addDays";
+import { addDays } from "date-fns/addDays";
 import {
   createChecklistItem,
   createTask,

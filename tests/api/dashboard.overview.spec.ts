@@ -5,7 +5,7 @@ const getAuthSession = vi.fn();
 const checkRateLimit = vi.fn(() => ({ success: true, retryAfter: 60, remaining: 59 }));
 const prismaMock = {
   event: { findMany: vi.fn() },
-  task: { findMany: vi.fn() },
+  task: { findMany: vi.fn(), count: vi.fn() },
   document: { findMany: vi.fn() },
   matter: { count: vi.fn() },
 };
@@ -37,6 +37,7 @@ beforeEach(() => {
   getAuthSession.mockReset();
   prismaMock.event.findMany.mockReset();
   prismaMock.task.findMany.mockReset();
+  prismaMock.task.count.mockReset();
   prismaMock.document.findMany.mockReset();
   prismaMock.matter.count.mockReset();
   checkRateLimit.mockReset();
@@ -54,7 +55,7 @@ describe("GET /api/dashboard/overview", () => {
     const { GET } = await routeModulePromise;
     getAuthSession.mockResolvedValueOnce(null);
 
-    const response = await GET(new NextRequest("http://localhost/api/dashboard/overview"));
+    const response = await GET(new NextRequest("http://localhost/api/dashboard/overview"), { params: Promise.resolve({}) });
     expect(response.status).toBe(401);
   });
 
@@ -79,8 +80,11 @@ describe("GET /api/dashboard/overview", () => {
     prismaMock.matter.count
       .mockResolvedValueOnce(3) // open matters
       .mockResolvedValueOnce(5); // open + in progress
+    prismaMock.task.count
+      .mockResolvedValueOnce(2) // upcoming tasks
+      .mockResolvedValueOnce(1); // overdue tasks
 
-    const response = await GET(new NextRequest("http://localhost/api/dashboard/overview"));
+    const response = await GET(new NextRequest("http://localhost/api/dashboard/overview"), { params: Promise.resolve({}) });
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -102,8 +106,11 @@ describe("GET /api/dashboard/overview", () => {
     prismaMock.matter.count
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
+    prismaMock.task.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
 
-    await GET(new NextRequest("http://localhost/api/dashboard/overview?ownerId=user-2"));
+    await GET(new NextRequest("http://localhost/api/dashboard/overview?ownerId=user-2"), { params: Promise.resolve({}) });
 
     expect(prismaMock.event.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ organizerId: "user-2" }) }),
@@ -115,7 +122,7 @@ describe("GET /api/dashboard/overview", () => {
     getAuthSession.mockResolvedValueOnce({ user: { id: "user-1", role: "LAWYER" } });
     checkRateLimit.mockReturnValueOnce({ success: false, retryAfter: 15, remaining: 0 });
 
-    const response = await GET(new NextRequest("http://localhost/api/dashboard/overview"));
+    const response = await GET(new NextRequest("http://localhost/api/dashboard/overview"), { params: Promise.resolve({}) });
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("15");
   });

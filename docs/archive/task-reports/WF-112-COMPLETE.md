@@ -109,7 +109,7 @@ properties:
   templateId: string (uuid)
   order: integer
   title: string
-  actionType: enum [APPROVAL_LAWYER, SIGNATURE_CLIENT, REQUEST_DOC_CLIENT, PAYMENT_CLIENT, CHECKLIST]
+  actionType: enum [APPROVAL, SIGNATURE, REQUEST_DOC, PAYMENT, CHECKLIST]
   actionConfig: object (JSON)
   roleScope: enum [ADMIN, LAWYER, PARALEGAL, CLIENT]
   required: boolean (default: true)
@@ -217,7 +217,7 @@ properties:
   "steps": [
     {
       "title": "Lawyer Approval",
-      "actionType": "APPROVAL_LAWYER",
+      "actionType": "APPROVAL",
       "roleScope": "LAWYER",
       "required": true,
       "actionConfig": {
@@ -300,22 +300,22 @@ All workflow endpoints tagged with `[Workflows]` for grouping in Swagger UI
 
 All 5 action types with configuration examples:
 
-1. **APPROVAL_LAWYER**
+1. **APPROVAL**
    ```yaml
    config: { approverRole: "LAWYER", message: "Please review" }
    ```
 
-2. **SIGNATURE_CLIENT**
+2. **SIGNATURE**
    ```yaml
    config: { documentId: "doc-123", provider: "mock" }
    ```
 
-3. **REQUEST_DOC_CLIENT**
+3. **REQUEST_DOC**
    ```yaml
    config: { requestText: "Please upload ID", acceptedTypes: ["pdf"] }
    ```
 
-4. **PAYMENT_CLIENT**
+4. **PAYMENT**
    ```yaml
    config: { amount: 1000, currency: "USD", provider: "mock" }
    ```

@@ -2,31 +2,36 @@
 
 import React, { memo } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
-import { ActionType, Role } from "@prisma/client";
+import { ActionType } from "../config-forms/ActionConfigForm";
+import { Role } from "@prisma/client";
 import { WorkflowStep } from "../WorkflowCanvas";
 
 // Icons for action types
 const ACTION_ICONS: Record<ActionType, string> = {
   TASK: "📋",
   CHECKLIST: "☑️",
-  APPROVAL_LAWYER: "✅",
-  SIGNATURE_CLIENT: "✍️",
+  APPROVAL: "✅",
+  SIGNATURE: "✍️",
   REQUEST_DOC: "📄",
-  PAYMENT_CLIENT: "💳",
+  PAYMENT: "💳",
   WRITE_TEXT: "📝",
   POPULATE_QUESTIONNAIRE: "❓",
+  AUTOMATION_EMAIL: "📧",
+  AUTOMATION_WEBHOOK: "🌐",
 };
 
 // Colors for action types (matching NodePalette)
 const ACTION_TYPE_COLORS: Record<ActionType, { bg: string; border: string; text: string }> = {
   TASK: { bg: "bg-blue-100", border: "border-blue-400", text: "text-blue-700" },
   CHECKLIST: { bg: "bg-green-100", border: "border-green-400", text: "text-green-700" },
-  APPROVAL_LAWYER: { bg: "bg-purple-100", border: "border-purple-400", text: "text-purple-700" },
-  SIGNATURE_CLIENT: { bg: "bg-indigo-100", border: "border-indigo-400", text: "text-indigo-700" },
+  APPROVAL: { bg: "bg-purple-100", border: "border-purple-400", text: "text-purple-700" },
+  SIGNATURE: { bg: "bg-indigo-100", border: "border-indigo-400", text: "text-indigo-700" },
   REQUEST_DOC: { bg: "bg-yellow-100", border: "border-yellow-400", text: "text-yellow-700" },
-  PAYMENT_CLIENT: { bg: "bg-emerald-100", border: "border-emerald-400", text: "text-emerald-700" },
+  PAYMENT: { bg: "bg-emerald-100", border: "border-emerald-400", text: "text-emerald-700" },
   WRITE_TEXT: { bg: "bg-pink-100", border: "border-pink-400", text: "text-pink-700" },
   POPULATE_QUESTIONNAIRE: { bg: "bg-orange-100", border: "border-orange-400", text: "text-orange-700" },
+  AUTOMATION_EMAIL: { bg: "bg-sky-100", border: "border-sky-400", text: "text-sky-700" },
+  AUTOMATION_WEBHOOK: { bg: "bg-fuchsia-100", border: "border-fuchsia-400", text: "text-fuchsia-700" },
 };
 
 // Colors for roles (used in badge only)
@@ -47,13 +52,6 @@ const DEFAULT_OUTPUT_HANDLES: OutputHandleConfig[] = [
   { id: "next", color: "#10b981" },
 ];
 
-const ACTION_OUTPUT_HANDLES: Partial<Record<ActionType, OutputHandleConfig[]>> = {
-  APPROVAL_LAWYER: [
-    { id: "approve", label: "Approve", color: "#10b981" },
-    { id: "reject", label: "Reject", color: "#ef4444" },
-  ],
-};
-
 interface StepNodeData {
   step: WorkflowStep;
   label: string;
@@ -69,7 +67,10 @@ export const StepNode = memo(({ data, selected }: NodeProps<StepNodeData>) => {
   const actionColor = ACTION_TYPE_COLORS[actionType];
   const roleColor = ROLE_COLORS[roleScope];
   const icon = ACTION_ICONS[actionType];
-  const outputHandles = ACTION_OUTPUT_HANDLES[actionType] ?? DEFAULT_OUTPUT_HANDLES;
+  const actionLabel = actionType.replace(/_/g, " ");
+
+  // Generate output handles based on action type and branches
+  const outputHandles: OutputHandleConfig[] = DEFAULT_OUTPUT_HANDLES;
 
   return (
     <div
@@ -109,9 +110,7 @@ export const StepNode = memo(({ data, selected }: NodeProps<StepNodeData>) => {
         {/* Action Type */}
         <div className="flex items-center gap-2">
           <span className="text-2xl">{icon}</span>
-          <span className="text-xs font-medium text-gray-600">
-            {actionType.replace(/_/g, " ")}
-          </span>
+          <span className="text-xs font-medium text-gray-600">{actionLabel}</span>
         </div>
 
         {/* Title */}
@@ -141,33 +140,47 @@ export const StepNode = memo(({ data, selected }: NodeProps<StepNodeData>) => {
 
       {/* Right Handle(s) (output) */}
       {outputHandles.map((handle, index) => {
-        const positionPercent = ((index + 1) / (outputHandles.length + 1)) * 100;
-        const topPosition = `${positionPercent}%`;
+        const position = Position.Right;
+        const topPosition = ((index + 1) / (outputHandles.length + 1)) * 100 + "%";
+        const rightPosition = "-10px";
+
+        const handleStyle = {
+          width: "22px",
+          height: "22px",
+          backgroundColor: handle.color,
+          border: "3px solid white",
+          boxShadow: "0 3px 8px rgba(0,0,0,0.5)",
+          zIndex: 20 - index,
+          cursor: "crosshair",
+          borderRadius: "50%",
+          top: topPosition,
+          right: rightPosition,
+          transform: "translate(50%, -50%)",
+        };
+
         return (
           <React.Fragment key={handle.id}>
             <Handle
               id={handle.id}
               type="source"
-              position={Position.Right}
-              style={{
-                width: "16px",
-                height: "16px",
-                backgroundColor: handle.color,
-                border: "3px solid white",
-                boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                top: topPosition,
-                right: "-8px",
-                transform: "translate(50%, -50%)",
-              }}
+              position={position}
+              style={handleStyle}
             />
-            {handle.label ? (
+            {handle.label && (
               <span
-                className="absolute -right-24 rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 shadow sm:-right-20"
-                style={{ top: topPosition, transform: "translateY(-50%)" }}
+                className="absolute rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-md border"
+                style={{
+                  top: topPosition,
+                  right: "-38px",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                  zIndex: 15 - index,
+                  whiteSpace: "nowrap",
+                }}
               >
                 {handle.label}
               </span>
-            ) : null}
+            )}
           </React.Fragment>
         );
       })}

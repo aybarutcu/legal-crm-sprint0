@@ -127,10 +127,10 @@ model QuestionnaireResponseAnswer {
 ```prisma
 // Add to existing ActionType enum
 enum ActionType {
-  APPROVAL_LAWYER
-  SIGNATURE_CLIENT
-  REQUEST_DOC_CLIENT
-  PAYMENT_CLIENT
+  APPROVAL
+  SIGNATURE
+  REQUEST_DOC
+  PAYMENT
   CHECKLIST
   WRITE_TEXT
   POPULATE_QUESTIONNAIRE  // NEW

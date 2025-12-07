@@ -6,10 +6,7 @@ import { WorkflowPermissionError } from "./errors";
 
 export type WorkflowInstanceWithSteps = Prisma.WorkflowInstanceGetPayload<{
   include: {
-    steps: {
-      orderBy: { order: "asc" };
-      include: { templateStep: true };
-    };
+    steps: true;
     template: true;
   };
 }>;
@@ -23,45 +20,12 @@ export async function loadInstanceWithSteps(
     include: {
       template: true,
       steps: {
-        orderBy: { order: "asc" },
         include: {
           templateStep: true,
         },
       },
     },
   });
-}
-
-export function normalizeStepOrder(
-  steps: Prisma.WorkflowInstanceStepUncheckedCreateWithoutInstanceInput[],
-): Prisma.WorkflowInstanceStepUncheckedCreateWithoutInstanceInput[] {
-  return steps
-    .slice()
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((step, index) => ({
-      ...step,
-      order: index,
-    }));
-}
-
-export async function reindexInstanceSteps(
-  tx: PrismaClient | Prisma.TransactionClient,
-  instanceId: string,
-): Promise<void> {
-  const steps = await tx.workflowInstanceStep.findMany({
-    where: { instanceId },
-    orderBy: { order: "asc" },
-    select: { id: true, order: true },
-  });
-
-  await Promise.all(
-    steps.map((step, index) =>
-      tx.workflowInstanceStep.update({
-        where: { id: step.id },
-        data: { order: index, updatedAt: new Date() },
-      }),
-    ),
-  );
 }
 
 export function assertInstanceEditable(
@@ -85,23 +49,22 @@ export async function ensureStepEditable(
 }
 
 export function seedStepPayload(
-  order: number,
   title: string,
   actionType: Prisma.WorkflowInstanceStepCreateInput["actionType"],
   roleScope: RoleScope,
   required: boolean,
   actionConfig: Record<string, unknown>,
+  actionState: ActionState = ActionState.PENDING,
 ): Prisma.WorkflowInstanceStepCreateWithoutInstanceInput {
   return {
-    order,
     title,
     actionType,
     roleScope,
     required,
-    actionState: order === 0 ? ActionState.READY : ActionState.PENDING,
+    actionState,
     actionData: {
       config: actionConfig,
       history: [],
-    },
+    } as Prisma.JsonObject,
   };
 }

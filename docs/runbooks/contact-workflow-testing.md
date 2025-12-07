@@ -78,7 +78,7 @@ npx prisma studio
 - ✅ Action-specific UI renders:
   - **CHECKLIST**: List of items with checkboxes
   - **APPROVAL**: Approve/Reject buttons + comment field
-  - **REQUEST_DOC_CLIENT**: File upload interface
+  - **REQUEST_DOC**: File upload interface
   - **POPULATE_QUESTIONNAIRE**: Dynamic form
   - **SIGNATURE**: Signature pad
   - **PAYMENT**: Payment details form

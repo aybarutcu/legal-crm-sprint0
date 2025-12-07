@@ -1,17 +1,26 @@
 "use client";
 
 /// <reference lib="dom" />
-import React, { useState, useRef, useCallback } from "react";
-import { X, Upload, AlertCircle, CheckCircle } from "lucide-react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { X, Upload, AlertCircle, CheckCircle, Lock } from "lucide-react";
 import { DocumentTypeIcon } from "./DocumentTypeIcon";
 import { formatFileSize } from "@/lib/documents/format-utils";
+import { DocumentAccessScope, Role } from "@prisma/client";
+
+interface TeamMember {
+  id: string;
+  name: string | null;
+  email: string;
+  role: Role;
+}
 
 type MatterDocumentUploadDialogProps = {
   isOpen: boolean;
   onClose: () => void;
-  matterId: string;
+  matterId?: string;
+  contactId?: string;
   workflowStepId?: string | null;
-  tags?: string[];
+  tags?: string[]; // First tag is the document name from REQUEST_DOC
   onUploadComplete?: () => void;
 };
 
@@ -33,6 +42,7 @@ export function MatterDocumentUploadDialog({
   isOpen,
   onClose,
   matterId,
+  contactId,
   workflowStepId,
   tags,
   onUploadComplete,
@@ -41,8 +51,73 @@ export function MatterDocumentUploadDialog({
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [dragActive, setDragActive] = useState(false);
+  const [accessScope, setAccessScope] = useState<DocumentAccessScope>("PUBLIC");
+  const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
+  const [showAccessOptions, setShowAccessOptions] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fileInputRef = useRef<any>(null);
+
+  // Load team members when dialog opens
+  useEffect(() => {
+    const loadTeam = async () => {
+      if (!isOpen || (!matterId && !contactId)) return;
+
+      setLoadingTeam(true);
+      try {
+        if (matterId) {
+          const res = await fetch(`/api/matters/${matterId}/team`);
+          if (res.ok) {
+            const teamData = await res.json();
+            console.log("Team data received:", teamData); // Debug log
+            
+            // API returns array of team members directly
+            const uniqueUsers = new Map<string, TeamMember>();
+            
+            if (Array.isArray(teamData)) {
+              teamData.forEach((member: any) => {
+                if (member.user && !uniqueUsers.has(member.user.id)) {
+                  uniqueUsers.set(member.user.id, {
+                    id: member.user.id,
+                    name: member.user.name,
+                    email: member.user.email,
+                    role: member.user.role,
+                  });
+                }
+              });
+            }
+            
+            setTeamMembers(Array.from(uniqueUsers.values()));
+            console.log("Team members set:", Array.from(uniqueUsers.values())); // Debug log
+          }
+        } else if (contactId) {
+          // For contacts, just get the contact owner
+          const res = await fetch(`/api/contacts/${contactId}`);
+          if (res.ok) {
+            const contact = await res.json();
+            if (contact.owner) {
+              setTeamMembers([
+                {
+                  id: contact.owner.id,
+                  name: contact.owner.name,
+                  email: contact.owner.email,
+                  role: contact.owner.role,
+                },
+              ]);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load team members:", error);
+      } finally {
+        setLoadingTeam(false);
+      }
+    };
+
+    loadTeam();
+  }, [isOpen, matterId, contactId]);
 
   const validateFile = useCallback((file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
@@ -107,23 +182,37 @@ export function MatterDocumentUploadDialog({
 
   const handleUpload = async () => {
     if (!selectedFile) return;
+    if (!matterId && !contactId) {
+      setErrorMessage("Either matterId or contactId is required");
+      return;
+    }
 
     setUploadState("uploading");
     setErrorMessage("");
 
     try {
       // Step 1: Request signed upload URL from /api/uploads
+      const uploadRequestBody: {
+        filename: string;
+        mime: string;
+        size: number;
+        matterId?: string;
+        contactId?: string;
+      } = {
+        filename: selectedFile.name,
+        mime: selectedFile.type,
+        size: selectedFile.size,
+      };
+
+      if (matterId) uploadRequestBody.matterId = matterId;
+      if (contactId) uploadRequestBody.contactId = contactId;
+
       const uploadRequestResponse = await fetch("/api/uploads", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          filename: selectedFile.name,
-          mime: selectedFile.type,
-          size: selectedFile.size,
-          matterId,
-        }),
+        body: JSON.stringify(uploadRequestBody),
       });
 
       if (!uploadRequestResponse.ok) {
@@ -158,22 +247,50 @@ export function MatterDocumentUploadDialog({
       }
 
       // Step 3: Finalize document creation via /api/documents
+      const finalizeBody: {
+        documentId: string;
+        filename: string;
+        mime: string;
+        size: number;
+        storageKey: string;
+        version: number;
+        matterId?: string;
+        contactId?: string;
+        workflowStepId?: string;
+        tags?: string[];
+        accessScope?: DocumentAccessScope;
+        accessMetadata?: Record<string, unknown>;
+      } = {
+        documentId: uploadData.documentId,
+        filename: selectedFile.name,
+        mime: selectedFile.type,
+        size: selectedFile.size,
+        storageKey: uploadData.storageKey,
+        version: uploadData.version,
+      };
+
+      if (matterId) finalizeBody.matterId = matterId;
+      if (contactId) finalizeBody.contactId = contactId;
+      if (workflowStepId) finalizeBody.workflowStepId = workflowStepId;
+      // Pass tags directly without filtering
+      console.log('[MatterDocumentUploadDialog] Tags received:', tags);
+      if (tags && tags.length > 0) {
+        finalizeBody.tags = tags;
+      }
+      console.log('[MatterDocumentUploadDialog] Final body being sent:', finalizeBody);
+      
+      // Add access control settings
+      finalizeBody.accessScope = accessScope;
+      if (accessScope === "ROLE_BASED" && selectedRoles.length > 0) {
+        finalizeBody.accessMetadata = { allowedRoles: selectedRoles };
+      }
+
       const finalizeResponse = await fetch("/api/documents", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          documentId: uploadData.documentId,
-          filename: selectedFile.name,
-          mime: selectedFile.type,
-          size: selectedFile.size,
-          storageKey: uploadData.storageKey,
-          version: uploadData.version,
-          matterId,
-          workflowStepId: workflowStepId || undefined,
-          tags: tags || undefined,
-        }),
+        body: JSON.stringify(finalizeBody),
       });
 
       if (!finalizeResponse.ok) {
@@ -183,13 +300,23 @@ export function MatterDocumentUploadDialog({
 
       const finalizedDoc = await finalizeResponse.json();
       console.log("✅ Document uploaded successfully:", finalizedDoc);
-      console.log("📋 Document matterId:", finalizedDoc.matterId);
+
+      // If USER_BASED access, grant access to selected users
+      if (accessScope === "USER_BASED" && selectedUsers.length > 0) {
+        await fetch(`/api/documents/${finalizedDoc.id}/access`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accessScope: "USER_BASED",
+            grantUserIds: selectedUsers,
+          }),
+        });
+      }
 
       setUploadState("success");
       
       // Wait a moment to show success state
       setTimeout(() => {
-        console.log("🔄 Calling onUploadComplete callback...");
         onUploadComplete?.();
         handleClose();
       }, 1500);
@@ -205,6 +332,10 @@ export function MatterDocumentUploadDialog({
     setUploadState("idle");
     setErrorMessage("");
     setDragActive(false);
+    setAccessScope("PUBLIC");
+    setSelectedRoles([]);
+    setSelectedUsers([]);
+    setShowAccessOptions(false);
     onClose();
   };
 
@@ -215,7 +346,14 @@ export function MatterDocumentUploadDialog({
       <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-slate-900">Upload Document</h2>
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Upload Document</h2>
+            {tags && tags.length > 0 && workflowStepId && (
+              <p className="text-sm text-orange-600 mt-1">
+                📋 Required: <span className="font-semibold">{tags[0]}</span>
+              </p>
+            )}
+          </div>
           <button
             onClick={handleClose}
             className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -224,6 +362,16 @@ export function MatterDocumentUploadDialog({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Workflow Step Info Banner */}
+        {tags && tags.length > 0 && workflowStepId && (
+          <div className="mb-4 rounded-lg border-2 border-orange-200 bg-orange-50 p-3">
+            <p className="text-sm text-orange-900">
+              <span className="font-semibold">Workflow Document Request:</span><br />
+              This document will be linked to the workflow step and marked as "{tags[0]}"
+            </p>
+          </div>
+        )}
 
         {/* Upload Area */}
         <div
@@ -286,6 +434,175 @@ export function MatterDocumentUploadDialog({
           )}
         </div>
 
+        {/* Access Control Section */}
+        {selectedFile && uploadState === "idle" && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50">
+            <button
+              type="button"
+              onClick={() => setShowAccessOptions(!showAccessOptions)}
+              className="w-full flex items-center justify-between p-3 text-left hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-slate-600" />
+                <span className="text-sm font-medium text-slate-700">
+                  Access Control
+                </span>
+                <span className="text-xs text-slate-500">
+                  ({accessScope === "PUBLIC" ? "All team members" : 
+                    accessScope === "ROLE_BASED" ? "Specific roles" : 
+                    accessScope === "USER_BASED" ? "Specific people" : "Private"})
+                </span>
+              </div>
+              <span className="text-slate-400">{showAccessOptions ? "▲" : "▼"}</span>
+            </button>
+
+            {showAccessOptions && (
+              <div className="p-4 pt-0 space-y-3">
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                    <input
+                      type="radio"
+                      name="accessScope"
+                      value="PUBLIC"
+                      checked={accessScope === "PUBLIC"}
+                      onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">All Team Members</div>
+                      <div className="text-xs text-slate-500">
+                        Everyone in the {matterId ? "matter" : "contact"} team can view
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                    <input
+                      type="radio"
+                      name="accessScope"
+                      value="ROLE_BASED"
+                      checked={accessScope === "ROLE_BASED"}
+                      onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Specific Roles</div>
+                      <div className="text-xs text-slate-500">
+                        Only selected roles can view
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                    <input
+                      type="radio"
+                      name="accessScope"
+                      value="USER_BASED"
+                      checked={accessScope === "USER_BASED"}
+                      onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Specific People</div>
+                      <div className="text-xs text-slate-500">
+                        Only selected team members can view
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                    <input
+                      type="radio"
+                      name="accessScope"
+                      value="PRIVATE"
+                      checked={accessScope === "PRIVATE"}
+                      onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Private</div>
+                      <div className="text-xs text-slate-500">
+                        Only you and {matterId ? "matter" : "contact"} owner
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Role Selection for ROLE_BASED */}
+                {accessScope === "ROLE_BASED" && (
+                  <div className="bg-white p-3 rounded border border-slate-200">
+                    <div className="text-xs font-medium text-slate-700 mb-2">Select Allowed Roles:</div>
+                    <div className="space-y-1">
+                      {(["ADMIN", "LAWYER", "PARALEGAL", "CLIENT"] as Role[]).map((role) => (
+                        <label key={role} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={selectedRoles.includes(role)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedRoles([...selectedRoles, role]);
+                              } else {
+                                setSelectedRoles(selectedRoles.filter(r => r !== role));
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          <span className="text-slate-700">{role}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {selectedRoles.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-2">⚠️ Please select at least one role</p>
+                    )}
+                  </div>
+                )}
+
+                {/* User Selection for USER_BASED */}
+                {accessScope === "USER_BASED" && (
+                  <div className="bg-white p-3 rounded border border-slate-200">
+                    <div className="text-xs font-medium text-slate-700 mb-2">Select Team Members:</div>
+                    {loadingTeam ? (
+                      <p className="text-xs text-slate-500">Loading team members...</p>
+                    ) : teamMembers.length === 0 ? (
+                      <p className="text-xs text-slate-500">No team members found</p>
+                    ) : (
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {teamMembers.map((member) => (
+                          <label key={member.id} className="flex items-start gap-2 text-sm p-1 hover:bg-slate-50 rounded">
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.includes(member.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedUsers([...selectedUsers, member.id]);
+                                } else {
+                                  setSelectedUsers(selectedUsers.filter(id => id !== member.id));
+                                }
+                              }}
+                              className="rounded mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-slate-900 truncate">
+                                {member.name || member.email}
+                              </div>
+                              <div className="text-xs text-slate-500 truncate">
+                                {member.email} • {member.role}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {selectedUsers.length === 0 && !loadingTeam && (
+                      <p className="text-xs text-amber-600 mt-2">⚠️ Please select at least one person</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Error Message */}
         {errorMessage && (
           <div className="mt-4 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3">
@@ -315,7 +632,13 @@ export function MatterDocumentUploadDialog({
           <button
             type="button"
             onClick={handleUpload}
-            disabled={!selectedFile || uploadState === "uploading" || uploadState === "success"}
+            disabled={
+              !selectedFile || 
+              uploadState === "uploading" || 
+              uploadState === "success" ||
+              (accessScope === "ROLE_BASED" && selectedRoles.length === 0) ||
+              (accessScope === "USER_BASED" && selectedUsers.length === 0)
+            }
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {uploadState === "uploading" ? "Uploading..." : "Upload"}

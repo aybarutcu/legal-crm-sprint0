@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import nextConfig from "eslint-config-next";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
@@ -24,6 +25,7 @@ export default [
     ],
   },
   js.configs.recommended,
+  nextConfig,
   {
     files: ["**/*.{ts,tsx,js,jsx}"],
     languageOptions: {
@@ -48,6 +50,11 @@ export default [
         window: "readonly",
         document: "readonly",
         HTMLFormElement: "readonly",
+        HTMLElement: "readonly",
+        React: "readonly",
+        crypto: "readonly",
+        Buffer: "readonly",
+        NodeJS: "readonly",
         URLSearchParams: "readonly",
         RequestInit: "readonly",
         File: "readonly",
@@ -64,6 +71,7 @@ export default [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 ];

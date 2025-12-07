@@ -188,7 +188,7 @@ export async function completeWorkflowStep({...}): Promise<ActionState> {
 **5. Now handlers can update context:**
 
 ```typescript
-// lib/workflows/handlers/approval-lawyer.ts
+// lib/workflows/handlers/approval.ts
 async complete(
   ctx: WorkflowRuntimeContext<ApprovalConfig, ApprovalData>,
   payload?: unknown,
@@ -240,7 +240,7 @@ export interface IActionHandler<TConfig = unknown, TData = unknown> {
 **2. Update handlers:**
 
 ```typescript
-// lib/workflows/handlers/approval-lawyer.ts
+// lib/workflows/handlers/approval.ts
 async complete(ctx, payload) {
   // ... validation ...
   
@@ -278,7 +278,7 @@ await persistStepUpdate(tx, step, data, resultState, contextUpdates, now);
 ### 1. Approval Handler Populates Context
 
 ```typescript
-// lib/workflows/handlers/approval-lawyer.ts
+// lib/workflows/handlers/approval.ts
 async complete(ctx, payload) {
   const { approved, comment } = completionSchema.parse(payload);
   
@@ -427,7 +427,7 @@ Context population is **opt-in** for handlers:
 |------|---------|-------|
 | `lib/workflows/types.ts` | Add `updateContext` to context type | ~5 |
 | `lib/workflows/runtime.ts` | Update `buildContext`, `persistStepUpdate`, all runtime functions | ~50 |
-| `lib/workflows/handlers/approval-lawyer.ts` | Add context updates | ~10 |
+| `lib/workflows/handlers/approval.ts` | Add context updates | ~10 |
 | `lib/workflows/handlers/checklist.ts` | Add context updates | ~10 |
 | `lib/workflows/handlers/signature-client.ts` | Add context updates | ~10 |
 | `lib/workflows/handlers/request-doc-client.ts` | Add context updates | ~10 |

@@ -66,6 +66,42 @@ function formatActionDescription(action: string, entityType: string, metadata: R
     const stepTitle = metadata?.stepTitle as string | undefined;
     return stepTitle ? `Started workflow step: ${stepTitle}` : "Started a workflow step";
   }
+  if (lowerAction === "workflow.step.update") {
+    const stepTitle = metadata?.stepTitle as string | undefined;
+    const changes = metadata?.changes as Record<string, unknown> | undefined;
+    if (stepTitle && changes) {
+      const changeDescriptions: string[] = [];
+      if (changes.priority) changeDescriptions.push(`priority to ${changes.priority}`);
+      if (changes.dueDate) {
+        const date = new Date(changes.dueDate as string);
+        changeDescriptions.push(`due date to ${date.toLocaleDateString()}`);
+      }
+      if (changes.assignedToId !== undefined) {
+        changeDescriptions.push(changes.assignedToId ? 'assigned to a user' : 'removed assignee');
+      }
+      return `Updated ${stepTitle}: ${changeDescriptions.join(', ')}`;
+    }
+    return stepTitle ? `Updated workflow step: ${stepTitle}` : "Updated a workflow step";
+  }
+  if (lowerAction === "workflow.step.document_uploaded") {
+    const stepTitle = metadata?.stepTitle as string | undefined;
+    const documentName = metadata?.documentName as string | undefined;
+    const filename = metadata?.filename as string | undefined;
+    const allUploaded = metadata?.allDocumentsUploaded as boolean | undefined;
+    const remaining = metadata?.remainingDocuments as string[] | undefined;
+    
+    if (stepTitle && documentName) {
+      let message = `Uploaded "${documentName}" for ${stepTitle}`;
+      if (filename) message += ` (${filename})`;
+      if (allUploaded) {
+        message += " - All documents received ✓";
+      } else if (remaining && remaining.length > 0) {
+        message += ` - ${remaining.length} remaining`;
+      }
+      return message;
+    }
+    return "Uploaded document for workflow step";
+  }
   if (lowerAction === "workflow.step.complete" || lowerAction === "workflow_step_completed") {
     const stepTitle = metadata?.stepTitle as string | undefined;
     const actionType = metadata?.actionType as string | undefined;

@@ -11,9 +11,12 @@ export const MATTER_TYPES = [
 ] as const;
 
 const optionalString = z
-  .string()
-  .trim()
-  .transform((value) => (value.length === 0 ? undefined : value))
+  .union([z.string(), z.null()])
+  .transform((value) => {
+    if (value === null || value === undefined) return undefined;
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  })
   .optional();
 
 export const matterQuerySchema = z.object({

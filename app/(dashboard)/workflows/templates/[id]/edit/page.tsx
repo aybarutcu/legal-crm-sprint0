@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { WorkflowTemplateEditor } from "@/components/workflows/WorkflowTemplateEditor";
 import type { WorkflowTemplateDraft } from "@/components/workflows/WorkflowTemplateEditor";
 import { prisma } from "@/lib/prisma";
+import type { NotificationPolicy } from "@/lib/workflows/notification-policy";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -14,9 +15,8 @@ export default async function EditWorkflowTemplatePage({ params }: PageProps) {
   const template = await prisma.workflowTemplate.findUnique({
     where: { id },
     include: {
-      steps: {
-        orderBy: { order: "asc" },
-      },
+      steps: true,
+      dependencies: true,
     },
   });
 
@@ -38,21 +38,18 @@ export default async function EditWorkflowTemplatePage({ params }: PageProps) {
       required: step.required,
       actionConfig: (step.actionConfig as Record<string, unknown>) || {},
       actionConfigInput: JSON.stringify(step.actionConfig || {}, null, 2),
-      order: step.order,
-      conditionType: step.conditionType as
-        | "ALWAYS"
-        | "IF_TRUE"
-        | "IF_FALSE"
-        | "SWITCH"
-        | undefined,
-      conditionConfig: (step.conditionConfig as Record<string, unknown>) || null,
-      nextStepOnTrue: step.nextStepOnTrue,
-      nextStepOnFalse: step.nextStepOnFalse,
-      dependsOn: step.dependsOn || [],
-      dependencyLogic: step.dependencyLogic as "ALL" | "ANY" | "CUSTOM" | undefined,
-      // Canvas position fields (P0.3)
       positionX: step.positionX ?? undefined,
       positionY: step.positionY ?? undefined,
+      notificationPolicies: (step.notificationPolicies as unknown as NotificationPolicy[]) || [],
+    })),
+    dependencies: template.dependencies.map((dep) => ({
+      id: dep.id,
+      sourceStepId: dep.sourceStepId,
+      targetStepId: dep.targetStepId,
+      dependencyType: dep.dependencyType,
+      dependencyLogic: dep.dependencyLogic,
+      conditionType: dep.conditionType || undefined,
+      conditionConfig: dep.conditionConfig as Record<string, unknown> | undefined,
     })),
   };
 

@@ -78,7 +78,6 @@ export default async function ContactDetailPage({
           steps: {
             select: {
               id: true,
-              order: true,
               title: true,
               actionType: true,
               roleScope: true,
@@ -86,10 +85,24 @@ export default async function ContactDetailPage({
               actionState: true,
               actionData: true,
               assignedToId: true,
+              dueDate: true,
+              priority: true,
               startedAt: true,
               completedAt: true,
+              positionX: true,
+              positionY: true,
             },
-            orderBy: { order: "asc" },
+          },
+          dependencies: {
+            select: {
+              id: true,
+              sourceStepId: true,
+              targetStepId: true,
+              dependencyType: true,
+              dependencyLogic: true,
+              conditionType: true,
+              conditionConfig: true,
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -106,7 +119,7 @@ export default async function ContactDetailPage({
     <ContactDetailClient
       contact={contact}
       currentUserId={session.user.id}
-      currentUserRole={session.user.role}
+      currentUserRole={session.user.role ?? "CLIENT"}
     />
   );
 }

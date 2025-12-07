@@ -62,14 +62,64 @@ export const POST = withApiHandler(async (req, { session }) => {
   const parsed = matterCreateSchema.parse(payload);
   const ownerId = parsed.ownerId ?? session!.user!.id;
 
-  const created = await prisma.matter.create({
-    data: {
-      ...parsed,
-      ownerId,
-    },
-    include: {
-      client: { select: { id: true, firstName: true, lastName: true, email: true } },
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    // Create the matter
+    const matter = await tx.matter.create({
+      data: {
+        ...parsed,
+        ownerId,
+      },
+      include: {
+        client: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    // Create "Matters" root folder if it doesn't exist
+    let mattersRootFolder = await tx.documentFolder.findFirst({
+      where: {
+        name: "Matters",
+        parentFolderId: null,
+        matterId: null,
+        contactId: null,
+        deletedAt: null,
+      },
+    });
+
+    if (!mattersRootFolder) {
+      mattersRootFolder = await tx.documentFolder.create({
+        data: {
+          name: "Matters",
+          createdById: session!.user!.id,
+          accessScope: "PUBLIC",
+        },
+      });
+    }
+
+    // Check if matter folder already exists (might have been created during document upload)
+    const existingMatterFolder = await tx.documentFolder.findFirst({
+      where: {
+        matterId: matter.id,
+        parentFolderId: mattersRootFolder.id,
+        deletedAt: null,
+      },
+    });
+
+    // Only create matter-specific folder if it doesn't exist
+    if (!existingMatterFolder) {
+      await tx.documentFolder.create({
+        data: {
+          name: matter.title,
+          matterId: matter.id,
+          parentFolderId: mattersRootFolder.id,
+          createdById: session!.user!.id,
+          accessScope: "PUBLIC",
+          color: "green",
+          isMasterFolder: true, // This is a master folder for the matter
+        },
+      });
+    }
+
+    return matter;
   });
 
   await recordAuditLog({

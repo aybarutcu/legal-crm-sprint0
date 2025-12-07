@@ -16,12 +16,12 @@ import {
   deleteEventFromGoogleCalendar,
 } from "@/lib/events/sync";
 
-export const GET = withApiHandler(async (_, { params, session }) => {
+export const GET = withApiHandler<{ id: string }>(async (_, { params, session }) => {
   const user = session!.user!;
   const event = await prisma.event.findFirst({
     where: {
       AND: [
-        { id: params.id },
+        { id: params!.id },
         ...buildAccessClauses(user.id, user.role ?? Role.LAWYER),
       ],
     },
@@ -35,7 +35,7 @@ export const GET = withApiHandler(async (_, { params, session }) => {
   return NextResponse.json(serializeEvent(event));
 });
 
-export const PATCH = withApiHandler(async (req, { params, session }) => {
+export const PATCH = withApiHandler<{ id: string }>(async (req, { params, session }) => {
   const user = session!.user!;
   const payload = eventUpdateSchema.parse(await req.json());
 
@@ -47,7 +47,7 @@ export const PATCH = withApiHandler(async (req, { params, session }) => {
   }
 
   const existing = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id: params!.id },
     include: eventDefaultInclude,
   });
 
@@ -125,7 +125,7 @@ export const PATCH = withApiHandler(async (req, { params, session }) => {
   }
 
   const updated = await prisma.event.update({
-    where: { id: params.id },
+    where: { id: params!.id },
     data,
     include: eventDefaultInclude,
   });
@@ -155,10 +155,10 @@ export const PATCH = withApiHandler(async (req, { params, session }) => {
   return NextResponse.json(serializeEvent(updated));
 });
 
-export const DELETE = withApiHandler(async (_, { params, session }) => {
+export const DELETE = withApiHandler<{ id: string }>(async (_, { params, session }) => {
   const user = session!.user!;
   const existing = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id: params!.id },
     include: eventDefaultInclude,
   });
 
@@ -181,7 +181,7 @@ export const DELETE = withApiHandler(async (_, { params, session }) => {
     });
   }
 
-  await prisma.event.delete({ where: { id: params.id } });
+  await prisma.event.delete({ where: { id: params!.id } });
 
   await recordAuditLog({
     actorId: user.id,

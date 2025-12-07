@@ -53,7 +53,6 @@ export default async function EditWorkflowInstancePage({
         },
       },
       steps: {
-        orderBy: { order: "asc" },
         include: {
           assignedTo: {
             select: {
@@ -64,6 +63,7 @@ export default async function EditWorkflowInstancePage({
           },
         },
       },
+      dependencies: true,
       createdBy: {
         select: {
           id: true,
@@ -81,17 +81,17 @@ export default async function EditWorkflowInstancePage({
   // Check if user has access
   if (instance.matterId) {
     const hasAccess =
-      session.user.role === "ADMIN" ||
-      instance.matter!.ownerId === session.user.id ||
-      instance.matter!.teamMembers.some((tm) => tm.userId === session.user.id);
+      session.user!.role === "ADMIN" ||
+      instance.matter!.ownerId === session.user!.id ||
+      instance.matter!.teamMembers.some((tm) => tm.userId === session.user!.id);
 
     if (!hasAccess) {
       redirect("/dashboard");
     }
   } else if (instance.contactId) {
     const hasAccess =
-      session.user.role === "ADMIN" ||
-      instance.contact!.ownerId === session.user.id;
+      session.user!.role === "ADMIN" ||
+      instance.contact!.ownerId === session.user!.id;
 
     if (!hasAccess) {
       redirect("/dashboard");
@@ -130,6 +130,15 @@ export default async function EditWorkflowInstancePage({
       updatedAt: step.updatedAt.toISOString(),
       positionX: step.positionX ?? null,
       positionY: step.positionY ?? null,
+    })),
+    dependencies: instance.dependencies.map(dep => ({
+      id: dep.id,
+      sourceStepId: dep.sourceStepId,
+      targetStepId: dep.targetStepId,
+      dependencyType: dep.dependencyType,
+      dependencyLogic: dep.dependencyLogic,
+      conditionType: dep.conditionType || undefined,
+      conditionConfig: dep.conditionConfig as Record<string, unknown> | undefined,
     })),
   };
 

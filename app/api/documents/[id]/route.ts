@@ -3,22 +3,32 @@ import { getAuthSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deleteObject, moveObject } from "@/lib/storage";
 import { recordAuditLog } from "@/lib/audit";
+import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
+import { checkDocumentAccess } from "@/lib/documents/access-control";
 import { z } from "zod";
 
 const documentUpdateSchema = z
   .object({
     tags: z.array(z.string()).optional(),
+    displayName: z.string().optional().nullable(),
     matterId: z.string().optional().nullable(),
+    folderId: z.string().optional().nullable(),
     version: z.number().int().positive().optional(),
     signedAt: z.string().datetime().optional().nullable(),
     filename: z.string().min(1).optional(),
   })
   .strict();
 
-type RouteContext = { params: { id: string } | Promise<{ id: string }> };
+type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_: NextRequest, context: RouteContext) {
+  const session = await getAuthSession();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await Promise.resolve(context.params);
+  const user = session.user;
 
   const document = await prisma.document.findUnique({
     where: { id },
@@ -28,11 +38,52 @@ export async function GET(_: NextRequest, context: RouteContext) {
         select: { id: true, firstName: true, lastName: true },
       },
       uploader: { select: { id: true, name: true, email: true } },
+      workflowStep: {
+        select: {
+          instance: {
+            select: {
+              matterId: true,
+              contactId: true,
+            },
+          },
+        },
+      },
     },
   });
 
   if (!document) {
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  }
+
+  // Check granular document access control
+  const accessCheck = await checkDocumentAccess(
+    {
+      id: document.id,
+      uploaderId: document.uploaderId,
+      accessScope: document.accessScope,
+      accessMetadata: document.accessMetadata as Record<string, unknown> | null,
+      matterId: document.matterId,
+      contactId: document.contactId,
+    },
+    { userId: user.id, userRole: user.role! }
+  );
+
+  if (!accessCheck.hasAccess) {
+    return NextResponse.json(
+      { error: "Access denied", reason: accessCheck.reason },
+      { status: 403 }
+    );
+  }
+
+  // Legacy matter/contact access control (for backward compatibility)
+  if (document.matterId) {
+    await assertMatterAccess(user, document.matterId);
+  } else if (document.contactId) {
+    await assertContactAccess(user, document.contactId);
+  } else if (document.workflowStep?.instance.matterId) {
+    await assertMatterAccess(user, document.workflowStep.instance.matterId);
+  } else if (document.workflowStep?.instance.contactId) {
+    await assertContactAccess(user, document.workflowStep.instance.contactId);
   }
 
   return NextResponse.json(document);
@@ -45,6 +96,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const { id } = await Promise.resolve(context.params);
+  const user = session.user;
 
   const body = await req.json();
   const parsed = documentUpdateSchema.safeParse(body);
@@ -63,13 +115,34 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         select: { id: true, firstName: true, lastName: true },
       },
       uploader: { select: { id: true, name: true, email: true } },
+      workflowStep: {
+        select: {
+          instance: {
+            select: {
+              matterId: true,
+              contactId: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!existing) {
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
   }
 
-  const { signedAt, filename, tags, matterId, version } = parsed.data;
+  // Access control
+  if (existing.matterId) {
+    await assertMatterAccess(user, existing.matterId);
+  } else if (existing.contactId) {
+    await assertContactAccess(user, existing.contactId);
+  } else if (existing.workflowStep?.instance.matterId) {
+    await assertMatterAccess(user, existing.workflowStep.instance.matterId);
+  } else if (existing.workflowStep?.instance.contactId) {
+    await assertContactAccess(user, existing.workflowStep.instance.contactId);
+  }
+
+  const { signedAt, filename, tags, displayName, matterId, folderId, version } = parsed.data;
 
   const data: Record<string, unknown> = {};
 
@@ -77,8 +150,16 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     data.tags = tags;
   }
 
+  if (displayName !== undefined) {
+    data.displayName = displayName;
+  }
+
   if (matterId !== undefined) {
     data.matterId = matterId;
+  }
+
+  if (folderId !== undefined) {
+    data.folderId = folderId;
   }
 
   if (version !== undefined) {
@@ -146,6 +227,7 @@ export async function DELETE(_: NextRequest, context: RouteContext) {
   }
 
   const { id } = await Promise.resolve(context.params);
+  const user = session.user;
 
   const document = await prisma.document.findUnique({
     where: { id },
@@ -156,11 +238,33 @@ export async function DELETE(_: NextRequest, context: RouteContext) {
       version: true,
       matterId: true,
       contactId: true,
+      workflowStepId: true,
+      workflowStep: {
+        select: {
+          instance: {
+            select: {
+              matterId: true,
+              contactId: true,
+            },
+          },
+        },
+      },
     },
   });
 
   if (!document) {
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  }
+
+  // Access control
+  if (document.matterId) {
+    await assertMatterAccess(user, document.matterId);
+  } else if (document.contactId) {
+    await assertContactAccess(user, document.contactId);
+  } else if (document.workflowStep?.instance.matterId) {
+    await assertMatterAccess(user, document.workflowStep.instance.matterId);
+  } else if (document.workflowStep?.instance.contactId) {
+    await assertContactAccess(user, document.workflowStep.instance.contactId);
   }
 
   try {

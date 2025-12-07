@@ -175,8 +175,10 @@ async function main() {
   });
 
   // Test Lead for E2E tests
-  const testLead = await prisma.contact.create({
-    data: {
+  const testLead = await prisma.contact.upsert({
+    where: { id: "cmgxmy9r000018yc5l7d9xbsg" },
+    update: {},
+    create: {
       id: "cmgxmy9r000018yc5l7d9xbsg", // Fixed ID for E2E tests
       firstName: "Test",
       lastName: "Lead",
@@ -264,6 +266,37 @@ async function main() {
       openedAt: new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000),
     },
   });
+
+  // Create folder structure for matters
+  console.log("Creating folder structure for matters...");
+  
+  // Create root "Matters" folder
+  const mattersRootFolder = await prisma.documentFolder.create({
+    data: {
+      name: "Matters",
+      color: "blue",
+      accessScope: "PUBLIC",
+      createdById: admin.id,
+    },
+  });
+
+  // Create individual matter folders under "Matters"
+  const allMatters = [matter, matter2, matter3, matter4, matter5];
+  
+  for (const matterItem of allMatters) {
+    await prisma.documentFolder.create({
+      data: {
+        name: matterItem.title,
+        color: "green",
+        matterId: matterItem.id,
+        parentFolderId: mattersRootFolder.id,
+        accessScope: "PUBLIC",
+        createdById: matterItem.ownerId,
+      },
+    });
+  }
+
+  console.log(`Created ${allMatters.length} matter folders under Matters root folder`);
 
   // Create calendars for users
   const calendar = await prisma.calendar.upsert({
@@ -359,7 +392,6 @@ async function main() {
       steps: {
         create: [
           {
-            order: 0,
             title: "Initial Contact Checklist",
             actionType: ActionType.CHECKLIST,
             roleScope: RoleScope.LAWYER,
@@ -374,9 +406,8 @@ async function main() {
             },
           },
           {
-            order: 1,
             title: "Conflict Check Approval",
-            actionType: ActionType.APPROVAL_LAWYER,
+            actionType: ActionType.APPROVAL,
             roleScope: RoleScope.LAWYER,
             actionConfig: {
               approverRole: "LAWYER",
@@ -384,9 +415,8 @@ async function main() {
             },
           },
           {
-            order: 2,
             title: "Request Initial Documents from Client",
-            actionType: ActionType.REQUEST_DOC_CLIENT,
+            actionType: ActionType.REQUEST_DOC,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               requestText: "Please upload the following documents to begin your case evaluation:\n- Government-issued ID\n- Any relevant contracts or agreements\n- Supporting documentation related to your legal matter",
@@ -394,7 +424,6 @@ async function main() {
             },
           },
           {
-            order: 3,
             title: "Client Intake Questionnaire",
             actionType: ActionType.POPULATE_QUESTIONNAIRE,
             roleScope: RoleScope.CLIENT,
@@ -404,9 +433,8 @@ async function main() {
             },
           },
           {
-            order: 4,
             title: "Engagement Letter Signature",
-            actionType: ActionType.SIGNATURE_CLIENT,
+            actionType: ActionType.SIGNATURE,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               documentId: document.id,
@@ -414,9 +442,8 @@ async function main() {
             },
           },
           {
-            order: 5,
             title: "Collect Retainer Payment",
-            actionType: ActionType.PAYMENT_CLIENT,
+            actionType: ActionType.PAYMENT,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               amount: 2500,
@@ -425,7 +452,6 @@ async function main() {
             },
           },
           {
-            order: 6,
             title: "Final Intake Review",
             actionType: ActionType.WRITE_TEXT,
             roleScope: RoleScope.LAWYER,
@@ -442,6 +468,22 @@ async function main() {
     },
   });
 
+  // Set up ID-based dependencies: each step depends on the previous one
+  const intakeSteps = clientIntakeTemplate.steps;
+  for (let i = 1; i < intakeSteps.length; i++) {
+    const currentStep = intakeSteps[i];
+    const previousStep = intakeSteps[i - 1];
+    await prisma.workflowTemplateDependency.create({
+      data: {
+        templateId: clientIntakeTemplate.id,
+        sourceStepId: previousStep.id,
+        targetStepId: currentStep.id,
+        dependencyType: "DEPENDS_ON",
+        dependencyLogic: "ALL",
+      },
+    });
+  }
+
   console.log("✅ Created LEAD workflow template: Client Intake Process");
 
   // ============================================
@@ -457,7 +499,6 @@ async function main() {
       steps: {
         create: [
           {
-            order: 0,
             title: "Checklist: Discovery hazirlik",
             actionType: ActionType.CHECKLIST,
             roleScope: RoleScope.ADMIN,
@@ -466,9 +507,8 @@ async function main() {
             },
           },
           {
-            order: 1,
             title: "Lawyer approval of discovery plan",
-            actionType: ActionType.APPROVAL_LAWYER,
+            actionType: ActionType.APPROVAL,
             roleScope: RoleScope.LAWYER,
             actionConfig: {
               approverRole: "LAWYER",
@@ -476,9 +516,8 @@ async function main() {
             },
           },
           {
-            order: 2,
             title: "Client signature on engagement",
-            actionType: ActionType.SIGNATURE_CLIENT,
+            actionType: ActionType.SIGNATURE,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               documentId: document.id,
@@ -486,9 +525,8 @@ async function main() {
             },
           },
           {
-            order: 3,
             title: "Request outstanding discovery documents",
-            actionType: ActionType.REQUEST_DOC_CLIENT,
+            actionType: ActionType.REQUEST_DOC,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               requestText: "Lütfen aşağıdaki belgeleri yükleyin",
@@ -496,9 +534,8 @@ async function main() {
             },
           },
           {
-            order: 4,
             title: "Collect discovery retainer payment",
-            actionType: ActionType.PAYMENT_CLIENT,
+            actionType: ActionType.PAYMENT,
             roleScope: RoleScope.CLIENT,
             actionConfig: {
               amount: 5000,
@@ -524,7 +561,6 @@ async function main() {
       steps: {
         create: discoveryTemplate.steps.map((step, index) => ({
           templateStepId: step.id,
-          order: step.order,
           title: step.title,
           actionType: step.actionType,
           roleScope: step.roleScope,
@@ -556,7 +592,6 @@ async function main() {
       steps: {
         create: clientIntakeTemplate.steps.map((step, index) => ({
           templateStepId: step.id,
-          order: step.order,
           title: step.title,
           actionType: step.actionType,
           roleScope: step.roleScope,

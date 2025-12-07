@@ -3,14 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { withApiHandler } from "@/lib/api-handler";
 import { calendarUpdateSchema } from "@/lib/validation/calendar";
 
-type RouteParams = { params: { id: string } };
+type RouteParams = { id: string };
 
-export const PATCH = withApiHandler(async (req, { params, session }) => {
+export const PATCH = withApiHandler<RouteParams>(async (req, { params, session }) => {
   const user = session!.user!;
   const payload = calendarUpdateSchema.parse(await req.json());
 
   const calendar = await prisma.calendar.findUnique({
-    where: { id: params.id },
+    where: { id: params!.id },
     select: {
       id: true,
       userId: true,

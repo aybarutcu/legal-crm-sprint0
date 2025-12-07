@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 
-type RouteContext = {
-  params: { id: string };
-};
+type RouteContext = { id: string };
 
 // POST /api/questionnaire-responses/[id]/complete - Mark response as completed
 export const POST = withApiHandler<RouteContext>(

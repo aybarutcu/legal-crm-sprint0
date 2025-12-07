@@ -284,10 +284,10 @@ case "POPULATE_QUESTIONNAIRE":
 ```typescript
 export type ActionType =
   | "CHECKLIST"
-  | "APPROVAL_LAWYER"
-  | "SIGNATURE_CLIENT"
-  | "REQUEST_DOC_CLIENT"
-  | "PAYMENT_CLIENT"
+  | "APPROVAL"
+  | "SIGNATURE"
+  | "REQUEST_DOC"
+  | "PAYMENT"
   | "WRITE_TEXT"
   | "POPULATE_QUESTIONNAIRE";
 ```
@@ -352,10 +352,10 @@ case "POPULATE_QUESTIONNAIRE": {
 - Added `"POPULATE_QUESTIONNAIRE"` to actionTypeSchema enum:
 ```typescript
 export const actionTypeSchema = z.enum([
-  "APPROVAL_LAWYER",
-  "SIGNATURE_CLIENT",
-  "REQUEST_DOC_CLIENT",
-  "PAYMENT_CLIENT",
+  "APPROVAL",
+  "SIGNATURE",
+  "REQUEST_DOC",
+  "PAYMENT",
   "CHECKLIST",
   "WRITE_TEXT",
   "POPULATE_QUESTIONNAIRE", // NEW

@@ -7,6 +7,7 @@ import type { WorkflowStep as CanvasWorkflowStep } from "@/components/workflows/
 import type { ActionType, RoleScope, ActionState, TaskPriority } from "@prisma/client";
 import { ArrowLeft, Save, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import type { WorkflowDependency } from "@/components/workflows/types";
 
 type User = {
   id: string;
@@ -17,7 +18,6 @@ type User = {
 
 type WorkflowStep = {
   id: string;
-  order: number;
   title: string;
   actionType: ActionType;
   roleScope: RoleScope;
@@ -29,16 +29,16 @@ type WorkflowStep = {
   dueDate: string | null;
   priority: TaskPriority | null;
   notes: string | null;
-  dependsOn: string[];
-  dependencyLogic: string;
-  conditionType: string | null;
-  conditionConfig: unknown;
-  nextStepOnTrue: number | null;
-  nextStepOnFalse: number | null;
   startedAt: string | null;
   completedAt: string | null;
   positionX: number | null;
   positionY: number | null;
+  dependsOn?: string[];
+  dependencyLogic?: string;
+  conditionType?: string | null;
+  conditionConfig?: unknown | null;
+  nextStepOnTrue?: string | null;
+  nextStepOnFalse?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -69,6 +69,7 @@ type WorkflowInstance = {
     type: string;
   } | null;
   steps: WorkflowStep[];
+  dependencies: WorkflowDependency[];
   createdBy: {
     id: string;
     name: string | null;
@@ -82,13 +83,6 @@ type Props = {
   contextTitle: string;
   contextType: "matter" | "contact";
 };
-
-function normalizeSteps(steps: WorkflowStep[]): WorkflowStep[] {
-  return steps.map((step, index) => ({
-    ...step,
-    order: index,
-  }));
-}
 
 export function WorkflowInstanceCanvasEditor({
   instance: initialInstance,
@@ -122,87 +116,46 @@ export function WorkflowInstanceCanvasEditor({
   // Convert workflow instance steps to canvas format
   const canvasSteps = useMemo(
     () =>
-      instance.steps.map((step, idx) => ({
+      instance.steps.map((step) => ({
         id: step.id,
-        order: step.order ?? idx,
-        title: step.title || `Step ${idx + 1}`,
+        title: step.title,
         actionType: step.actionType as CanvasWorkflowStep["actionType"],
         roleScope: step.roleScope as CanvasWorkflowStep["roleScope"],
-        required: step.required ?? true,
-        actionConfig: (step.actionData as Record<string, unknown>) || {},
-        dependsOn: step.dependsOn ? step.dependsOn.map((id) => {
-          // Convert step IDs to order numbers for canvas
-          const depStep = instance.steps.find(s => s.id === id);
-          return depStep ? depStep.order : 0;
-        }) : [],
-        dependencyLogic: (step.dependencyLogic as "ALL" | "ANY" | "CUSTOM") || "ALL",
-        conditionType: step.conditionType,
-        conditionConfig: step.conditionConfig,
-        positionX: typeof step.positionX === "number" ? step.positionX : undefined,
-        positionY: typeof step.positionY === "number" ? step.positionY : undefined,
-        nextStepOnTrue: typeof step.nextStepOnTrue === "number" ? step.nextStepOnTrue : null,
-        nextStepOnFalse: typeof step.nextStepOnFalse === "number" ? step.nextStepOnFalse : null,
+        required: step.required,
+        actionConfig: step.actionData,
+        positionX: step.positionX ?? undefined,
+        positionY: step.positionY ?? undefined,
       } as CanvasWorkflowStep)),
     [instance.steps]
   );
 
   // Handle canvas changes
   const handleCanvasChange = useCallback(
-    (updatedSteps: CanvasWorkflowStep[]) => {
+    (updatedSteps: CanvasWorkflowStep[], updatedDependencies?: WorkflowDependency[]) => {
       setInstance((currentInstance) => {
-        const updatedInstanceSteps = normalizeSteps(
-          updatedSteps.map((canvasStep, idx) => {
-            // Find the original step to preserve metadata
-            const originalStep = currentInstance.steps.find((s) => s.id === canvasStep.id) || 
-              currentInstance.steps[idx];
+        const updatedInstanceSteps = updatedSteps.map((canvasStep, idx) => {
+          // Find the original step to preserve metadata
+          const originalStep = currentInstance.steps.find((s) => s.id === canvasStep.id) || 
+            currentInstance.steps[idx];
 
-            // Convert dependsOn order numbers back to step IDs
-            const dependsOn = canvasStep.dependsOn?.map((order) => {
-              const depStep = updatedSteps.find(s => s.order === order);
-              const originalDepStep = currentInstance.steps.find(s => s.order === order);
-              return depStep?.id || originalDepStep?.id || '';
-            }).filter(Boolean) || [];
-
-            return {
-              ...originalStep,
-              id: canvasStep.id || originalStep?.id || `temp-${idx}`,
-              order: idx,
-              title: canvasStep.title,
-              actionType: canvasStep.actionType as ActionType,
-              roleScope: canvasStep.roleScope as RoleScope,
-              required: canvasStep.required ?? true,
-              actionData: canvasStep.actionConfig || {},
-              dependsOn,
-              dependencyLogic: (canvasStep.dependencyLogic || "ALL") as string,
-              conditionType: (canvasStep.conditionType as string) || null,
-              conditionConfig: canvasStep.conditionConfig || null,
-              nextStepOnTrue:
-                typeof canvasStep.nextStepOnTrue === "number"
-                  ? canvasStep.nextStepOnTrue
-                  : typeof originalStep?.nextStepOnTrue === "number"
-                    ? originalStep.nextStepOnTrue
-                    : null,
-              nextStepOnFalse:
-                typeof canvasStep.nextStepOnFalse === "number"
-                  ? canvasStep.nextStepOnFalse
-                  : typeof originalStep?.nextStepOnFalse === "number"
-                    ? originalStep.nextStepOnFalse
-                    : null,
-              positionX:
-                typeof canvasStep.positionX === "number"
-                  ? canvasStep.positionX
-                  : typeof originalStep?.positionX === "number"
-                    ? originalStep.positionX
-                    : null,
-              positionY:
-                typeof canvasStep.positionY === "number"
-                  ? canvasStep.positionY
-                  : typeof originalStep?.positionY === "number"
-                    ? originalStep.positionY
-                    : null,
-            };
-          })
-        );
+          return {
+            ...originalStep,
+            id: canvasStep.id || originalStep?.id || `temp-${idx}`,
+            title: canvasStep.title,
+            actionType: canvasStep.actionType as ActionType,
+            roleScope: canvasStep.roleScope as RoleScope,
+            required: canvasStep.required ?? true,
+            actionData: canvasStep.actionConfig || {},
+            dependsOn: originalStep?.dependsOn || [],
+            dependencyLogic: originalStep?.dependencyLogic || "ALL",
+            conditionType: originalStep?.conditionType || null,
+            conditionConfig: originalStep?.conditionConfig || null,
+            nextStepOnTrue: originalStep?.nextStepOnTrue || null,
+            nextStepOnFalse: originalStep?.nextStepOnFalse || null,
+            positionX: canvasStep.positionX ?? originalStep?.positionX ?? null,
+            positionY: canvasStep.positionY ?? originalStep?.positionY ?? null,
+          };
+        });
 
         const normalizedSteps = updatedInstanceSteps.map((step) => ({
           ...step,
@@ -217,6 +170,7 @@ export function WorkflowInstanceCanvasEditor({
         return {
           ...currentInstance,
           steps: normalizedSteps,
+          dependencies: updatedDependencies || currentInstance.dependencies,
         };
       });
     },
@@ -232,7 +186,6 @@ export function WorkflowInstanceCanvasEditor({
         instanceId: instance.id,
         steps: instance.steps.map((step) => ({
           id: step.id,
-          order: step.order,
           nextStepOnTrue: step.nextStepOnTrue,
           nextStepOnFalse: step.nextStepOnFalse,
         })),
@@ -246,22 +199,15 @@ export function WorkflowInstanceCanvasEditor({
             .filter((step) => typeof step.id === "string" && step.id.trim().length > 0)
             .map((step) => ({
               id: step.id,
-              order: step.order,
               title: step.title,
               actionType: step.actionType,
               roleScope: step.roleScope,
-            required: step.required,
-            actionData: step.actionData,
-            assignedToId: step.assignedToId,
-            dueDate: step.dueDate,
-            priority: step.priority,
-            notes: step.notes,
-            dependsOn: step.dependsOn,
-            dependencyLogic: step.dependencyLogic,
-              conditionType: step.conditionType,
-              conditionConfig: step.conditionConfig,
-              nextStepOnTrue: step.nextStepOnTrue,
-              nextStepOnFalse: step.nextStepOnFalse,
+              required: step.required,
+              actionData: step.actionData,
+              assignedToId: step.assignedToId,
+              dueDate: step.dueDate,
+              priority: step.priority,
+              notes: step.notes,
               positionX: step.positionX,
               positionY: step.positionY,
             })),
@@ -300,7 +246,7 @@ export function WorkflowInstanceCanvasEditor({
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Link
@@ -346,7 +292,7 @@ export function WorkflowInstanceCanvasEditor({
 
       {/* Error Banner */}
       {error && (
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="px-6 py-4">
           <div className="rounded-lg bg-red-50 border-2 border-red-200 p-4 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
             <div>
@@ -357,7 +303,7 @@ export function WorkflowInstanceCanvasEditor({
       )}
 
       {/* Important Notes */}
-      <div className="max-w-7xl mx-auto px-6 py-4">
+      <div className="px-6 py-4">
         <div className="rounded-lg bg-yellow-50 border-2 border-yellow-200 overflow-hidden">
           <button
             type="button"
@@ -388,7 +334,7 @@ export function WorkflowInstanceCanvasEditor({
       </div>
 
       {/* Canvas Editor */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="px-6 py-6">
         <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-200 bg-gray-50">
             <h2 className="text-lg font-bold text-gray-900">Visual Workflow Editor</h2>
@@ -423,8 +369,8 @@ export function WorkflowInstanceCanvasEditor({
             )}
           </div>
 
-          <div className="h-[600px]">
-            <WorkflowCanvas steps={canvasSteps} onChange={handleCanvasChange} />
+          <div className="h-[800px]">
+            <WorkflowCanvas steps={canvasSteps} dependencies={instance.dependencies} onChange={handleCanvasChange} />
           </div>
         </div>
       </div>

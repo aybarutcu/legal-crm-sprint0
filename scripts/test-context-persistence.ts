@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "../lib/prisma";
+import { PrismaClient } from "@prisma/client";
 import { ActionState, Role } from "@prisma/client";
 import { completeWorkflowStep, startWorkflowStep } from "../lib/workflows/runtime";
 import type { WorkflowInstanceStepWithTemplate } from "../lib/workflows/types";
@@ -21,7 +22,7 @@ async function main() {
   let instance = await prisma.workflowInstance.findFirst({
     include: {
       steps: {
-        orderBy: { order: "asc" },
+        orderBy: { createdAt: "asc" },
         include: {
           templateStep: true,
           instance: true,
@@ -37,6 +38,10 @@ async function main() {
     return;
   }
 
+  if (!instance) {
+    throw new Error("No workflow instance found");
+  }
+
   console.log(`\n📋 Template: ${instance.template.name}`);
   console.log(`📦 Instance ID: ${instance.id}`);
   console.log(`📝 Steps: ${instance.steps.length}`);
@@ -47,8 +52,12 @@ async function main() {
   console.log(JSON.stringify(instance.contextData || {}, null, 2));
 
   // Complete steps one by one and check context updates
-  for (let i = 0; i < instance.steps.length; i++) {
-    let step = instance.steps[i];
+  if (!instance) {
+    throw new Error("Instance is null");
+  }
+  const workflowInstance = instance;
+  for (let i = 0; i < workflowInstance.steps.length; i++) {
+    let step = workflowInstance.steps[i];
     console.log(`\n${"=".repeat(60)}`);
     console.log(`\n🔧 Processing Step ${i + 1}: "${step.title}"`);
     console.log(`   Type: ${step.actionType}`);
@@ -85,7 +94,7 @@ async function main() {
 
           await startWorkflowStep({
             tx,
-            instance,
+            instance: instance as any,
             step: freshStep as WorkflowInstanceStepWithTemplate,
             actor: { id: "admin-1", role: Role.ADMIN },
           });
@@ -94,17 +103,21 @@ async function main() {
 
         // Refetch the instance and step after starting
         instance = (await prisma.workflowInstance.findUnique({
-          where: { id: instance.id },
+          where: { id: instance!.id },
           include: {
             template: true,
             steps: {
               include: { templateStep: true },
-              orderBy: { order: "asc" },
+              orderBy: { createdAt: "asc" },
             },
           },
         })) as any;
 
-        step = instance.steps.find((s: any) => s.id === step.id);
+        if (!instance) {
+          throw new Error("Instance not found after starting step");
+        }
+
+        step = (instance as any).steps.find((s: any) => s.id === step.id);
         if (!step) {
           throw new Error("Step not found after starting");
         }
@@ -130,7 +143,7 @@ async function main() {
 
         await completeWorkflowStep({
           tx,
-          instance,
+          instance: instance as any,
           step: freshStep as WorkflowInstanceStepWithTemplate,
           actor: { id: "admin-1", role: Role.ADMIN },
           payload,
@@ -138,8 +151,8 @@ async function main() {
 
         // Advance workflow to next step
         const steps = await tx.workflowInstanceStep.findMany({
-          where: { instanceId: instance.id },
-          orderBy: { order: "asc" },
+          where: { instanceId: (instance as any).id },
+          orderBy: { createdAt: "asc" },
         });
 
         const firstPending = steps.find((s) => s.actionState === ActionState.PENDING);
@@ -155,7 +168,7 @@ async function main() {
 
       // Fetch updated instance and show context
       const updated = await prisma.workflowInstance.findUnique({
-        where: { id: instance.id },
+        where: { id: (instance as any).id },
       });
 
       console.log("\n   📊 Updated Context:");
@@ -171,7 +184,7 @@ async function main() {
   console.log("\n📊 Final Workflow Context:\n");
   
   const final = await prisma.workflowInstance.findUnique({
-    where: { id: instance.id },
+    where: { id: (instance as any).id },
   });
 
   const context = final?.contextData as Record<string, unknown> || {};
@@ -183,8 +196,8 @@ async function main() {
   console.log(`   Keys: ${Object.keys(context).join(", ")}`);
 
   // Check against schema
-  if (instance.template.contextSchema) {
-    const schema = instance.template.contextSchema as any;
+  if ((instance as any).template.contextSchema) {
+    const schema = (instance as any).template.contextSchema as any;
     const expectedFields = Object.keys(schema.fields || {});
     const populatedFields = Object.keys(context);
 
@@ -206,12 +219,12 @@ async function main() {
 
 function getPayloadForStep(actionType: string): unknown {
   switch (actionType) {
-    case "APPROVAL_LAWYER":
+    case "APPROVAL":
       return {
         approved: true,
         comment: "Approved via test script",
       };
-    case "SIGNATURE_CLIENT":
+    case "SIGNATURE":
       return {
         signedAt: new Date().toISOString(),
       };
@@ -219,7 +232,7 @@ function getPayloadForStep(actionType: string): unknown {
       return {
         documentId: "test-doc-123",
       };
-    case "PAYMENT_CLIENT":
+    case "PAYMENT":
       return {
         paidAt: new Date().toISOString(),
       };

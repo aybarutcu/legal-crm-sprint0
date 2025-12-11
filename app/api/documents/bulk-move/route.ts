@@ -4,6 +4,7 @@ import { withApiHandler } from "@/lib/api-handler";
 import { recordAuditLog } from "@/lib/audit";
 import { checkDocumentAccess } from "@/lib/documents/access-control";
 import { checkFolderAccess } from "@/lib/folders/access-control";
+import { findDocumentFamilyById } from "@/lib/documents/family";
 import { z } from "zod";
 
 const bulkMoveSchema = z.object({
@@ -124,20 +125,23 @@ export const POST = withApiHandler(
       );
     }
 
-    // Move all accessible documents to target folder
-    const moved = await Promise.all(
-      accessibleDocs.map((doc) =>
-        prisma.document.update({
-          where: { id: doc.id },
-          data: { folderId: targetFolderId },
-          select: {
-            id: true,
-            filename: true,
-            folderId: true,
-          },
-        })
-      )
+    // For each accessible document, find its entire family (all versions)
+    const documentFamilies = await Promise.all(
+      accessibleDocs.map((doc) => findDocumentFamilyById(doc.id))
     );
+
+    // Flatten to get all unique document IDs across all families
+    const allDocumentIds = Array.from(
+      new Set(documentFamilies.flat().map((doc) => doc.id))
+    );
+
+    // Move all versions in all families to target folder
+    await prisma.document.updateMany({
+      where: {
+        id: { in: allDocumentIds },
+      },
+      data: { folderId: targetFolderId },
+    });
 
     // Log bulk move
     await recordAuditLog({
@@ -146,18 +150,21 @@ export const POST = withApiHandler(
       entityType: "document",
       entityId: accessibleDocs[0].id,
       metadata: {
-        documentIds: accessibleDocs.map((d) => d.id),
-        count: accessibleDocs.length,
+        requestedDocumentIds: documentIds,
+        accessibleDocumentIds: accessibleDocs.map((d) => d.id),
+        familiesMovedCount: accessibleDocs.length,
+        totalVersionsMovedCount: allDocumentIds.length,
         targetFolderId,
-        denied: deniedDocIds.length,
+        deniedCount: deniedDocIds.length,
       },
     });
 
     return NextResponse.json({
       success: true,
-      moved: moved.length,
+      familiesMoved: accessibleDocs.length,
+      totalVersionsMoved: allDocumentIds.length,
       denied: deniedDocIds.length,
-      movedIds: moved.map((d) => d.id),
+      movedFamilyIds: accessibleDocs.map((d) => d.id),
       deniedIds: deniedDocIds,
       targetFolderId,
     });

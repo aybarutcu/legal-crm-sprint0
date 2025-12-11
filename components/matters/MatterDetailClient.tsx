@@ -175,6 +175,7 @@ export function MatterDetailClient({ matter, contacts, currentUserRole, currentU
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [uploadWorkflowStepId, setUploadWorkflowStepId] = useState<string | null>(null);
   const [uploadDocumentTags, setUploadDocumentTags] = useState<string[]>([]);
+  const [uploadParentDocumentId, setUploadParentDocumentId] = useState<string | null>(null);
   const [partyForm, setPartyForm] = useState(initialPartyForm);
   const [loading, setLoading] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
@@ -507,16 +508,23 @@ export function MatterDetailClient({ matter, contacts, currentUserRole, currentU
   }, []);
 
   const handleDocUpdated = useCallback((updated: DocumentListItem) => {
-    setRelatedDocs((prev) => prev.map((d) => (d.id === updated.id ? { ...d, ...updated } : d)));
-    setSelectedDocument((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+    setRelatedDocs((prev) => {
+      const exists = prev.some((d) => d.id === updated.id);
+      return exists ? prev.map((d) => (d.id === updated.id ? { ...d, ...updated } : d)) : [updated, ...prev];
+    });
+    setSelectedDocumentId(updated.id);
+    setSelectedDocument((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : updated));
+    setFolderTreeRefreshKey((prev) => prev + 1);
   }, []);
 
-  function handleAddDocumentForStep(stepId: string, requestId: string, documentName: string) {
+  function handleAddDocumentForStep(stepId: string, requestId: string, documentName: string, existingDocumentId?: string) {
     // Set the workflow step, requestId, and document tag for upload
     console.log('[MatterDetailClient] handleAddDocumentForStep called:', {
       stepId,
       requestId,
       documentName,
+      existingDocumentId,
+      existingDocumentIdType: typeof existingDocumentId,
       requestIdType: typeof requestId,
       documentNameType: typeof documentName,
     });
@@ -537,6 +545,17 @@ export function MatterDetailClient({ matter, contacts, currentUserRole, currentU
     const tags = [requestId, finalDocumentName];
     console.log('[MatterDetailClient] Tags to set:', tags);
     setUploadDocumentTags(tags);
+    
+    // Store the existing document ID for versioning
+    if (existingDocumentId) {
+      console.log('[MatterDetailClient] Setting parentDocumentId:', existingDocumentId);
+      setUploadParentDocumentId(existingDocumentId);
+    } else {
+      console.log('[MatterDetailClient] No existingDocumentId provided, setting to null');
+      setUploadParentDocumentId(null);
+    }
+    
+    console.log('[MatterDetailClient] Opening dialog with parentDocumentId state:', existingDocumentId || null);
     setIsUploadDialogOpen(true);
   }
 
@@ -1044,17 +1063,42 @@ export function MatterDetailClient({ matter, contacts, currentUserRole, currentU
           setIsUploadDialogOpen(false);
           setUploadWorkflowStepId(null);
           setUploadDocumentTags([]);
+          setUploadParentDocumentId(null);
         }}
         matterId={matter.id}
         workflowStepId={uploadWorkflowStepId}
         tags={uploadDocumentTags}
-        onUploadComplete={async () => {
+        parentDocumentId={uploadParentDocumentId}
+        onUploadComplete={async (uploadedDocumentId) => {
           await loadRelatedDocuments();
           await loadWorkflowInstances(); // Refresh workflow to update document status
           setFolderTreeRefreshKey(prev => prev + 1); // Trigger folder tree refresh
+          
+          // If a new document was uploaded and drawer is open, switch to the new document
+          if (uploadedDocumentId) {
+            console.log('[MatterDetailClient] New document uploaded:', uploadedDocumentId);
+            setSelectedDocumentId(uploadedDocumentId);
+            try {
+              // Add a small delay to ensure the document is fully created in DB
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              const response = await fetch(`/api/documents/${uploadedDocumentId}`);
+              if (response.ok) {
+                const newDoc = await response.json();
+                console.log('[MatterDetailClient] Fetched new document:', newDoc);
+                setSelectedDocument(newDoc);
+              } else {
+                console.error('[MatterDetailClient] Failed to fetch document:', response.status);
+              }
+            } catch (error) {
+              console.error('Failed to load newly uploaded document:', error);
+            }
+          }
+          
           showToast("success", "Document uploaded successfully.");
           setUploadWorkflowStepId(null);
           setUploadDocumentTags([]);
+          setUploadParentDocumentId(null);
         }}
       />
 

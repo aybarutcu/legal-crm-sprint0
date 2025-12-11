@@ -314,7 +314,7 @@ model Document {
   workflowStepId   String?
   uploaderId       String
   filename         String
-  displayName      String?    // User-friendly name (e.g., "Government-issued ID" for workflow docs)
+  displayName      String     // User-friendly name, defaults to filename if not provided
   mime             String
   size             Int
   version          Int        @default(1)

@@ -110,8 +110,33 @@ export function DocumentsPageClient({
   const [selectedUploader, setSelectedUploader] = useState<{ value: string; label: string } | null>(null);
 
 
+  // Helper function to get only the latest versions of documents
+  const getLatestDocuments = (docs: DocumentListItem[]): DocumentListItem[] => {
+    const documentFamilies = new Map<string, DocumentListItem[]>();
+    
+    docs.forEach(doc => {
+      // Group by displayName (mandatory field, defaults to filename)
+      const groupKey = doc.displayName || doc.filename;
+      
+      if (!documentFamilies.has(groupKey)) {
+        documentFamilies.set(groupKey, []);
+      }
+      documentFamilies.get(groupKey)!.push(doc);
+    });
+    
+    const latestDocs: DocumentListItem[] = [];
+    documentFamilies.forEach(family => {
+      const latest = family.reduce((prev, current) => 
+        (current.version > prev.version) ? current : prev
+      );
+      latestDocs.push(latest);
+    });
+    
+    return latestDocs;
+  };
+
   useEffect(() => {
-    setItems(documents);
+    setItems(getLatestDocuments(documents));
     const newFolderId = filters.folderId || null;
     setCurrentFolderId(newFolderId);
     setSelectedDocIds(new Set()); // Clear selection when navigating
@@ -795,10 +820,16 @@ export function DocumentsPageClient({
                       e.dataTransfer.setData("documentId", doc.id);
                       e.dataTransfer.effectAllowed = "move";
                     }}
-                    className="group relative rounded-lg border border-slate-200 bg-white p-3 hover:shadow-md hover:border-blue-300 transition cursor-pointer"
+                    className={`group relative rounded-lg border p-3 hover:shadow-md transition cursor-pointer ${
+                      selectedDocIds.has(doc.id)
+                        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                        : 'border-slate-200 bg-white hover:border-blue-300'
+                    }`}
                   >
-                    {/* Checkbox - appears on hover */}
-                    <div className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Checkbox - always visible when selected, appears on hover otherwise */}
+                    <div className={`absolute top-2 left-2 z-10 transition-opacity ${
+                      selectedDocIds.has(doc.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}>
                       <input
                         type="checkbox"
                         checked={selectedDocIds.has(doc.id)}

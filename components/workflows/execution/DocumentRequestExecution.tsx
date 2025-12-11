@@ -1,7 +1,9 @@
 "use client";
 
-import { Upload, CheckCircle2, Clock } from "lucide-react";
-import { DocumentViewer } from "@/components/workflows/output/DocumentViewer";
+import { Upload, CheckCircle2, Clock, Check } from "lucide-react";
+import { RequestDocViewer } from "@/components/workflows/output/RequestDocViewer";
+import useSWR from "swr";
+import { useState } from "react";
 
 interface DocumentUploadStatus {
   requestId: string;
@@ -18,15 +20,31 @@ interface DocumentRequestExecutionProps {
     actionData: Record<string, unknown> | null;
     actionState?: string;
   };
-  onAddDocument?: (requestId: string, documentName: string) => void;
+  onAddDocument?: (requestId: string, documentName: string, existingDocumentId?: string) => void;
+  onCompleteStep?: () => void;
   isLoading: boolean;
 }
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function DocumentRequestExecution({
   step,
   onAddDocument,
+  onCompleteStep,
   isLoading,
 }: DocumentRequestExecutionProps) {
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  // Fetch live document status from API
+  const { data: liveStatus } = useSWR(
+    `/api/workflows/steps/${step.id}/document-status`,
+    fetcher,
+    {
+      refreshInterval: 3000, // Refresh every 3 seconds
+      revalidateOnFocus: true,
+    }
+  );
+
   // actionData contains both config and runtime data merged
   // Config fields: requestText, documentNames, acceptedFileTypes
   // Runtime data fields: status, documentsStatus, allDocumentsUploaded
@@ -35,10 +53,13 @@ export function DocumentRequestExecution({
   // Try to get config from actionData.config first (nested), then from root level
   const config = (actionData?.config as Record<string, unknown>) ?? actionData ?? {};
   
+  // Use live status if available, otherwise fall back to actionData
+  const data = liveStatus || ((actionData?.data as Record<string, unknown>) ?? {});
+  
   const requestText = (config.requestText as string) ?? (actionData?.requestText as string) ?? "";
   const documentNames = (config.documentNames as string[]) ?? (actionData?.documentNames as string[]) ?? [];
-  const documentsStatus = (actionData?.documentsStatus as DocumentUploadStatus[]) ?? [];
-  const allDocumentsUploaded = (actionData?.allDocumentsUploaded as boolean) ?? false;
+  const documentsStatus = (data?.documentsStatus as DocumentUploadStatus[]) ?? (actionData?.documentsStatus as DocumentUploadStatus[]) ?? [];
+  const allDocumentsUploaded = (data?.allDocumentsUploaded as boolean) ?? (actionData?.allDocumentsUploaded as boolean) ?? false;
   
   // Only allow uploads when step is IN_PROGRESS
   const canUpload = step.actionState === "IN_PROGRESS";
@@ -60,16 +81,27 @@ export function DocumentRequestExecution({
   console.log('[DocumentRequestExecution] Condition check:', {
     isCompleted: step.actionState === "COMPLETED",
     hasDocIds: uploadedDocumentIds.length > 0,
-    willShowViewer: step.actionState === "COMPLETED" && uploadedDocumentIds.length > 0
+    willShowViewer: step.actionState === "COMPLETED"
   });
   
-  // If step is COMPLETED, show DocumentViewer instead
-  if (step.actionState === "COMPLETED" && uploadedDocumentIds.length > 0) {
-    console.log('[DocumentRequestExecution] RENDERING DocumentViewer with IDs:', uploadedDocumentIds);
-    return <DocumentViewer documentIds={uploadedDocumentIds} />;
+  // If step is COMPLETED, show RequestDocViewer (read-only view with document list)
+  if (step.actionState === "COMPLETED") {
+    console.log('[DocumentRequestExecution] RENDERING RequestDocViewer - step completed');
+    return (
+      <RequestDocViewer 
+        config={{
+          requestText,
+          documentNames,
+        }}
+        data={{
+          documentsStatus,
+          allDocumentsUploaded,
+        }}
+      />
+    );
   }
   
-  console.log('[DocumentRequestExecution] NOT rendering DocumentViewer - showing upload UI instead');
+  console.log('[DocumentRequestExecution] NOT rendering viewer - showing interactive upload UI');
 
   return (
     <div className="mt-3 rounded-lg border-2 border-orange-200 bg-orange-50/50 p-4">
@@ -148,7 +180,10 @@ export function DocumentRequestExecution({
                       {canUpload && onAddDocument && (
                         <button
                           type="button"
-                          onClick={() => onAddDocument(status.requestId, status.documentName)}
+                          onClick={() => {
+                            console.log('[DocumentRequestExecution] Clicking Yeni Versiyon with status:', status);
+                            onAddDocument(status.requestId, status.documentName, status.documentId);
+                          }}
                           disabled={isLoading}
                           className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                           title="Yeni versiyon yükle"
@@ -166,11 +201,36 @@ export function DocumentRequestExecution({
         </div>
       )}
 
-      {allDocumentsUploaded && (
-        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <p className="text-sm text-emerald-700">
-            ✓ Tüm dokümanlar başarıyla yüklendi. Adım otomatik olarak tamamlanacak.
-          </p>
+      {allDocumentsUploaded && canUpload && (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-emerald-900">
+                ✓ Tüm dokümanlar yüklenmiş
+              </p>
+              <p className="mt-1 text-xs text-emerald-700">
+                Adımı tamamlamak için butona tıklayın. Bu adımı tamamladıktan sonra bağımlı adımlar otomatik olarak başlayacaktır.
+              </p>
+            </div>
+            {onCompleteStep && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsCompleting(true);
+                  try {
+                    await onCompleteStep();
+                  } finally {
+                    setIsCompleting(false);
+                  }
+                }}
+                disabled={isCompleting || isLoading}
+                className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Check className="h-4 w-4" />
+                {isCompleting ? "Tamamlanıyor..." : "Adımı Tamamla"}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

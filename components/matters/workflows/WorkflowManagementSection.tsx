@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Role } from "@prisma/client";
 import { WorkflowTimeline, WorkflowStepDetail } from "./";
@@ -106,7 +106,7 @@ interface WorkflowManagementSectionProps {
     assignedToId?: string | null;
     priority?: string | null;
   }) => Promise<void>;
-  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
+  onAddDocumentForStep?: (stepId: string, requestId: string, documentName: string, existingDocumentId?: string) => void;
 }
 
 export function WorkflowManagementSection({
@@ -139,6 +139,38 @@ export function WorkflowManagementSection({
   const [checklistStates, setChecklistStates] = useState<Record<string, Set<string>>>({});
   const [approvalComments, setApprovalComments] = useState<Record<string, string>>({});
   const [documentFiles, setDocumentFiles] = useState<Record<string, File | null>>({});
+
+  // Initialize checklist states from workflow data on mount or when workflows change
+  useEffect(() => {
+    const initialStates: Record<string, Set<string>> = {};
+    workflows.forEach((workflow) => {
+      workflow.steps.forEach((step) => {
+        if (step.actionType === "CHECKLIST" && step.actionData) {
+          const checkedItems = (step.actionData as Record<string, unknown>)?.checkedItems as string[] | undefined;
+          if (checkedItems && checkedItems.length > 0) {
+            initialStates[step.id] = new Set(checkedItems);
+          }
+        }
+      });
+    });
+    setChecklistStates(initialStates);
+  }, [workflows]);
+
+  // Re-select the step when workflows update (e.g., after document upload)
+  useEffect(() => {
+    if (selectedStepId && selectedWorkflowId) {
+      const wf = workflows.find((w) => w.id === selectedWorkflowId);
+      if (wf) {
+        const step = wf.steps.find((s) => s.id === selectedStepId);
+        if (!step) {
+          // Step no longer exists, clear selection
+          setSelectedStepId(null);
+          setSelectedWorkflowId(null);
+        }
+        // Force re-render by updating selection (triggers derived state recalculation)
+      }
+    }
+  }, [workflows, selectedStepId, selectedWorkflowId]);
 
   // Compute highlighted document IDs based on selected step
   const computedHighlightedDocumentIds = selectedStepId
@@ -373,21 +405,48 @@ export function WorkflowManagementSection({
 
   if (workflows.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-gray-500 mb-4">
-          {entityType === "matter"
-            ? "No workflows started yet. Start a workflow to track progress for this matter."
-            : "No workflows started yet. Start a workflow to track progress for this lead."
-          }
-        </p>
-        {canManageWorkflows && onAddWorkflow && (
-          <button
-            onClick={onAddWorkflow}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            + Start Workflow
-          </button>
-        )}
+      <div className="space-y-6">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Empty Workflow State - 2/3 width */}
+          <div className="lg:col-span-2">
+            <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg bg-gray-50">
+              <p className="text-gray-500 mb-4">
+                {entityType === "matter"
+                  ? "No workflows started yet. Start a workflow to track progress for this matter."
+                  : "No workflows started yet. Start a workflow to track progress for this lead."
+                }
+              </p>
+              {canManageWorkflows && onAddWorkflow && (
+                <button
+                  onClick={onAddWorkflow}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  + Start Workflow
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Documents Section - 1/3 width - ALWAYS VISIBLE */}
+          <div className="lg:col-span-1">
+            <FolderTreeView
+              matterId={entityType === "matter" ? entityId : undefined}
+              contactId={entityType === "contact" ? entityId : undefined}
+              matterTeamMemberIds={entityType === "matter" ? teamMemberIds : undefined}
+              matterOwnerId={matterOwnerId}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              refreshKey={folderTreeRefreshKey}
+              onDocumentClick={(documentId) => {
+                const doc = documents.find(d => d.id === documentId);
+                if (doc && onViewDocument) {
+                  onViewDocument(doc);
+                }
+              }}
+              onUploadDocument={onUploadDocument}
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -409,7 +468,7 @@ export function WorkflowManagementSection({
       />
 
       {/* Workflows and Documents Grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3 min-h-[600px]">
         {/* Workflows Section - 2/3 width on large screens */}
         <div className="lg:col-span-2">
           <WorkflowStepDetail
@@ -440,7 +499,7 @@ export function WorkflowManagementSection({
         </div>
 
         {/* Documents Section - 1/3 width on large screens */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 flex flex-col">
           <FolderTreeView
             matterId={entityType === "matter" ? entityId : undefined}
             contactId={entityType === "contact" ? entityId : undefined}

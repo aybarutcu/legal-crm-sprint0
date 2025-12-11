@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Folder, File, ChevronRight, ChevronDown, Upload, FolderPlus, Lock, Edit } from "lucide-react";
+import { Folder, File, ChevronRight, ChevronDown, Upload, FolderPlus, Lock, Edit, Trash2 } from "lucide-react";
 import { CreateFolderDialog } from "./CreateFolderDialog";
 import { EditFolderDialog } from "./EditFolderDialog";
 
@@ -66,6 +66,8 @@ export function FolderTreeView({
   const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
+  const isAdmin = currentUserRole === "ADMIN";
+
   useEffect(() => {
     loadFolderStructure();
   }, [matterId, contactId, refreshKey]);
@@ -105,13 +107,18 @@ export function FolderTreeView({
         docParams.set('page', page.toString());
         docParams.set('pageSize', '50');
         
-        const docsRes = await fetch(`/api/documents?${docParams.toString()}`);
+        const apiUrl = `/api/documents?${docParams.toString()}`;
+        
+        const docsRes = await fetch(apiUrl);
+        
         if (docsRes.ok) {
           const docsData = await docsRes.json();
           allDocuments = [...allDocuments, ...(docsData.data || [])];
           hasMore = docsData.pagination?.hasNext ?? false;
           page++;
         } else {
+          const errorText = await docsRes.text();
+          console.error('[FolderTreeView] API Error:', docsRes.status, errorText);
           hasMore = false;
         }
       }
@@ -128,50 +135,12 @@ export function FolderTreeView({
   // Helper function to get only the latest versions of documents
   // Groups documents by their version chain and returns only the latest version of each
   const getLatestDocuments = (docs: DocumentNode[]): DocumentNode[] => {
-    // Build a map of all document IDs that are children (have a parent)
-    const childDocumentIds = new Set<string>();
-    docs.forEach(doc => {
-      if (doc.parentDocumentId) {
-        childDocumentIds.add(doc.id);
-      }
-    });
-
-    // Create a map to track document families
+    // Group documents by displayName to show only the latest version
     const documentFamilies = new Map<string, DocumentNode[]>();
     
     docs.forEach(doc => {
-      let groupKey: string;
-      
-      // If this document has a parent, group by the parent
-      if (doc.parentDocumentId) {
-        groupKey = doc.parentDocumentId;
-      }
-      // If this document IS a parent (other docs point to it), use its own ID as the group
-      else if (docs.some(other => other.parentDocumentId === doc.id)) {
-        groupKey = doc.id;
-      }
-      // Otherwise, check if this is a workflow document that should be grouped by requestId
-      else if (doc.tags && doc.tags.length > 0 && doc.tags[0].includes('-')) {
-        const potentialRequestId = doc.tags[0];
-        // Check if other documents share this requestId tag
-        const siblings = docs.filter(other => 
-          other.tags && 
-          other.tags.length > 0 && 
-          other.tags[0] === potentialRequestId
-        );
-        
-        if (siblings.length > 1) {
-          // Multiple documents share this requestId, group them
-          groupKey = potentialRequestId;
-        } else {
-          // Solo document, use its own ID
-          groupKey = doc.id;
-        }
-      }
-      // Standalone document
-      else {
-        groupKey = doc.id;
-      }
+      // Group by displayName (or filename as fallback, though displayName is now mandatory)
+      const groupKey = doc.displayName || doc.filename;
       
       if (!documentFamilies.has(groupKey)) {
         documentFamilies.set(groupKey, []);
@@ -292,6 +261,34 @@ export function FolderTreeView({
     }
   };
 
+  const handleDeleteDocument = async (documentId: string, documentName: string) => {
+    if (!isAdmin) {
+      alert("Only admins can delete documents");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${documentName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete document");
+      }
+
+      // Reload the folder structure to reflect changes
+      await loadFolderStructure();
+    } catch (error) {
+      console.error("Failed to delete document:", error);
+      alert(`Failed to delete document: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
   const getFolderColor = (color?: string | null) => {
     if (!color) return "text-blue-600";
     const colorMap: Record<string, string> = {
@@ -316,6 +313,7 @@ export function FolderTreeView({
     const isExpanded = expandedFolders.has(folder.id);
     const subfolders = folders.filter((f) => f.parentFolderId === folder.id);
     const folderDocs = documents.filter((d) => d.folderId === folder.id);
+    const latestDocs = getLatestDocuments(folderDocs);
     const hasChildren = subfolders.length > 0 || folderDocs.length > 0;
     const isDragOver = dragOverFolderId === folder.id;
 
@@ -395,7 +393,7 @@ export function FolderTreeView({
             {subfolders.map((subfolder) => renderFolder(subfolder, level + 1))}
 
             {/* Render documents in this folder - show only latest versions */}
-            {getLatestDocuments(folderDocs).map((doc) => {
+            {latestDocs.map((doc) => {
               // Determine the best display name
               let displayText = doc.filename;
               if (doc.displayName && doc.displayName.trim()) {
@@ -424,24 +422,40 @@ export function FolderTreeView({
                     setDraggedDocumentId(null);
                     setDragOverFolderId(null);
                   }}
-                  className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer group transition ${
+                  className={`flex items-center gap-2 py-1 px-2 rounded group transition ${
                     isDragging 
                       ? "opacity-50 bg-blue-100" 
                       : "hover:bg-blue-50"
                   }`}
                   style={{ paddingLeft: `${(level + 1) * 20 + 32}px` }}
-                  onClick={() => !isDragging && onDocumentClick?.(doc.id)}
                 >
-                  <File className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm flex-1">
-                    {displayText}
-                  </span>
-                  {doc.version > 1 && (
-                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
-                      v{doc.version}
+                  <div
+                    className="flex items-center gap-2 flex-1 cursor-pointer"
+                    onClick={() => !isDragging && onDocumentClick?.(doc.id)}
+                  >
+                    <File className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm flex-1">
+                      {displayText}
                     </span>
+                    {doc.version > 1 && (
+                      <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                        v{doc.version}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-500">{formatFileSize(doc.size)}</span>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteDocument(doc.id, displayText);
+                      }}
+                      title="Delete Document"
+                    >
+                      <Trash2 className="h-3 w-3 text-red-600" />
+                    </button>
                   )}
-                  <span className="text-xs text-gray-500">{formatFileSize(doc.size)}</span>
                 </div>
               );
             })}
@@ -478,8 +492,8 @@ export function FolderTreeView({
   }
 
   return (
-    <div className="border rounded-lg bg-white">
-      <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+    <div className="border rounded-lg bg-white flex flex-col h-full">
+      <div className="p-4 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
         <h3 className="font-semibold text-gray-900">Documents & Folders</h3>
         <div className="flex gap-2">
           <button
@@ -508,7 +522,7 @@ export function FolderTreeView({
         </div>
       </div>
 
-      <div className="p-2 max-h-96 overflow-y-auto">
+      <div className="p-2 flex-1 overflow-y-auto min-h-0">
         {rootFolders.length === 0 && rootDocuments.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <Folder className="h-12 w-12 mx-auto mb-2 text-gray-300" />
@@ -551,23 +565,39 @@ export function FolderTreeView({
                         setDraggedDocumentId(null);
                         setDragOverFolderId(null);
                       }}
-                      className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition ${
+                      className={`flex items-center gap-2 py-1 px-2 rounded group transition ${
                         isDragging 
                           ? "opacity-50 bg-blue-100" 
                           : "hover:bg-blue-50"
                       }`}
-                      onClick={() => !isDragging && onDocumentClick?.(doc.id)}
                     >
-                      <File className="h-4 w-4 text-gray-400 ml-4" />
-                      <span className="text-sm flex-1">
-                        {displayText}
-                      </span>
-                      {doc.version > 1 && (
-                        <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
-                          v{doc.version}
+                      <div
+                        className="flex items-center gap-2 flex-1 cursor-pointer"
+                        onClick={() => !isDragging && onDocumentClick?.(doc.id)}
+                      >
+                        <File className="h-4 w-4 text-gray-400 ml-4" />
+                        <span className="text-sm flex-1">
+                          {displayText}
                         </span>
+                        {doc.version > 1 && (
+                          <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                            v{doc.version}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">{formatFileSize(doc.size)}</span>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDocument(doc.id, displayText);
+                          }}
+                          title="Delete Document"
+                        >
+                          <Trash2 className="h-3 w-3 text-red-600" />
+                        </button>
                       )}
-                      <span className="text-xs text-gray-500">{formatFileSize(doc.size)}</span>
                     </div>
                   );
                 })}

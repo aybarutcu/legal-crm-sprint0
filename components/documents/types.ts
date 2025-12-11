@@ -1,7 +1,7 @@
-export type DocumentListItem = {
+export interface DocumentListItem {
   id: string;
   filename: string;
-  displayName?: string | null;
+  displayName: string | null;
   mime: string;
   size: number;
   version: number;
@@ -11,7 +11,8 @@ export type DocumentListItem = {
   createdAt: string;
   signedAt: string | null;
   workflowStepId: string | null;
-  folderId?: string | null;
+  folderId: string | null;
+  parentDocumentId?: string | null;
   accessScope?: string;
   accessMetadata?: Record<string, unknown> | null;
   matter: {

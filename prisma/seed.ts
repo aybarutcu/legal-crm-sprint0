@@ -276,6 +276,18 @@ async function main() {
       name: "Matters",
       color: "blue",
       accessScope: "PUBLIC",
+      isMasterFolder: true,
+      createdById: admin.id,
+    },
+  });
+
+  // Create root "Contacts" folder
+  const contactsRootFolder = await prisma.documentFolder.create({
+    data: {
+      name: "Contacts",
+      color: "purple",
+      accessScope: "PUBLIC",
+      isMasterFolder: true,
       createdById: admin.id,
     },
   });
@@ -291,6 +303,7 @@ async function main() {
         matterId: matterItem.id,
         parentFolderId: mattersRootFolder.id,
         accessScope: "PUBLIC",
+        isMasterFolder: true,
         createdById: matterItem.ownerId,
       },
     });
@@ -370,6 +383,7 @@ async function main() {
   const document = await prisma.document.create({
     data: {
       filename: "dilekce.pdf",
+      displayName: "dilekce.pdf",
       mime: "application/pdf",
       size: 1024,
       storageKey: "seed/dilekce.pdf",
@@ -388,13 +402,15 @@ async function main() {
       description: "Complete client intake workflow for new leads - from initial contact to engagement",
       createdById: admin.id,
       isActive: true,
-      version: 1,
+      version: 2,
       steps: {
         create: [
           {
             title: "Initial Contact Checklist",
             actionType: ActionType.CHECKLIST,
             roleScope: RoleScope.LAWYER,
+            positionX: -229.2305985145751,
+            positionY: 8.850253330644136,
             actionConfig: {
               items: [
                 "Record initial contact details",
@@ -409,6 +425,8 @@ async function main() {
             title: "Conflict Check Approval",
             actionType: ActionType.APPROVAL,
             roleScope: RoleScope.LAWYER,
+            positionX: 127.7994353098976,
+            positionY: -4.001357993234592,
             actionConfig: {
               approverRole: "LAWYER",
               message: "Review conflict check results and approve to proceed with client intake.",
@@ -418,6 +436,8 @@ async function main() {
             title: "Request Initial Documents from Client",
             actionType: ActionType.REQUEST_DOC,
             roleScope: RoleScope.CLIENT,
+            positionX: -159.2391746503802,
+            positionY: 225.1074336746469,
             actionConfig: {
               requestText: "Please upload the following documents to begin your case evaluation:\n- Government-issued ID\n- Any relevant contracts or agreements\n- Supporting documentation related to your legal matter",
               acceptedTypes: ["application/pdf", "image/png", "image/jpeg"],
@@ -427,6 +447,8 @@ async function main() {
             title: "Client Intake Questionnaire",
             actionType: ActionType.POPULATE_QUESTIONNAIRE,
             roleScope: RoleScope.CLIENT,
+            positionX: 166.6655492833569,
+            positionY: 250.0011352304587,
             actionConfig: {
               title: "Client Background Information",
               description: "Please provide detailed information about yourself and your legal matter",
@@ -436,6 +458,8 @@ async function main() {
             title: "Engagement Letter Signature",
             actionType: ActionType.SIGNATURE,
             roleScope: RoleScope.CLIENT,
+            positionX: -215.186423633313,
+            positionY: 530.3728472666261,
             actionConfig: {
               documentId: document.id,
               provider: "mock",
@@ -445,6 +469,8 @@ async function main() {
             title: "Collect Retainer Payment",
             actionType: ActionType.PAYMENT,
             roleScope: RoleScope.CLIENT,
+            positionX: 197.4600638324035,
+            positionY: 527.9376757687803,
             actionConfig: {
               amount: 2500,
               currency: "USD",
@@ -455,9 +481,13 @@ async function main() {
             title: "Final Intake Review",
             actionType: ActionType.WRITE_TEXT,
             roleScope: RoleScope.LAWYER,
+            positionX: 556.0254169665509,
+            positionY: 396.4604610205745,
             actionConfig: {
-              prompt: "Summarize the client intake process and any special notes or action items for the case team.",
+              title: "Review",
+              required: true,
               minLength: 100,
+              placeholder: "Enter your text here...",
             },
           },
         ],

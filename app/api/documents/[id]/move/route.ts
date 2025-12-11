@@ -4,6 +4,7 @@ import { withApiHandler } from "@/lib/api-handler";
 import { recordAuditLog } from "@/lib/audit";
 import { checkDocumentAccess } from "@/lib/documents/access-control";
 import { checkFolderAccess } from "@/lib/folders/access-control";
+import { findDocumentFamilyById } from "@/lib/documents/family";
 import { z } from "zod";
 
 const moveSchema = z.object({
@@ -23,6 +24,7 @@ export const PATCH = withApiHandler<{ id: string }>(
       select: {
         id: true,
         filename: true,
+        displayName: true,
         uploaderId: true,
         accessScope: true,
         accessMetadata: true,
@@ -126,10 +128,27 @@ export const PATCH = withApiHandler<{ id: string }>(
       }
     }
 
-    // Update document
-    const updated = await prisma.document.update({
-      where: { id },
+    // Find all versions of this document (document family)
+    const documentFamily = await findDocumentFamilyById(id);
+    
+    if (documentFamily.length === 0) {
+      return NextResponse.json(
+        { error: "Document family not found" },
+        { status: 404 }
+      );
+    }
+
+    // Move all versions in the family
+    await prisma.document.updateMany({
+      where: {
+        id: { in: documentFamily.map(d => d.id) },
+      },
       data: { folderId },
+    });
+
+    // Get updated document with folder info
+    const updated = await prisma.document.findUnique({
+      where: { id },
       include: {
         folder: {
           select: { id: true, name: true },
@@ -141,15 +160,21 @@ export const PATCH = withApiHandler<{ id: string }>(
       actorId: user.id,
       action: "document.move",
       entityType: "document",
-      entityId: updated.id,
+      entityId: id,
       metadata: {
+        displayName: document.displayName,
         filename: document.filename,
         fromFolderId: document.folderId,
         toFolderId: folderId,
+        versionsMovedCount: documentFamily.length,
+        versionsMoved: documentFamily.map(d => d.version),
       },
     });
 
-    return NextResponse.json({ document: updated });
+    return NextResponse.json({ 
+      document: updated,
+      versionsMovedCount: documentFamily.length,
+    });
   },
   { requireAuth: true }
 );

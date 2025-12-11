@@ -44,6 +44,7 @@ interface EditDocumentDialogProps {
   matters: Matter[];
   contacts: Contact[];
   onSave: (newDocumentId?: string) => Promise<void>;
+  parentDocumentId?: string | null; // When provided, this is a "new version" upload
 }
 
 export function EditDocumentDialog({
@@ -53,8 +54,9 @@ export function EditDocumentDialog({
   matters,
   contacts,
   onSave,
+  parentDocumentId,
 }: EditDocumentDialogProps) {
-  const [activeTab, setActiveTab] = useState<"details" | "version">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "version">(parentDocumentId ? "version" : "details");
   
   // Details tab state
   const [displayName, setDisplayName] = useState(document.displayName || "");
@@ -368,14 +370,14 @@ export function EditDocumentDialog({
     setSelectedUsers([]);
     setUploadFile(null);
     setError(null);
-    setActiveTab("details");
+    setActiveTab(parentDocumentId ? "version" : "details");
   };
 
   useEffect(() => {
     if (isOpen) {
       resetForm();
     }
-  }, [isOpen]);
+  }, [isOpen, parentDocumentId]);
 
   if (!isOpen) return null;
 
@@ -388,7 +390,9 @@ export function EditDocumentDialog({
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-blue-600" />
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Edit Document</h2>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  {parentDocumentId ? "Upload New Version" : "Edit Document"}
+                </h2>
                 <p className="text-sm text-slate-500 mt-0.5">{document.filename}</p>
               </div>
             </div>
@@ -448,11 +452,18 @@ export function EditDocumentDialog({
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder={document.filename}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!!parentDocumentId}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
                 />
-                <p className="text-xs text-slate-500 mt-1">
-                  Leave empty to use filename: {document.filename}
-                </p>
+                {parentDocumentId ? (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Display name is locked to match the parent document for version grouping
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Leave empty to use filename: {document.filename}
+                  </p>
+                )}
               </div>
 
               {/* Tags */}
@@ -654,6 +665,9 @@ export function EditDocumentDialog({
                   <div className="text-sm text-blue-800">
                     <p className="font-medium mb-1">Uploading a new version</p>
                     <p>This will create version {document.version + 1} of the document. The original file will be preserved as version {document.version}.</p>
+                    {parentDocumentId && (
+                      <p className="mt-2 font-medium">The display name is locked to "{displayName || document.filename}" to ensure versions are grouped together.</p>
+                    )}
                   </div>
                 </div>
               </div>

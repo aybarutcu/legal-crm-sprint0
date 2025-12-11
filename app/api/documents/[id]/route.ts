@@ -5,6 +5,7 @@ import { deleteObject, moveObject } from "@/lib/storage";
 import { recordAuditLog } from "@/lib/audit";
 import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
 import { checkDocumentAccess } from "@/lib/documents/access-control";
+import { findDocumentFamilyById } from "@/lib/documents/family";
 import { z } from "zod";
 
 const documentUpdateSchema = z
@@ -150,7 +151,19 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     data.tags = tags;
   }
 
-  if (displayName !== undefined) {
+  // Handle displayName change - affects all versions
+  let documentFamily: Awaited<ReturnType<typeof findDocumentFamilyById>> = [];
+  if (displayName !== undefined && displayName !== existing.displayName) {
+    documentFamily = await findDocumentFamilyById(id);
+    
+    // Update displayName for all versions
+    await prisma.document.updateMany({
+      where: {
+        id: { in: documentFamily.map(d => d.id) },
+      },
+      data: { displayName },
+    });
+  } else if (displayName !== undefined) {
     data.displayName = displayName;
   }
 
@@ -217,6 +230,22 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     },
   });
 
+  // Log audit with family info if displayName was changed
+  if (displayName !== undefined && displayName !== existing.displayName && documentFamily.length > 0) {
+    await recordAuditLog({
+      actorId: user.id,
+      action: "document.update",
+      entityType: "document",
+      entityId: updated.id,
+      metadata: {
+        oldDisplayName: existing.displayName,
+        newDisplayName: displayName,
+        versionsRenamedCount: documentFamily.length,
+        versionsRenamed: documentFamily.map(d => d.version),
+      },
+    });
+  }
+
   return NextResponse.json(updated);
 }
 
@@ -235,6 +264,7 @@ export async function DELETE(_: NextRequest, context: RouteContext) {
       id: true,
       storageKey: true,
       filename: true,
+      displayName: true,
       version: true,
       matterId: true,
       contactId: true,
@@ -267,20 +297,42 @@ export async function DELETE(_: NextRequest, context: RouteContext) {
     await assertContactAccess(user, document.workflowStep.instance.contactId);
   }
 
-  try {
-    await deleteObject({ key: document.storageKey });
-  } catch (error) {
-    console.error("Failed to delete object from storage", {
-      error,
-      key: document.storageKey,
-    });
+  // Find all versions of this document
+  const documentFamily = await findDocumentFamilyById(id);
+
+  // Delete all versions from storage
+  const deletionResults = await Promise.allSettled(
+    documentFamily.map((doc) =>
+      deleteObject({ key: doc.storageKey }).catch((error) => {
+        console.error("Failed to delete object from storage", {
+          error,
+          key: doc.storageKey,
+          documentId: doc.id,
+        });
+        throw error;
+      })
+    )
+  );
+
+  // Check if any deletions failed
+  const failedDeletions = deletionResults.filter(
+    (result) => result.status === "rejected"
+  );
+  
+  if (failedDeletions.length > 0) {
+    console.error(`Failed to delete ${failedDeletions.length} of ${documentFamily.length} files from storage`);
     return NextResponse.json(
-      { error: "Unable to delete file from storage" },
+      { error: "Unable to delete some files from storage" },
       { status: 502 },
     );
   }
 
-  await prisma.document.delete({ where: { id } });
+  // Delete all versions from database
+  await prisma.document.deleteMany({
+    where: { 
+      id: { in: documentFamily.map(d => d.id) }
+    },
+  });
 
   await recordAuditLog({
     actorId: session.user.id,
@@ -288,11 +340,15 @@ export async function DELETE(_: NextRequest, context: RouteContext) {
     entityType: "document",
     entityId: document.id,
     metadata: {
+      displayName: document.displayName,
       filename: document.filename,
       version: document.version,
       matterId: document.matterId,
       contactId: document.contactId,
+      versionsDeletedCount: documentFamily.length,
+      versionsDeleted: documentFamily.map(d => d.version),
     },
   });
+  
   return new NextResponse(null, { status: 204 });
 }

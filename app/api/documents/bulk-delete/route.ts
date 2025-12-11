@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { withApiHandler } from "@/lib/api-handler";
 import { recordAuditLog } from "@/lib/audit";
 import { checkDocumentAccess } from "@/lib/documents/access-control";
+import { findDocumentFamilyById } from "@/lib/documents/family";
+import { deleteObject } from "@/lib/storage";
 import { z } from "zod";
 
 const bulkDeleteSchema = z.object({
@@ -23,17 +25,19 @@ export const POST = withApiHandler(
     const documents = await prisma.document.findMany({
       where: {
         id: { in: documentIds },
-        deletedAt: null, // Only operate on non-deleted documents
+        deletedAt: null,
       },
       select: {
         id: true,
         filename: true,
+        displayName: true,
+        version: true,
         uploaderId: true,
         accessScope: true,
         accessMetadata: true,
         matterId: true,
         contactId: true,
-        version: true,
+        storageKey: true,
       },
     });
 
@@ -62,15 +66,14 @@ export const POST = withApiHandler(
     );
 
     // Filter to only documents user has access to
-    const accessibleDocIds = documents
-      .filter((_, idx) => accessChecks[idx].hasAccess)
-      .map((doc) => doc.id);
-
+    const accessibleDocs = documents.filter(
+      (_, idx) => accessChecks[idx].hasAccess
+    );
     const deniedDocIds = documentIds.filter(
-      (id) => !accessibleDocIds.includes(id)
+      (id) => !accessibleDocs.some((doc) => doc.id === id)
     );
 
-    if (accessibleDocIds.length === 0) {
+    if (accessibleDocs.length === 0) {
       return NextResponse.json(
         {
           error: "Access denied for all documents",
@@ -80,36 +83,77 @@ export const POST = withApiHandler(
       );
     }
 
-    // Soft delete all accessible documents
-    await prisma.document.updateMany({
-      where: {
-        id: { in: accessibleDocIds },
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        deletedBy: user.id,
+    // For each accessible document, find its entire family (all versions)
+    const documentFamilies = await Promise.all(
+      accessibleDocs.map((doc) => findDocumentFamilyById(doc.id))
+    );
+
+    // Flatten to get all unique documents across all families
+    const allDocuments = Array.from(
+      new Map(
+        documentFamilies.flat().map((doc) => [doc.id, doc])
+      ).values()
+    );
+
+    // Delete all versions from storage
+    const deletionResults = await Promise.allSettled(
+      allDocuments.map((doc) =>
+        deleteObject({ key: doc.storageKey }).catch((error) => {
+          console.error("Failed to delete object from storage", {
+            error,
+            key: doc.storageKey,
+            documentId: doc.id,
+          });
+          throw error;
+        })
+      )
+    );
+
+    // Check if any deletions failed
+    const failedDeletions = deletionResults.filter(
+      (result) => result.status === "rejected"
+    );
+    
+    if (failedDeletions.length > 0) {
+      console.error(`Failed to delete ${failedDeletions.length} of ${allDocuments.length} files from storage`);
+      return NextResponse.json(
+        { 
+          error: "Unable to delete some files from storage",
+          failedCount: failedDeletions.length,
+          totalCount: allDocuments.length,
+        },
+        { status: 502 },
+      );
+    }
+
+    // Delete all versions from database
+    await prisma.document.deleteMany({
+      where: { 
+        id: { in: allDocuments.map(d => d.id) }
       },
     });
 
-    // Log bulk deletion
+    // Log bulk delete
     await recordAuditLog({
       actorId: user.id,
       action: "document.bulk_delete",
       entityType: "document",
-      entityId: accessibleDocIds[0], // First document ID as reference
+      entityId: accessibleDocs[0].id,
       metadata: {
-        documentIds: accessibleDocIds,
-        count: accessibleDocIds.length,
-        denied: deniedDocIds.length,
+        requestedDocumentIds: documentIds,
+        accessibleDocumentIds: accessibleDocs.map((d) => d.id),
+        familiesDeletedCount: accessibleDocs.length,
+        totalVersionsDeletedCount: allDocuments.length,
+        deniedCount: deniedDocIds.length,
       },
     });
 
     return NextResponse.json({
       success: true,
-      deleted: accessibleDocIds.length,
+      familiesDeleted: accessibleDocs.length,
+      totalVersionsDeleted: allDocuments.length,
       denied: deniedDocIds.length,
-      deletedIds: accessibleDocIds,
+      deletedFamilyIds: accessibleDocs.map((d) => d.id),
       deniedIds: deniedDocIds,
     });
   },

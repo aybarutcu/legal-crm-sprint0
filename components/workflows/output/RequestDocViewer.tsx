@@ -46,12 +46,16 @@ export function RequestDocViewer({ config, data }: RequestDocViewerProps) {
           <div className="rounded-lg border border-green-200 bg-green-50/50 p-3 text-sm text-slate-700">
             <div className="flex items-center gap-2 mb-2">
               <FileUp className="h-4 w-4 text-green-600" />
-              <span className="font-medium text-green-900">Request</span>
+              <span className="font-medium text-green-900">Document Request</span>
             </div>
-            {requestText}
+            <p className="text-slate-600">{requestText}</p>
           </div>
         )}
-        <DocumentViewer documentIds={uploadedDocumentIds} />
+        <DocumentViewer 
+          documentIds={uploadedDocumentIds} 
+          showUploader={true}
+          showVersion={true}
+        />
       </div>
     );
   }

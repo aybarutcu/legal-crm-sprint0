@@ -52,7 +52,7 @@ interface WorkflowStepDetailProps {
   onMoveStep: (instanceId: string, stepId: string, direction: -1 | 1) => Promise<void>;
   onDeleteStep: (instanceId: string, stepId: string) => Promise<void>;
   onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
-  onAddDocumentForStep?: (stepId: string, requestId: string, documentName: string) => void;
+  onAddDocumentForStep?: (stepId: string, requestId: string, documentName: string, existingDocumentId?: string) => void;
   // Execution UI state
   checklistStates: Record<string, Set<string>>;
   approvalComments: Record<string, string>;
@@ -459,7 +459,7 @@ interface ReadyStateViewProps {
   onMoveStep: (instanceId: string, stepId: string, direction: -1 | 1) => Promise<void>;
   onDeleteStep: (instanceId: string, stepId: string) => Promise<void>;
   onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
-  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
+  onAddDocumentForStep?: (stepId: string, requestId: string, documentName: string, existingDocumentId?: string) => void;
 }
 
 function ReadyStateView({
@@ -544,13 +544,27 @@ function ReadyStateView({
       )}
 
       {/* REQUEST_DOC: Show interactive execution UI even in PENDING/READY state */}
-      {step.actionType === "REQUEST_DOC" && (
-        <DocumentRequestExecution
-          step={step}
-          onAddDocument={onAddDocumentForStep ? (requestId, documentName) => onAddDocumentForStep(step.id, requestId, documentName) : undefined}
-          isLoading={actionLoading === `${step.id}:start`}
-        />
-      )}
+      {step.actionType === "REQUEST_DOC" && (() => {
+        const actionData = step.actionData as any;
+        const data = actionData?.data || {};
+        const documentsStatus = data?.documentsStatus || [];
+        const uploadedIds = documentsStatus
+          .filter((s: any) => s.uploaded && s.documentId)
+          .map((s: any) => s.documentId)
+          .join(',');
+        
+        return (
+          <DocumentRequestExecution
+            key={`${step.id}-${step.actionState}-${uploadedIds}`}
+            step={step}
+            onAddDocument={onAddDocumentForStep ? (requestId, documentName, existingDocumentId) => onAddDocumentForStep(step.id, requestId, documentName, existingDocumentId) : undefined}
+            onCompleteStep={async () => {
+              await onRunStepAction(step.id, "complete");
+            }}
+            isLoading={actionLoading === `${step.id}:start`}
+          />
+        );
+      })()}
 
       {/* Step Metadata Info - Editable inline */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -869,7 +883,7 @@ interface InProgressStateViewProps {
   onSetApprovalComments: Dispatch<SetStateAction<Record<string, string>>>;
   onSetDocumentFiles: Dispatch<SetStateAction<Record<string, File | null>>>;
   onRunStepAction: (stepId: string, action: string, payload?: unknown) => Promise<void>;
-  onAddDocumentForStep?: (stepId: string, documentName: string) => void;
+  onAddDocumentForStep?: (stepId: string, requestId: string, documentName: string, existingDocumentId?: string) => void;
   onUpdateStepMetadata?: (instanceId: string, stepId: string, data: { dueDate?: string | null; assignedToId?: string | null; priority?: string | null }) => Promise<void>;
 }
 
@@ -1009,7 +1023,10 @@ function InProgressStateView({
         return (
           <DocumentRequestExecution
             step={step}
-            onAddDocument={onAddDocumentForStep ? (documentName) => onAddDocumentForStep(step.id, documentName) : undefined}
+            onAddDocument={onAddDocumentForStep ? (requestId, documentName, existingDocumentId) => onAddDocumentForStep(step.id, requestId, documentName, existingDocumentId) : undefined}
+            onCompleteStep={async () => {
+              await onRunStepAction(step.id, "complete");
+            }}
             isLoading={isLoading}
           />
         );
@@ -1243,13 +1260,22 @@ function CompletedStateView({
         }
         return null;
 
-      case "REQUEST_DOC":
+      case "REQUEST_DOC": {
+        console.log('[WorkflowStepDetail] REQUEST_DOC actionData:', actionData);
+        
+        // actionData structure: { config: {...}, data: {...}, history: [...] }
+        const config = actionData.config;
+        const data = actionData.data;
+        
+        console.log('[WorkflowStepDetail] Extracted config:', config);
+        console.log('[WorkflowStepDetail] Extracted data:', data);
+        
         // Use new multi-document viewer
-        if (actionData.data && actionData.config) {
+        if (data && config) {
           return (
             <RequestDocViewer
-              config={actionData.config}
-              data={actionData.data}
+              config={config}
+              data={data}
             />
           );
         }
@@ -1258,6 +1284,7 @@ function CompletedStateView({
           return <DocumentViewer documentIds={[actionData.documentId]} />;
         }
         return null;
+      }
 
       case "CHECKLIST":
         if (actionData.completedItems && Array.isArray(actionData.completedItems)) {

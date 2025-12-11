@@ -2,7 +2,7 @@
 
 /// <reference lib="dom" />
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { X, Upload, AlertCircle, CheckCircle, Lock } from "lucide-react";
+import { X, Upload, AlertCircle, CheckCircle, Lock, Globe, Users, UserCheck } from "lucide-react";
 import { DocumentTypeIcon } from "./DocumentTypeIcon";
 import { formatFileSize } from "@/lib/documents/format-utils";
 import { DocumentAccessScope, Role } from "@prisma/client";
@@ -21,7 +21,8 @@ type MatterDocumentUploadDialogProps = {
   contactId?: string;
   workflowStepId?: string | null;
   tags?: string[]; // First tag is the document name from REQUEST_DOC
-  onUploadComplete?: () => void;
+  parentDocumentId?: string | null; // For versioning existing documents
+  onUploadComplete?: (uploadedDocumentId?: string) => void;
 };
 
 type UploadState = "idle" | "uploading" | "success" | "error";
@@ -45,9 +46,11 @@ export function MatterDocumentUploadDialog({
   contactId,
   workflowStepId,
   tags,
+  parentDocumentId,
   onUploadComplete,
 }: MatterDocumentUploadDialogProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [displayName, setDisplayName] = useState<string>("");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [dragActive, setDragActive] = useState(false);
@@ -59,6 +62,21 @@ export function MatterDocumentUploadDialog({
   const [showAccessOptions, setShowAccessOptions] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fileInputRef = useRef<any>(null);
+
+  // Auto-populate displayName from REQUEST_DOC documentName (second tag)
+  useEffect(() => {
+    if (isOpen && workflowStepId && tags && tags.length >= 2) {
+      // tags[0] = requestId, tags[1] = documentName
+      const documentName = tags[1];
+      if (documentName) {
+        console.log('[MatterDocumentUploadDialog] Auto-setting displayName from tags:', documentName);
+        setDisplayName(documentName);
+      }
+    } else if (!isOpen) {
+      // Reset displayName when dialog closes
+      setDisplayName("");
+    }
+  }, [isOpen, workflowStepId, tags]);
 
   // Load team members when dialog opens
   useEffect(() => {
@@ -187,6 +205,13 @@ export function MatterDocumentUploadDialog({
       return;
     }
 
+    console.log('[MatterDocumentUploadDialog] Starting upload with:', {
+      parentDocumentId,
+      workflowStepId,
+      tags,
+      displayName,
+    });
+
     setUploadState("uploading");
     setErrorMessage("");
 
@@ -194,18 +219,24 @@ export function MatterDocumentUploadDialog({
       // Step 1: Request signed upload URL from /api/uploads
       const uploadRequestBody: {
         filename: string;
+        displayName?: string;
         mime: string;
         size: number;
         matterId?: string;
         contactId?: string;
+        parentDocumentId?: string;
       } = {
         filename: selectedFile.name,
+        displayName: displayName || (tags && tags.length >= 2 ? tags[1] : selectedFile.name),
         mime: selectedFile.type,
         size: selectedFile.size,
       };
 
       if (matterId) uploadRequestBody.matterId = matterId;
       if (contactId) uploadRequestBody.contactId = contactId;
+      if (parentDocumentId) uploadRequestBody.parentDocumentId = parentDocumentId;
+
+      console.log('[MatterDocumentUploadDialog] Upload request body:', uploadRequestBody);
 
       const uploadRequestResponse = await fetch("/api/uploads", {
         method: "POST",
@@ -250,10 +281,12 @@ export function MatterDocumentUploadDialog({
       const finalizeBody: {
         documentId: string;
         filename: string;
+        displayName?: string;
         mime: string;
         size: number;
         storageKey: string;
         version: number;
+        parentDocumentId?: string;
         matterId?: string;
         contactId?: string;
         workflowStepId?: string;
@@ -263,6 +296,7 @@ export function MatterDocumentUploadDialog({
       } = {
         documentId: uploadData.documentId,
         filename: selectedFile.name,
+        displayName: displayName || selectedFile.name,
         mime: selectedFile.type,
         size: selectedFile.size,
         storageKey: uploadData.storageKey,
@@ -272,6 +306,7 @@ export function MatterDocumentUploadDialog({
       if (matterId) finalizeBody.matterId = matterId;
       if (contactId) finalizeBody.contactId = contactId;
       if (workflowStepId) finalizeBody.workflowStepId = workflowStepId;
+      if (parentDocumentId) finalizeBody.parentDocumentId = parentDocumentId;
       // Pass tags directly without filtering
       console.log('[MatterDocumentUploadDialog] Tags received:', tags);
       if (tags && tags.length > 0) {
@@ -283,6 +318,8 @@ export function MatterDocumentUploadDialog({
       finalizeBody.accessScope = accessScope;
       if (accessScope === "ROLE_BASED" && selectedRoles.length > 0) {
         finalizeBody.accessMetadata = { allowedRoles: selectedRoles };
+      } else if (accessScope === "USER_BASED" && selectedUsers.length > 0) {
+        finalizeBody.accessMetadata = { allowedUserIds: selectedUsers };
       }
 
       const finalizeResponse = await fetch("/api/documents", {
@@ -317,7 +354,7 @@ export function MatterDocumentUploadDialog({
       
       // Wait a moment to show success state
       setTimeout(() => {
-        onUploadComplete?.();
+        onUploadComplete?.(finalizedDoc.id);
         handleClose();
       }, 1500);
     } catch (error) {
@@ -329,6 +366,7 @@ export function MatterDocumentUploadDialog({
 
   const handleClose = () => {
     setSelectedFile(null);
+    setDisplayName(""); // Reset displayName
     setUploadState("idle");
     setErrorMessage("");
     setDragActive(false);
@@ -347,10 +385,13 @@ export function MatterDocumentUploadDialog({
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Upload Document</h2>
+            <h2 className="text-xl font-semibold text-slate-900">
+              {parentDocumentId ? "Upload New Version" : "Upload Document"}
+            </h2>
             {tags && tags.length > 0 && workflowStepId && (
               <p className="text-sm text-orange-600 mt-1">
                 📋 Required: <span className="font-semibold">{tags[0]}</span>
+                {parentDocumentId && <span className="ml-2 text-blue-600">🔄 New Version</span>}
               </p>
             )}
           </div>
@@ -369,6 +410,11 @@ export function MatterDocumentUploadDialog({
             <p className="text-sm text-orange-900">
               <span className="font-semibold">Workflow Document Request:</span><br />
               This document will be linked to the workflow step and marked as "{tags[0]}"
+              {parentDocumentId && (
+                <>
+                  <br /><span className="text-blue-700 font-semibold">📦 Uploading as new version of existing document</span>
+                </>
+              )}
             </p>
           </div>
         )}
@@ -434,6 +480,27 @@ export function MatterDocumentUploadDialog({
           )}
         </div>
 
+        {/* Display Name Input */}
+        {selectedFile && uploadState === "idle" && (
+          <div className="mt-4">
+            <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-2">
+              Display Name
+              <span className="text-xs text-slate-500 ml-2">(Optional - defaults to filename)</span>
+            </label>
+            <input
+              id="displayName"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Örn: Nufüs Cuzdani"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              This name will be used to identify the document and group versions
+            </p>
+          </div>
+        )}
+
         {/* Access Control Section */}
         {selectedFile && uploadState === "idle" && (
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50">
@@ -459,7 +526,7 @@ export function MatterDocumentUploadDialog({
             {showAccessOptions && (
               <div className="p-4 pt-0 space-y-3">
                 <div className="space-y-2">
-                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                  <label className="flex items-start gap-3 p-3 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-blue-200">
                     <input
                       type="radio"
                       name="accessScope"
@@ -468,7 +535,8 @@ export function MatterDocumentUploadDialog({
                       onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
                       className="mt-0.5"
                     />
-                    <div>
+                    <Globe className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                    <div className="flex-1">
                       <div className="text-sm font-medium text-slate-900">All Team Members</div>
                       <div className="text-xs text-slate-500">
                         Everyone in the {matterId ? "matter" : "contact"} team can view
@@ -476,7 +544,7 @@ export function MatterDocumentUploadDialog({
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                  <label className="flex items-start gap-3 p-3 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-blue-200">
                     <input
                       type="radio"
                       name="accessScope"
@@ -485,7 +553,8 @@ export function MatterDocumentUploadDialog({
                       onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
                       className="mt-0.5"
                     />
-                    <div>
+                    <Users className="h-5 w-5 text-purple-600 flex-shrink-0" />
+                    <div className="flex-1">
                       <div className="text-sm font-medium text-slate-900">Specific Roles</div>
                       <div className="text-xs text-slate-500">
                         Only selected roles can view
@@ -493,7 +562,7 @@ export function MatterDocumentUploadDialog({
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                  <label className="flex items-start gap-3 p-3 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-blue-200">
                     <input
                       type="radio"
                       name="accessScope"
@@ -502,7 +571,8 @@ export function MatterDocumentUploadDialog({
                       onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
                       className="mt-0.5"
                     />
-                    <div>
+                    <UserCheck className="h-5 w-5 text-green-600 flex-shrink-0" />
+                    <div className="flex-1">
                       <div className="text-sm font-medium text-slate-900">Specific People</div>
                       <div className="text-xs text-slate-500">
                         Only selected team members can view
@@ -510,7 +580,7 @@ export function MatterDocumentUploadDialog({
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                  <label className="flex items-start gap-3 p-3 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-blue-200">
                     <input
                       type="radio"
                       name="accessScope"
@@ -519,7 +589,8 @@ export function MatterDocumentUploadDialog({
                       onChange={(e) => setAccessScope(e.target.value as DocumentAccessScope)}
                       className="mt-0.5"
                     />
-                    <div>
+                    <Lock className="h-5 w-5 text-red-600 flex-shrink-0" />
+                    <div className="flex-1">
                       <div className="text-sm font-medium text-slate-900">Private</div>
                       <div className="text-xs text-slate-500">
                         Only you and {matterId ? "matter" : "contact"} owner

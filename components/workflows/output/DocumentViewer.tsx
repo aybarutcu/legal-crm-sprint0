@@ -16,10 +16,13 @@ interface Document {
     name: string | null;
     email: string | null;
   };
+  version?: number;
 }
 
 interface DocumentViewerProps {
   documentIds: string[];
+  showUploader?: boolean;
+  showVersion?: boolean;
 }
 
 function formatFileSize(bytes: number): string {
@@ -42,7 +45,7 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-export function DocumentViewer({ documentIds }: DocumentViewerProps) {
+export function DocumentViewer({ documentIds, showUploader = true, showVersion = false }: DocumentViewerProps) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,20 +144,45 @@ export function DocumentViewer({ documentIds }: DocumentViewerProps) {
               <p className="text-sm font-medium text-slate-900 truncate">
                 {doc.displayName || doc.filename}
               </p>
-              <p className="text-xs text-slate-500">
-                {formatFileSize(doc.size)} • Uploaded {formatDate(doc.createdAt)}
-                {doc.uploader?.name && ` by ${doc.uploader.name}`}
-              </p>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>{formatFileSize(doc.size)}</span>
+                {showVersion && doc.version && (
+                  <>
+                    <span>•</span>
+                    <span>v{doc.version}</span>
+                  </>
+                )}
+                <span>•</span>
+                <span>Uploaded {formatDate(doc.createdAt)}</span>
+                {showUploader && doc.uploader && (
+                  <>
+                    <span>•</span>
+                    <span className="font-medium text-slate-700">
+                      {doc.uploader.name || doc.uploader.email}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
 
-            <a
-              href={`/api/documents/${doc.id}/download`}
-              download
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/documents/${doc.id}/download`);
+                  if (!res.ok) throw new Error('Download failed');
+                  const data = await res.json();
+                  // Open the presigned URL in a new tab to download
+                  window.open(data.getUrl, '_blank');
+                } catch (error) {
+                  console.error('Download error:', error);
+                  alert('Failed to download document');
+                }
+              }}
               className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-green-100 text-slate-600 hover:text-green-700 transition-colors"
               title="Download"
             >
               <Download className="h-4 w-4" />
-            </a>
+            </button>
           </div>
         ))}
       </div>

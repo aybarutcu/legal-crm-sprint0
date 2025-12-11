@@ -1,6 +1,7 @@
 import { ActionState, ActionType, Role, RoleScope } from "@prisma/client";
 import { z } from "zod";
 import type { IActionHandler, WorkflowRuntimeContext } from "../types";
+import { prisma } from "@/lib/prisma";
 
 const configSchema = z.object({
   requestText: z.string().min(1, "requestText is required"),
@@ -60,13 +61,64 @@ export class RequestDocActionHandler
     // Initialize tracking for each requested document with unique IDs
     const documentNames = ctx.config.documentNames || [];
     ctx.data.status = "IN_PROGRESS";
-    ctx.data.documentsStatus = documentNames.map((name) => ({
-      requestId: `${ctx.step.id}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, // Unique ID per request
-      documentName: name,
-      uploaded: false,
-      version: 0,
-    }));
-    ctx.data.allDocumentsUploaded = false;
+    
+    // Check if there are existing documents in the matter with the same displayName
+    const matterId = ctx.step.instance.matterId;
+    const contactId = ctx.step.instance.contactId;
+    
+    const documentsStatus: DocumentUploadStatus[] = [];
+    
+    for (const name of documentNames) {
+      const requestId = `${ctx.step.id}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      
+      // Look for existing document with same displayName in the matter/contact
+      // This includes documents from previous workflows (orphaned or active)
+      let existingDoc = null;
+      if (matterId) {
+        existingDoc = await prisma.document.findFirst({
+          where: {
+            matterId,
+            displayName: name,
+            deletedAt: null,
+          },
+          orderBy: { version: 'desc' },
+          select: { id: true, version: true, createdAt: true },
+        });
+      } else if (contactId) {
+        existingDoc = await prisma.document.findFirst({
+          where: {
+            contactId,
+            displayName: name,
+            deletedAt: null,
+          },
+          orderBy: { version: 'desc' },
+          select: { id: true, version: true, createdAt: true },
+        });
+      }
+      
+      // If document exists, mark as uploaded with existing document info
+      if (existingDoc) {
+        documentsStatus.push({
+          requestId,
+          documentName: name,
+          uploaded: true,
+          documentId: existingDoc.id,
+          uploadedAt: existingDoc.createdAt.toISOString(),
+          version: existingDoc.version,
+        });
+      } else {
+        // No existing document, needs to be uploaded
+        documentsStatus.push({
+          requestId,
+          documentName: name,
+          uploaded: false,
+          version: 0,
+        });
+      }
+    }
+    
+    ctx.data.documentsStatus = documentsStatus;
+    ctx.data.allDocumentsUploaded = documentsStatus.every(d => d.uploaded);
 
     return ActionState.IN_PROGRESS;
   }

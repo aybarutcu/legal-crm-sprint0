@@ -26,6 +26,7 @@ export const documentUploadSchema = z
     matterId: z.string().min(1).optional(),
     contactId: z.string().min(1).optional(),
     folderId: z.string().min(1).optional(),
+    parentDocumentId: z.string().min(1).optional(),
   });
 
 export const documentCreateSchema = z

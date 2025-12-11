@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DocumentListItem } from "@/components/documents/types";
 import { EditDocumentDialog } from "@/components/documents/EditDocumentDialog";
+import { VersionCompareModal } from "@/components/documents/VersionCompareModal";
 import { DocumentAccessScope } from "@prisma/client";
-import { Edit } from "lucide-react";
+import { Edit, Upload } from "lucide-react";
 
 type DocumentDetailDrawerProps = {
   documentId: string | null;
@@ -33,11 +34,13 @@ export function DocumentDetailDrawer({
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadUrlRef = useRef<string | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showUploadVersionDialog, setShowUploadVersionDialog] = useState(false);
   const [versions, setVersions] = useState<DocumentListItem[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [matters, setMatters] = useState<Array<{ id: string; title: string }>>([]);
   const [contacts, setContacts] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [compareVersionId, setCompareVersionId] = useState<string | null>(null);
 
   useEffect(() => {
     setDocument(initialDocument ?? null);
@@ -80,7 +83,7 @@ export function DocumentDetailDrawer({
     setDownloadError(null);
     setDownloadLoading(false);
     downloadUrlRef.current = null;
-  }, [documentId]);
+  }, [documentId, initialDocument?.id, document?.version]);
 
   const isPreviewableMime = useCallback((mime: string) => {
     return mime.startsWith("application/pdf") || mime.startsWith("image/");
@@ -97,7 +100,7 @@ export function DocumentDetailDrawer({
       setDownloadLoading(true);
       setDownloadError(null);
       try {
-        const response = await fetch(`/api/documents/${targetId}/download`);
+        const response = await fetch(`/api/documents/${targetId}/download`, { cache: "no-store" });
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
           throw new Error(payload.error ?? "İndirme bağlantısı oluşturulamadı.");
@@ -121,7 +124,8 @@ export function DocumentDetailDrawer({
   );
 
   useEffect(() => {
-    if (!documentId) {
+    const targetId = documentId ?? initialDocument?.id;
+    if (!targetId) {
       setDocument(null);
       setError(null);
       setVersions([]);
@@ -131,11 +135,11 @@ export function DocumentDetailDrawer({
     let active = true;
 
     async function fetchDetail() {
-      if (!documentId) return;
+      if (!targetId) return;
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/documents/${documentId}`);
+        const response = await fetch(`/api/documents/${targetId}`);
         if (!response.ok) {
           throw new Error("Doküman detayları alınamadı.");
         }
@@ -155,6 +159,7 @@ export function DocumentDetailDrawer({
           signedAt: payload.signedAt ?? null,
           workflowStepId: payload.workflowStepId ?? null,
           folderId: payload.folderId ?? null,
+          parentDocumentId: payload.parentDocumentId ?? null,
           matter: payload.matter
             ? { id: payload.matter.id, title: payload.matter.title }
             : null,
@@ -170,10 +175,10 @@ export function DocumentDetailDrawer({
         setDocument(nextDocument);
         setTagsInput(nextDocument.tags.join(", "));
         if (isPreviewableMime(nextDocument.mime)) {
-          loadDownloadUrl().catch(() => { });
+          loadDownloadUrl(true).catch(() => { });
         }
         // Fetch versions
-        fetchVersions(documentId);
+        fetchVersions(targetId);
       } catch (err) {
         if (!active) return;
         if (err instanceof Error && err.name === "AbortError") return;
@@ -194,7 +199,14 @@ export function DocumentDetailDrawer({
         if (response.ok) {
           const data = await response.json();
           if (active) {
-            setVersions(data.versions || []);
+            const sorted = (data.versions || []).slice().sort((a: DocumentListItem, b: DocumentListItem) => {
+              // Prefer numeric version, fallback to createdAt
+              if (typeof a.version === "number" && typeof b.version === "number") {
+                return b.version - a.version;
+              }
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
+            setVersions(sorted);
           }
         }
       } catch (err) {
@@ -209,7 +221,7 @@ export function DocumentDetailDrawer({
     return () => {
       active = false;
     };
-  }, [documentId, isPreviewableMime, loadDownloadUrl]);
+  }, [documentId, initialDocument?.id, isPreviewableMime, loadDownloadUrl]);
   // Removed onUpdated from dependencies - it should only be called on actual updates, not fetches
 
   const previewContent = useMemo(() => {
@@ -332,6 +344,11 @@ export function DocumentDetailDrawer({
     const targetDocId = newDocumentId || documentId;
     if (!targetDocId) return;
     
+    // If it's a new version, give the API a moment to fully commit
+    if (newDocumentId) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     try {
       const response = await fetch(`/api/documents/${targetDocId}`);
       if (!response.ok) {
@@ -351,6 +368,8 @@ export function DocumentDetailDrawer({
         createdAt: payload.createdAt,
         signedAt: payload.signedAt ?? null,
         workflowStepId: payload.workflowStepId ?? null,
+        folderId: payload.folderId ?? null,
+        parentDocumentId: payload.parentDocumentId ?? null,
         matter: payload.matter
           ? { id: payload.matter.id, title: payload.matter.title }
           : null,
@@ -365,16 +384,27 @@ export function DocumentDetailDrawer({
       };
       setDocument(nextDocument);
       setTagsInput(nextDocument.tags.join(", "));
-      onUpdated(nextDocument);
       
-      // Reload versions
+      // Reload versions for the new document
       const versionsRes = await fetch(`/api/documents/${targetDocId}/versions`);
       if (versionsRes.ok) {
         const data = await versionsRes.json();
         setVersions(data.versions || []);
       }
+      
+      // Reload preview for the new document if it's previewable
+      if (isPreviewableMime(nextDocument.mime)) {
+        setDownloadUrl(null);
+        setDownloadError(null);
+        downloadUrlRef.current = null;
+        loadDownloadUrl().catch(() => {});
+      }
+      
+      // Notify parent component about the update (this will trigger the parent to switch to the new document)
+      onUpdated(nextDocument);
     } catch (err) {
       console.error("Failed to refresh document:", err);
+      setError(err instanceof Error ? err.message : "Failed to refresh document");
     }
   };
 
@@ -494,11 +524,21 @@ export function DocumentDetailDrawer({
               </div>
 
               {/* Versions Section - Read-only with download buttons */}
-              {versions.length > 1 && (
+              {versions.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-700">
-                    Versiyonlar ({versions.length})
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-700">
+                      Versiyonlar ({versions.length})
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowUploadVersionDialog(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Yeni Versiyon Yükle
+                    </button>
+                  </div>
                   {loadingVersions ? (
                     <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                       Versiyonlar yükleniyor...
@@ -533,9 +573,19 @@ export function DocumentDetailDrawer({
                             </div>
                           </div>
                           <div className="flex gap-2">
+                            {ver.id !== document.id && (
+                              <button
+                                type="button"
+                                onClick={() => setCompareVersionId(ver.id)}
+                                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                              >
+                                Karşılaştır
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={async () => {
+                              onClick={async (e) => {
+                                e.stopPropagation();
                                 try {
                                   const response = await fetch(`/api/documents/${ver.id}/download`);
                                   if (!response.ok) throw new Error("İndirme bağlantısı alınamadı.");
@@ -582,6 +632,42 @@ export function DocumentDetailDrawer({
         </div>
       </div>
 
+      {/* Version Comparison Modal */}
+      {document && compareVersionId && (
+        <VersionCompareModal
+          isOpen={!!compareVersionId}
+          onClose={() => setCompareVersionId(null)}
+          currentDocument={document}
+          compareVersionId={compareVersionId}
+        />
+      )}
+
+      {/* Upload New Version Dialog */}
+      {document && (
+        <EditDocumentDialog
+          isOpen={showUploadVersionDialog}
+          onClose={() => setShowUploadVersionDialog(false)}
+          document={{
+            id: document.id,
+            filename: document.filename,
+            displayName: document.displayName || null,
+            mimeType: document.mime,
+            size: document.size,
+            version: document.version,
+            matterId: document.matter?.id,
+            contactId: document.contact?.id,
+            folderId: document.folderId,
+            accessScope: (document as any).accessScope || "PUBLIC",
+            accessMetadata: (document as any).accessMetadata,
+            tags: document.tags || [],
+          }}
+          matters={matters}
+          contacts={contacts}
+          onSave={handleDocumentUpdated}
+          parentDocumentId={document.parentDocumentId || document.id}
+        />
+      )}
+
       {/* Edit Document Dialog */}
       {document && (
         <EditDocumentDialog
@@ -604,6 +690,7 @@ export function DocumentDetailDrawer({
           matters={matters}
           contacts={contacts}
           onSave={handleDocumentUpdated}
+          parentDocumentId={null}
         />
       )}
     </div>

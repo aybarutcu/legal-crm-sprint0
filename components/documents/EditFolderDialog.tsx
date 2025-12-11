@@ -113,6 +113,13 @@ export function EditFolderDialog({
       if (res.ok) {
         const data = await res.json();
         const folder = data.folder;
+        console.log('[EditFolderDialog] Loaded folder:', {
+          name: folder.name,
+          isMasterFolder: folder.isMasterFolder,
+          parentFolderId: folder.parentFolderId,
+          matterId: folder.matterId,
+          contactId: folder.contactId
+        });
         setFolderData(folder);
         setName(folder.name);
         setColor(folder.color || "blue");

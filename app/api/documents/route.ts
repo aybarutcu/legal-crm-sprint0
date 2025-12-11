@@ -14,6 +14,115 @@ import { readObjectChunk, calculateObjectHash } from "@/lib/storage";
 import { getNextDocumentVersion } from "@/lib/documents/version";
 import { assertMatterAccess, assertContactAccess } from "@/lib/authorization";
 
+/**
+ * Sync REQUEST_DOC steps in the same matter/contact when a document is uploaded
+ * This ensures all workflows show the correct upload status
+ */
+async function syncRelatedRequestDocSteps(params: {
+  matterId?: string | null;
+  contactId?: string | null;
+  displayName: string;
+  excludeStepId?: string | null;
+}) {
+  const { matterId, contactId, displayName, excludeStepId } = params;
+
+  // Find all REQUEST_DOC steps in the same matter/contact
+  const relatedSteps = await prisma.workflowInstanceStep.findMany({
+    where: {
+      actionType: "REQUEST_DOC",
+      actionState: "IN_PROGRESS", // Only sync IN_PROGRESS steps
+      ...(excludeStepId ? { id: { not: excludeStepId } } : {}),
+      instance: {
+        ...(matterId ? { matterId } : {}),
+        ...(contactId ? { contactId } : {}),
+      },
+    },
+    select: {
+      id: true,
+      actionData: true,
+    },
+  });
+
+  if (relatedSteps.length === 0) {
+    return;
+  }
+
+  console.log(`[Sync] Found ${relatedSteps.length} related REQUEST_DOC steps to sync`);
+
+  // Find the latest version of the document
+  const latestDoc = await prisma.document.findFirst({
+    where: {
+      displayName,
+      ...(matterId ? { matterId } : {}),
+      ...(contactId ? { contactId } : {}),
+      deletedAt: null,
+    },
+    orderBy: { version: 'desc' },
+    select: {
+      id: true,
+      version: true,
+      createdAt: true,
+    },
+  });
+
+  if (!latestDoc) {
+    return;
+  }
+
+  // Update each related step's actionData
+  for (const step of relatedSteps) {
+    try {
+      const actionData = step.actionData as any;
+      const config = actionData?.config || {};
+      const data = actionData?.data || {};
+      const documentNames = config.documentNames || [];
+      let documentsStatus = data.documentsStatus || [];
+
+      // Check if this step requests this document
+      const matchingDoc = documentsStatus.find(
+        (d: any) => d.documentName === displayName
+      );
+
+      if (matchingDoc && !matchingDoc.uploaded) {
+        // Update the status
+        matchingDoc.uploaded = true;
+        matchingDoc.documentId = latestDoc.id;
+        matchingDoc.uploadedAt = latestDoc.createdAt.toISOString();
+        matchingDoc.version = latestDoc.version;
+
+        // Check if all documents are now uploaded
+        const allUploaded = documentsStatus.every((d: any) => d.uploaded);
+
+        const updatedActionData = {
+          config,
+          data: {
+            ...data,
+            documentsStatus,
+            allDocumentsUploaded: allUploaded,
+            status: "IN_PROGRESS", // Keep IN_PROGRESS until user explicitly completes
+          },
+          history: actionData?.history || [],
+        };
+
+        // Update step but do NOT auto-complete
+        await prisma.workflowInstanceStep.update({
+          where: { id: step.id },
+          data: {
+            actionData: updatedActionData as Prisma.InputJsonValue,
+            // Keep step IN_PROGRESS - do not auto-complete
+          },
+        });
+
+        console.log(`[Sync] Updated step ${step.id} for document "${displayName}" (allUploaded: ${allUploaded}, not auto-completed)`);
+
+        // Do NOT activate dependent steps - wait for explicit completion
+      }
+    } catch (error) {
+      console.error(`[Sync] Error updating step ${step.id}:`, error);
+    }
+  }
+}
+
 export const GET = withApiHandler(
   async (req) => {
     const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries());
@@ -33,16 +142,18 @@ export const GET = withApiHandler(
     ...(matterId ? { matterId } : {}),
     ...(contactId ? { contactId } : {}),
     ...(uploaderId ? { uploaderId } : {}),
-    // If no folderId param and no search query, show only root documents (folderId: null)
-    // This prevents showing documents from master folders on the root view
-    // BUT if there's a search query, search all documents regardless of folder
+    // Folder filtering logic:
+    // 1. If folderId is explicitly provided, use it (including null for root documents)
+    // 2. If matterId or contactId is provided, fetch ALL documents for that entity (don't filter by folder)
+    // 3. If searching (q is provided), search all documents regardless of folder
+    // 4. Otherwise (global documents page with no filters), show only root documents
     ...(folderId !== undefined
       ? folderId === "null" || folderId === ""
         ? { folderId: null }
         : { folderId }
-      : q 
-        ? {} // When searching, don't filter by folder - search everywhere
-        : { folderId: null }), // When not searching, only show root documents
+      : matterId || contactId || q
+        ? {} // When filtering by matter/contact or searching, fetch all documents regardless of folder
+        : { folderId: null }), // When browsing global documents page, only show root documents
   };
 
   if (tagList.length) {
@@ -330,20 +441,67 @@ export const POST = withApiHandler(async (req, { session }) => {
   }
 
   // Version validation based on displayName + folder location
-  const where: Prisma.DocumentWhereInput = {
-    displayName: payload.displayName ?? payload.filename,
-    folderId: targetFolderId,
-    matterId: payload.matterId ?? null,
-    contactId: payload.contactId ?? null,
-    deletedAt: null,
-  };
+  // OR based on parentDocumentId if provided
+  let expectedVersion: number;
+  let version: number;
 
-  const aggregate = await prisma.document.aggregate({
-    _max: { version: true },
-    where,
-  });
-  const expectedVersion = getNextDocumentVersion(aggregate._max.version);
-  const version = payload.version ?? expectedVersion;
+  if (payload.parentDocumentId) {
+    // Versioning an existing document
+    const parentDoc = await prisma.document.findUnique({
+      where: { id: payload.parentDocumentId },
+      select: { 
+        id: true,
+        displayName: true,
+        folderId: true,
+        matterId: true,
+        contactId: true,
+        parentDocumentId: true,
+      },
+    });
+
+    if (!parentDoc) {
+      return NextResponse.json(
+        { error: "Parent document not found" },
+        { status: 404 },
+      );
+    }
+
+    // Find all versions of this document
+    const rootDocId = parentDoc.parentDocumentId || parentDoc.id;
+    const aggregate = await prisma.document.aggregate({
+      _max: { version: true },
+      where: {
+        OR: [
+          { id: rootDocId },
+          { parentDocumentId: rootDocId },
+        ],
+        deletedAt: null,
+      },
+    });
+
+    expectedVersion = getNextDocumentVersion(aggregate._max.version);
+    version = payload.version ?? expectedVersion;
+  } else {
+    // New document - check by displayName + folder
+    // For workflow documents, scope version check to the specific workflow step
+    const where: Prisma.DocumentWhereInput = {
+      displayName: payload.displayName ?? payload.filename,
+      folderId: targetFolderId,
+      matterId: payload.matterId ?? null,
+      contactId: payload.contactId ?? null,
+      deletedAt: null,
+      // If this is a workflow document, only check versions within the same workflow step
+      ...(payload.workflowStepId ? { workflowStepId: payload.workflowStepId } : {}),
+    };
+
+    const aggregate = await prisma.document.aggregate({
+      _max: { version: true },
+      where,
+    });
+
+    expectedVersion = getNextDocumentVersion(aggregate._max.version);
+    version = payload.version ?? expectedVersion;
+  }
 
   if (version !== expectedVersion) {
     return NextResponse.json({ error: "Version mismatch" }, { status: 409 });
@@ -413,6 +571,29 @@ export const POST = withApiHandler(async (req, { session }) => {
     }
   }
 
+  // Auto-assign matterId/contactId from folder if not already set
+  let finalMatterId = payload.matterId ?? null;
+  let finalContactId = payload.contactId ?? null;
+  
+  if (targetFolderId && (!finalMatterId && !finalContactId)) {
+    // Look up the folder to get its matter/contact relationships
+    const folder = await prisma.documentFolder.findUnique({
+      where: { id: targetFolderId },
+      select: { matterId: true, contactId: true },
+    });
+    
+    if (folder) {
+      if (folder.matterId) {
+        finalMatterId = folder.matterId;
+        console.log('[API /api/documents] Auto-assigned matterId from folder:', folder.matterId);
+      }
+      if (folder.contactId) {
+        finalContactId = folder.contactId;
+        console.log('[API /api/documents] Auto-assigned contactId from folder:', folder.contactId);
+      }
+    }
+  }
+
   const created = await prisma.document.create({
     data: {
       id: payload.documentId,
@@ -424,8 +605,8 @@ export const POST = withApiHandler(async (req, { session }) => {
       hash: objectHash,
       tags: payload.tags ?? [],
       version,
-      matterId: payload.matterId ?? null,
-      contactId: payload.contactId ?? null,
+      matterId: finalMatterId,
+      contactId: finalContactId,
       folderId: targetFolderId,
       workflowStepId: payload.workflowStepId ?? null,
       parentDocumentId: payload.parentDocumentId ?? null,
@@ -493,8 +674,9 @@ export const POST = withApiHandler(async (req, { session }) => {
       const config = (actionData?.config as Prisma.JsonObject) || actionData || {};
       const documentNames = (config.documentNames as string[]) || [];
       
-      // Runtime data is at root level of actionData
-      let documentsStatus = (actionData?.documentsStatus as Array<{
+      // Runtime data is in actionData.data (nested structure)
+      const data = (actionData?.data as Prisma.JsonObject) || {};
+      let documentsStatus = (data?.documentsStatus as Array<{
         requestId: string;
         documentName: string;
         uploaded: boolean;
@@ -553,28 +735,44 @@ export const POST = withApiHandler(async (req, { session }) => {
         console.log('[API] All documents uploaded?', allUploaded);
         console.log('[API] Updated documentsStatus:', documentsStatus);
 
-        // Update actionData with new status at root level
+        // Update actionData with nested data structure
+        // Structure: { config: {...}, data: { documentsStatus, allDocumentsUploaded, status }, history: [...] }
+        const existingHistory = (actionData?.history as Array<unknown>) || [];
         const updatedActionData = {
-          ...actionData,
-          documentsStatus,
-          allDocumentsUploaded: allUploaded,
-          status: allUploaded ? "COMPLETED" : "IN_PROGRESS",
+          config: config, // preserve config
+          data: {
+            documentsStatus,
+            allDocumentsUploaded: allUploaded,
+            status: "IN_PROGRESS", // Keep step IN_PROGRESS until user explicitly completes it
+          },
+          history: existingHistory as Prisma.InputJsonValue, // preserve history
         };
         
-        console.log('[API] Updating workflow step with actionState:', allUploaded ? 'COMPLETED' : 'unchanged');
+        console.log('[API] Updating workflow step - allDocumentsUploaded:', allUploaded);
 
+        // Update step but DO NOT auto-complete - user must explicitly complete the step
         await prisma.workflowInstanceStep.update({
           where: { id: created.workflowStepId },
           data: {
-            actionData: updatedActionData,
-            // If all documents uploaded, mark step as COMPLETED
-            ...(allUploaded ? { actionState: "COMPLETED", completedAt: new Date() } : {}),
+            actionData: updatedActionData as Prisma.InputJsonValue,
+            // Keep step IN_PROGRESS - do not auto-complete
           },
         });
         
-        console.log('[API] Workflow step updated successfully');
+        console.log('[API] Workflow step updated successfully (not auto-completed)');
 
-        // Log workflow step document update
+        // Do NOT activate dependent steps here - wait for explicit completion
+        // The user will click "Complete Step" button which calls /api/workflows/steps/[id]/complete
+
+        // Sync other REQUEST_DOC steps in the same matter that might need this document
+        await syncRelatedRequestDocSteps({
+          matterId: created.matterId,
+          contactId: created.contactId,
+          displayName: created.displayName,
+          excludeStepId: created.workflowStepId,
+        });
+
+        // Log workflow step document upload
         if (workflowStep.instance.matterId) {
           await recordAuditLog({
             actorId: session!.user!.id,
